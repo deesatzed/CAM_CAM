@@ -637,6 +637,11 @@ class Methodology(BaseModel):
     capability_data: Optional[dict] = None
     novelty_score: Optional[float] = None
     potential_score: Optional[float] = None
+    accuracy_contract: str = "soft"  # hard|frontier|scenario|soft
+    concept_type: Optional[str] = None  # invariant|failure_mode|protocol|novel_abstraction|decision_rule|bridge
+    use_immediately_as: list[str] = Field(default_factory=list)  # operational directives
+    tension_questions: list[str] = Field(default_factory=list)  # epistemic tension questions
+    triage_score: Optional[float] = None  # 7-dim composite ingest triage score
 
 
 class ActionTemplate(BaseModel):

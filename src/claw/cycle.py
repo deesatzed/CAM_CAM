@@ -717,9 +717,9 @@ def _counts_as_methodology_success(verification: VerificationResult) -> bool:
     """Only promote methodologies when the result met the expected quality bar."""
     if not verification.approved:
         return False
-    if verification.expectation_match_score is not None and verification.expectation_match_score < 0.65:
+    if verification.expectation_match_score is not None and verification.expectation_match_score < 0.35:
         return False
-    if verification.quality_score is not None and verification.quality_score < 0.55:
+    if verification.quality_score is not None and verification.quality_score < 0.35:
         return False
     return True
 
@@ -1024,7 +1024,7 @@ class MicroClaw(ClawCycle):
         if self.ctx.semantic_memory is not None:
             try:
                 similar, signals = await self.ctx.semantic_memory.find_similar_with_signals(
-                    task.description, limit=15
+                    task.description, limit=25
                 )
                 retrieval_confidence = float(signals.get("retrieval_confidence", 0.0) or 0.0)
                 retrieval_conflicts = [str(item) for item in signals.get("conflicts", []) or []]
@@ -1107,7 +1107,7 @@ class MicroClaw(ClawCycle):
                         for rc in ranked:
                             if rc.methodology_id in seen_ids:
                                 continue
-                            if len(context_methodology_ids) >= 2:
+                            if len(context_methodology_ids) >= 7:
                                 break
                             if rc.methodology_id in result_by_id:
                                 sr = result_by_id[rc.methodology_id]
@@ -1902,6 +1902,35 @@ class MicroClaw(ClawCycle):
                     )
                 except Exception:
                     pass  # Non-critical
+
+            # LCDE: extract latent capabilities from used methodologies
+            if used_methodologies and methodology_success:
+                try:
+                    from claw.lcde import extract_capabilities, update_methodology_directives
+                    for methodology_id, _rel in used_methodologies:
+                        meth = await self.ctx.repository.get_methodology(methodology_id)
+                        if meth is not None:
+                            discovery = extract_capabilities(
+                                methodology=meth,
+                                task_description=task.description,
+                                task_id=task.id,
+                                outcome_notes=f"quality={verification.quality_score}, match={verification.expectation_match_score}",
+                            )
+                            updated_meth = update_methodology_directives(meth, discovery)
+                            if updated_meth.use_immediately_as != meth.use_immediately_as:
+                                await self.ctx.repository.update_methodology_directives(
+                                    methodology_id,
+                                    use_immediately_as=updated_meth.use_immediately_as,
+                                )
+                            logger.info(
+                                "LCDE: methodology %s — %d capabilities, %d adjacent tasks, %d gaps",
+                                methodology_id,
+                                len(discovery.discovered_capabilities),
+                                len(discovery.adjacent_tasks),
+                                len(discovery.knowledge_gaps),
+                            )
+                except Exception as e:
+                    logger.warning("LCDE capability extraction failed: %s", e)
 
             # CAM-SEQ: record RunConnectome events if packets were used
             if (

@@ -395,15 +395,15 @@ class TestTokenBudgetEnforcement:
             ctx, context=FakeContext(), token_budget=1000
         )
         assert methods == ["solution1"]
-        assert max_chars == 2000  # Floor of 2000
+        assert max_chars == 4000  # Floor of 4000
 
-    def test_resolve_knowledge_source_large_budget_caps_at_8000(self):
-        """With a large token_budget the max_chars should cap at 8000.
+    def test_resolve_knowledge_source_large_budget_caps_at_32000(self):
+        """With a large token_budget the max_chars should cap at 32000.
 
         With token_budget=100_000:
-            raw = int(100_000 * 0.25 * 4) = 100_000
-            capped = min(100_000, 8000) = 8000
-            floored = max(8000, 2000) = 8000
+            raw = int(100_000 * 0.40 * 4) = 160_000
+            capped = min(160_000, 32000) = 32000
+            floored = max(32000, 4000) = 32000
         """
         ctx = _make_task_context("analysis")
 
@@ -414,15 +414,15 @@ class TestTokenBudgetEnforcement:
             ctx, context=FakeContext(), token_budget=100_000
         )
         assert methods == ["solution1", "solution2"]
-        assert max_chars == 8000
+        assert max_chars == 32000
 
     def test_resolve_knowledge_source_mid_budget(self):
         """With a mid-range token_budget the formula should produce the expected value.
 
         With token_budget=5000:
-            raw = int(5000 * 0.25 * 4) = 5000
-            capped = min(5000, 8000) = 5000
-            floored = max(5000, 2000) = 5000
+            raw = int(5000 * 0.40 * 4) = 8000
+            capped = min(8000, 32000) = 8000
+            floored = max(8000, 4000) = 8000
         """
         ctx = _make_task_context("analysis")
 
@@ -433,7 +433,7 @@ class TestTokenBudgetEnforcement:
             ctx, context=FakeContext(), token_budget=5000
         )
         assert methods == ["sol"]
-        assert max_chars == 5000
+        assert max_chars == 8000
 
     def test_token_budget_warning_logged_when_exceeded(self, caplog):
         """When the prompt exceeds the token budget, a warning must be logged."""

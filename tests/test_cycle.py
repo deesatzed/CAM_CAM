@@ -470,7 +470,7 @@ class TestMicroClaw:
             files_changed=["src/auth.py"],
             diff="+def validate_jwt(token): pass",
         )
-        verification = VerificationResult(approved=True, quality_score=0.7, expectation_match_score=0.4)
+        verification = VerificationResult(approved=True, quality_score=0.7, expectation_match_score=0.2)
 
         await micro.learn(("claude", TaskContext(task=sample_task), outcome, verification))
 

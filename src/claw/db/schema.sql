@@ -126,7 +126,12 @@ CREATE TABLE IF NOT EXISTS methodologies (
     prism_data TEXT,                                  -- JSON: PrismEmbedding (nullable)
     capability_data TEXT,                              -- JSON: CapabilityData (nullable)
     novelty_score REAL,                                -- 0.0-1.0: how different from existing KB
-    potential_score REAL                                -- 0.0-1.0: future composability/value
+    potential_score REAL,                               -- 0.0-1.0: future composability/value
+    accuracy_contract TEXT NOT NULL DEFAULT 'soft',     -- hard|frontier|scenario|soft
+    concept_type TEXT,                                  -- invariant|failure_mode|protocol|novel_abstraction|decision_rule|bridge
+    use_immediately_as TEXT NOT NULL DEFAULT '[]',      -- JSON array: operational directives
+    tension_questions TEXT NOT NULL DEFAULT '[]',       -- JSON array: epistemic tension questions
+    triage_score REAL                                   -- 0.0-1.0: 7-dim composite ingest triage score
 );
 CREATE INDEX IF NOT EXISTS idx_meth_scope ON methodologies(scope);
 CREATE INDEX IF NOT EXISTS idx_meth_lifecycle ON methodologies(lifecycle_state);

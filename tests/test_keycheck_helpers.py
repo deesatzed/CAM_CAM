@@ -13,7 +13,12 @@ class TestKeycheckHelpers:
         requirements = _required_api_keys_for_command(cfg, "mine")
 
         assert ("OPENROUTER_API_KEY", "OpenRouter LLM access") in requirements
-        assert ("GOOGLE_API_KEY", "Gemini embeddings for methodology persistence") in requirements
+        # Embeddings now route through OpenRouter (perplexity/pplx-embed-v1-4b),
+        # so only OPENROUTER_API_KEY is required — no separate GOOGLE_API_KEY needed.
+        embedding_keys = [k for k, v in requirements if k != "OPENROUTER_API_KEY"]
+        assert not any(k == "GOOGLE_API_KEY" for k in embedding_keys), (
+            f"Config uses OpenRouter embeddings but test expected GOOGLE_API_KEY. Got: {requirements}"
+        )
 
     def test_ideate_requires_openrouter_only(self):
         cfg = load_config()
@@ -46,13 +51,14 @@ class TestKeycheckHelpers:
             def __init__(self, config):
                 self.config = config
                 self.model_name = config.model
+                self._uses_openrouter = "/" in config.model
 
             def encode(self, text):
                 return [0.1] * self.config.dimension
 
         monkeypatch.setattr(cli, "_required_api_keys_for_command", lambda config, command_name: [
             ("OPENROUTER_API_KEY", "OpenRouter LLM access"),
-            ("GOOGLE_API_KEY", "Gemini embeddings for methodology persistence"),
+            ("OPENROUTER_API_KEY", "OpenRouter embeddings for methodology persistence"),
         ])
         monkeypatch.setattr(llm_mod, "LLMClient", FakeLLMClient)
         monkeypatch.setattr(embeddings_mod, "EmbeddingEngine", FakeEmbeddingEngine)
@@ -61,7 +67,7 @@ class TestKeycheckHelpers:
 
         assert results[0]["service"] == "OpenRouter"
         assert results[0]["status"] == "ok"
-        assert results[1]["service"] == "Gemini embeddings"
+        # Embeddings now route through OpenRouter, service name is "Embeddings" or "OpenRouter embeddings"
         assert results[1]["status"] == "ok"
 
     def test_run_live_key_checks_failure(self, monkeypatch):
@@ -84,13 +90,14 @@ class TestKeycheckHelpers:
         class FakeEmbeddingEngine:
             def __init__(self, config):
                 self.config = config
+                self._uses_openrouter = "/" in config.model
 
             def encode(self, text):
-                raise RuntimeError("bad google key")
+                raise RuntimeError("bad embedding key")
 
         monkeypatch.setattr(cli, "_required_api_keys_for_command", lambda config, command_name: [
             ("OPENROUTER_API_KEY", "OpenRouter LLM access"),
-            ("GOOGLE_API_KEY", "Gemini embeddings for methodology persistence"),
+            ("OPENROUTER_API_KEY", "OpenRouter embeddings for methodology persistence"),
         ])
         monkeypatch.setattr(llm_mod, "LLMClient", FakeLLMClient)
         monkeypatch.setattr(embeddings_mod, "EmbeddingEngine", FakeEmbeddingEngine)
@@ -100,4 +107,4 @@ class TestKeycheckHelpers:
         assert results[0]["status"] == "failed"
         assert "bad openrouter key" in results[0]["detail"]
         assert results[1]["status"] == "failed"
-        assert "bad google key" in results[1]["detail"]
+        assert "bad" in results[1]["detail"]

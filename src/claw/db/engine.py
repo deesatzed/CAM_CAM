@@ -659,6 +659,31 @@ class DatabaseEngine:
             await self.conn.commit()
             logger.info("Migration 19 applied: created methodology_contradictions table")
 
+        # Migration 20: add accuracy_contract, concept_type, use_immediately_as,
+        # tension_questions, triage_score columns to methodologies (pseudo-RAG operational cards)
+        if tables_exist:
+            row = await self.fetch_one(
+                "SELECT COUNT(*) as cnt FROM pragma_table_info('methodologies') WHERE name = 'accuracy_contract'"
+            )
+            if row and row["cnt"] == 0:
+                await self.conn.execute(
+                    "ALTER TABLE methodologies ADD COLUMN accuracy_contract TEXT NOT NULL DEFAULT 'soft'"
+                )
+                await self.conn.execute(
+                    "ALTER TABLE methodologies ADD COLUMN concept_type TEXT"
+                )
+                await self.conn.execute(
+                    "ALTER TABLE methodologies ADD COLUMN use_immediately_as TEXT NOT NULL DEFAULT '[]'"
+                )
+                await self.conn.execute(
+                    "ALTER TABLE methodologies ADD COLUMN tension_questions TEXT NOT NULL DEFAULT '[]'"
+                )
+                await self.conn.execute(
+                    "ALTER TABLE methodologies ADD COLUMN triage_score REAL"
+                )
+                await self.conn.commit()
+                logger.info("Migration 20 applied: methodologies pseudo-RAG columns (accuracy_contract, concept_type, use_immediately_as, tension_questions, triage_score)")
+
     # ------------------------------------------------------------------
     # Write operations — wrapped with _retry_on_locked for contention
     # ------------------------------------------------------------------

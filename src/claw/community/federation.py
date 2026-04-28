@@ -413,7 +413,7 @@ class Federation:
                     continue
 
                 # Parse JSON string fields
-                json_list_fields = ("tags", "tech_stack", "files_affected", "parent_ids")
+                json_list_fields = ("tags", "tech_stack", "files_affected", "parent_ids", "use_immediately_as", "tension_questions")
                 json_dict_fields = ("capability_data", "fitness_vector", "prism_data")
                 for field in json_list_fields:
                     val = meth_dict.get(field)
@@ -510,7 +510,7 @@ class Federation:
                 if state in ("dead", "dormant"):
                     continue
 
-                json_list_fields = ("tags", "tech_stack", "files_affected", "parent_ids")
+                json_list_fields = ("tags", "tech_stack", "files_affected", "parent_ids", "use_immediately_as", "tension_questions")
                 json_dict_fields = ("capability_data", "fitness_vector", "prism_data")
                 for field in json_list_fields:
                     val = meth_dict.get(field)

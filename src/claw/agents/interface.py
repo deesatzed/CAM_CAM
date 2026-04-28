@@ -1147,8 +1147,8 @@ class AgentInterface(ABC):
             if past_solutions:
                 # Use the explicit token_budget parameter instead of
                 # the dead getattr fallback on context.
-                max_chars = min(int(token_budget * 0.25 * 4), 8000)
-                max_chars = max(max_chars, 2000)
+                max_chars = min(int(token_budget * 0.40 * 4), 32000)
+                max_chars = max(max_chars, 4000)
                 return (past_solutions, max_chars)
 
         # Tier 3: no knowledge
@@ -1315,6 +1315,31 @@ class AgentInterface(ABC):
                 knowledge_budget,
                 getattr(task.task, "task_type", "unknown"),
             )
+            # R6-06: Also inject top past_solutions alongside CAG corpus
+            # CAG gives broad context; past_solutions give task-specific ranked matches
+            _cag_solutions, _cag_budget = self._resolve_knowledge_source(
+                task, context, token_budget=self._token_budget
+            )
+            if _cag_solutions:
+                parts.append("\n## Task-Specific Retrieved Patterns (alongside CAG)")
+                parts.append(
+                    "These patterns were specifically retrieved and ranked for this task. "
+                    "Prioritize these over the broad CAG corpus above."
+                )
+                _cag_chars = 0
+                _cag_max = min(_cag_budget, 16000)  # Cap to avoid double-bloat
+                for _sol in _cag_solutions[:5]:
+                    _desc = getattr(_sol, "problem_description", "") or ""
+                    _notes = getattr(_sol, "methodology_notes", "") or ""
+                    _block = f"### Pattern: {_desc[:200]}\n{_notes[:2000]}"
+                    if _cag_chars + len(_block) > _cag_max:
+                        break
+                    parts.append(_block)
+                    _cag_chars += len(_block)
+                self.logger.info(
+                    "Injected %d task-specific patterns alongside CAG (%d chars)",
+                    min(5, len(_cag_solutions)), _cag_chars,
+                )
         else:
             # Standard HybridSearch path: inject individual methodology patterns
             # Uses 3-tier precedence: task override > context past_solutions > empty
@@ -1378,11 +1403,15 @@ class AgentInterface(ABC):
                     pattern_text = sol or notes
 
                     # Context pointer for large methodologies
+                    # PRIMARY and CONTEXT methodologies get full content (no truncation)
                     mid = getattr(methodology, "id", "unknown")
-                    if pattern_text and len(pattern_text) > pointer_threshold:
-                        # Truncate with pointer for budget preservation
+                    is_primary_or_context = (
+                        (mid_check and mid_check == _primary_mid) or
+                        (mid_check and mid_check in _context_mids)
+                    )
+                    if pattern_text and len(pattern_text) > pointer_threshold and not is_primary_or_context:
+                        # Truncate with pointer for budget preservation (non-primary only)
                         summary = pattern_text[:600]
-                        # Check if this is an HF-sourced methodology
                         source_repos = cap.get("source_repos", [])
                         hf_source = next((r for r in source_repos if "huggingface.co" in r), None) if isinstance(source_repos, list) else None
                         if hf_source:
@@ -1391,9 +1420,9 @@ class AgentInterface(ABC):
                             pointer = f"[TRUNCATED. Full content: methodology_id#{mid}]"
                         section_lines.append(f"Pattern details:\n{summary}\n{pointer}")
                     elif pattern_text and not impl_sketch:
-                        section_lines.append(f"Pattern details:\n{pattern_text[:1500]}")
+                        section_lines.append(f"Pattern details:\n{pattern_text}")
                     elif pattern_text and impl_sketch:
-                        section_lines.append(f"Reference:\n{pattern_text[:800]}")
+                        section_lines.append(f"Reference:\n{pattern_text}")
 
                     if section_lines:
                         section = "\n".join(section_lines)
@@ -1402,12 +1431,45 @@ class AgentInterface(ABC):
                         knowledge_parts.append(section)
                         knowledge_chars += len(section)
                 if knowledge_parts:
-                    parts.append("\n## Retrieved Knowledge (from PULSE-mined methodologies)")
+                    parts.append("\n## OPERATIONAL KNOWLEDGE (PULSE-mined methodologies — MANDATORY)")
                     parts.append(
-                        "The following patterns were retrieved from the knowledge base. "
-                        "Use these as guidance for your implementation where applicable."
+                        "**DIRECTIVE**: The following knowledge was retrieved from the PULSE knowledge base. "
+                        "These are not suggestions — they are operational patterns mined from real codebases. "
+                        "You MUST:\n"
+                        "1. Read each pattern carefully before writing any code.\n"
+                        "2. Apply [PRIMARY] patterns as your default implementation approach.\n"
+                        "3. Use [CONTEXT] patterns to cross-check and enrich your solution.\n"
+                        "4. Cite which methodology you applied in your response "
+                        "(e.g., 'Applied methodology#<id>: <pattern name>').\n"
+                        "5. If you deviate from a retrieved pattern, explicitly state WHY "
+                        "with a concrete technical reason.\n"
+                        "6. DO NOT ignore retrieved knowledge in favor of generic model priors."
                     )
+                    # Inject use_immediately_as directives if available
+                    for methodology in past_solutions[:len(knowledge_parts)]:
+                        use_immediately = None
+                        _cap_raw = getattr(methodology, "capability_data", None)
+                        if isinstance(_cap_raw, dict):
+                            use_immediately = _cap_raw.get("use_immediately_as")
+                        elif isinstance(_cap_raw, str) and _cap_raw not in ("", "null"):
+                            try:
+                                _parsed = json.loads(_cap_raw)
+                                if isinstance(_parsed, dict):
+                                    use_immediately = _parsed.get("use_immediately_as")
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                        if use_immediately and isinstance(use_immediately, list):
+                            _mid = getattr(methodology, "id", "?")
+                            parts.append(f"\n**USE IMMEDIATELY (methodology#{_mid})**:")
+                            for directive in use_immediately[:5]:
+                                parts.append(f"  - {directive}")
                     parts.extend(knowledge_parts)
+                    # Funnel metrics logging
+                    self.logger.info(
+                        "Knowledge funnel: retrieved=%d, injected=%d, chars=%d, budget=%d",
+                        len(past_solutions), len(knowledge_parts),
+                        knowledge_chars, max_knowledge_chars,
+                    )
 
         # CAM-SEQ: inject ApplicationPacket guidance when available
         _packets = getattr(context, "application_packets", []) if context else []

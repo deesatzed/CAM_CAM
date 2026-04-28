@@ -181,10 +181,19 @@ def _run_python_script_with_timeout(script_path: Path, args: list[str], max_minu
         raise typer.Exit(124)
 
 
-def _uses_remote_gemini_embeddings(config: Any) -> bool:
+def _uses_remote_embeddings(config: Any) -> bool:
+    """Return True if embeddings use a remote API (OpenRouter or direct Gemini)."""
     model_name = str(getattr(config.embeddings, "model", "") or "")
     required_model = str(getattr(config.embeddings, "required_model", "") or "")
+    # OpenRouter: provider/model format (e.g. "perplexity/pplx-embed-v1-4b")
+    if "/" in model_name:
+        return True
+    # Direct Gemini API
     return model_name.startswith("gemini-embedding") or required_model.startswith("gemini-embedding")
+
+
+# Keep old name as alias for backward compat in any other callers
+_uses_remote_gemini_embeddings = _uses_remote_embeddings
 
 
 def _required_api_keys_for_command(config: Any, command_name: str) -> list[tuple[str, str]]:
@@ -290,18 +299,20 @@ async def _run_live_key_checks(config: Any, command_name: str) -> list[dict[str,
         finally:
             await llm_client.close()
 
-    if command in {"mine", "mine-workspace", "mine-self", "mine-all"} and _uses_remote_gemini_embeddings(config):
+    if command in {"mine", "mine-workspace", "mine-self", "mine-all"} and _uses_remote_embeddings(config):
         try:
             engine = EmbeddingEngine(config.embeddings)
             vector = engine.encode("cam keycheck live probe")
+            service_label = "OpenRouter embeddings" if engine._uses_openrouter else "Gemini embeddings"
             results.append({
-                "service": "Gemini embeddings",
+                "service": service_label,
                 "status": "ok",
                 "detail": f"model={engine.model_name} dim={len(vector)}",
             })
         except Exception as exc:
+            service_label = "Embeddings"
             results.append({
-                "service": "Gemini embeddings",
+                "service": service_label,
                 "status": "failed",
                 "detail": str(exc),
             })

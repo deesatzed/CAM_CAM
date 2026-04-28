@@ -3005,6 +3005,40 @@ class RepoMiner:
         )
         methodology.capability_data = capability_data
 
+        # Apply pseudo-RAG triage scoring and operational card enrichment
+        try:
+            from claw.knowledge_triage import compute_triage_score
+            from claw.memory.prompt_pack import (
+                classify_accuracy_contract,
+                extract_use_immediately_directives,
+                generate_tension_questions,
+            )
+            triage_result = compute_triage_score(methodology)
+            accuracy_contract = classify_accuracy_contract(methodology)
+            use_directives = extract_use_immediately_directives(methodology)
+            tension_qs = generate_tension_questions(methodology)
+            await repo.update_methodology_directives(
+                methodology.id,
+                accuracy_contract=accuracy_contract,
+                concept_type=triage_result.concept_type,
+                use_immediately_as=use_directives,
+                tension_questions=tension_qs,
+                triage_score=triage_result.composite_score,
+            )
+            methodology.accuracy_contract = accuracy_contract
+            methodology.concept_type = triage_result.concept_type
+            methodology.use_immediately_as = use_directives
+            methodology.tension_questions = tension_qs
+            methodology.triage_score = triage_result.composite_score
+            logger.debug(
+                "Triage: %s — score=%.2f, contract=%s, type=%s, directives=%d",
+                methodology.id, triage_result.composite_score,
+                accuracy_contract, triage_result.concept_type,
+                len(use_directives),
+            )
+        except Exception as e:
+            logger.warning("Triage scoring failed for %s: %s", methodology.id, e)
+
         logger.debug("Stored finding '%s' as methodology %s", finding.title, methodology.id)
 
         # Build a reusable executable action template when the finding includes

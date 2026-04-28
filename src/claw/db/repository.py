@@ -757,8 +757,9 @@ class Repository:
                (id, problem_description, solution_code, methodology_notes,
                 source_task_id, tags, language, scope, methodology_type, files_affected,
                 lifecycle_state, generation, fitness_vector, parent_ids, superseded_by,
-                prism_data, capability_data, novelty_score, potential_score)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                prism_data, capability_data, novelty_score, potential_score,
+                accuracy_contract, concept_type, use_immediately_as, tension_questions, triage_score)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 methodology.id,
                 methodology.problem_description,
@@ -779,6 +780,11 @@ class Repository:
                 json.dumps(methodology.capability_data) if methodology.capability_data else None,
                 methodology.novelty_score,
                 methodology.potential_score,
+                methodology.accuracy_contract,
+                methodology.concept_type,
+                json.dumps(methodology.use_immediately_as),
+                json.dumps(methodology.tension_questions),
+                methodology.triage_score,
             ],
         )
 
@@ -952,6 +958,40 @@ class Repository:
             "UPDATE methodologies SET prism_data = ? WHERE id = ?",
             [json.dumps(prism_data), methodology_id],
         )
+
+    async def update_methodology_directives(
+        self,
+        methodology_id: str,
+        use_immediately_as: list[str] | None = None,
+        tension_questions: list[str] | None = None,
+        accuracy_contract: str | None = None,
+        concept_type: str | None = None,
+        triage_score: float | None = None,
+    ) -> None:
+        """Update pseudo-RAG operational fields on a methodology."""
+        updates: list[str] = []
+        params: list[Any] = []
+        if use_immediately_as is not None:
+            updates.append("use_immediately_as = ?")
+            params.append(json.dumps(use_immediately_as))
+        if tension_questions is not None:
+            updates.append("tension_questions = ?")
+            params.append(json.dumps(tension_questions))
+        if accuracy_contract is not None:
+            updates.append("accuracy_contract = ?")
+            params.append(accuracy_contract)
+        if concept_type is not None:
+            updates.append("concept_type = ?")
+            params.append(concept_type)
+        if triage_score is not None:
+            updates.append("triage_score = ?")
+            params.append(triage_score)
+        if updates:
+            params.append(methodology_id)
+            await self.engine.execute(
+                f"UPDATE methodologies SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
 
     async def count_methodologies(self) -> int:
         row = await self.engine.fetch_one("SELECT COUNT(*) as cnt FROM methodologies")
@@ -1194,7 +1234,7 @@ class Repository:
     async def get_embedding_centroid(self) -> list[float]:
         """Compute mean embedding vector from all methodology_embeddings.
 
-        Returns a 384-dimensional centroid vector, or empty list if no embeddings.
+        Returns a centroid vector (dimension inferred from data), or empty list if no embeddings.
         """
         rows = await self.engine.fetch_all(
             "SELECT embedding FROM methodology_embeddings"
@@ -1202,19 +1242,22 @@ class Repository:
         if not rows:
             return []
 
-        dim = 384
-        centroid = [0.0] * dim
+        dim: int | None = None
+        centroid: list[float] = []
         count = 0
         for row in rows:
             raw = row["embedding"]
             if raw is None:
                 continue
+            if dim is None:
+                dim = len(raw) // 4  # float32 = 4 bytes each
+                centroid = [0.0] * dim
             vec = list(struct.unpack(f"<{dim}f", raw))
             for i in range(dim):
                 centroid[i] += vec[i]
             count += 1
 
-        if count == 0:
+        if count == 0 or dim is None:
             return []
         return [c / count for c in centroid]
 
@@ -3128,6 +3171,13 @@ def _row_to_methodology(row: dict[str, Any]) -> Methodology:
     raw_cap = row.get("capability_data")
     capability_data = json.loads(raw_cap) if isinstance(raw_cap, str) else None
 
+    use_imm = row.get("use_immediately_as", "[]")
+    if isinstance(use_imm, str):
+        use_imm = json.loads(use_imm)
+    tension_q = row.get("tension_questions", "[]")
+    if isinstance(tension_q, str):
+        tension_q = json.loads(tension_q)
+
     return Methodology(
         id=row["id"],
         problem_description=row["problem_description"],
@@ -3153,6 +3203,11 @@ def _row_to_methodology(row: dict[str, Any]) -> Methodology:
         capability_data=capability_data,
         novelty_score=row.get("novelty_score"),
         potential_score=row.get("potential_score"),
+        accuracy_contract=row.get("accuracy_contract", "soft"),
+        concept_type=row.get("concept_type"),
+        use_immediately_as=use_imm if isinstance(use_imm, list) else [],
+        tension_questions=tension_q if isinstance(tension_q, list) else [],
+        triage_score=row.get("triage_score"),
     )
 
 
