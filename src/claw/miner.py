@@ -10,6 +10,7 @@ Usage:
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -324,6 +325,38 @@ _CONTENT_HASH_CHUNK: int = 4096
 
 # Maximum files to hash during content-level dedup.
 _CONTENT_HASH_MAX_FILES: int = 200
+
+# fnmatch patterns for machine-generated / vendored files — zero learning value.
+_SKIP_FILE_PATTERNS: tuple[str, ...] = (
+    "*.min.js", "*.min.css", "*.bundle.js", "*.chunk.js",
+    "*.js.map", "*.css.map",
+    "*_pb2.py", "*.pb.go", "*.pb.ts",
+    "*.generated.*", "*.auto.*",
+)
+
+# Exact filenames to skip — lock files, legal boilerplate, linter config.
+_SKIP_FILENAMES: set[str] = {
+    # Lock files
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "Pipfile.lock", "poetry.lock", "composer.lock",
+    "Gemfile.lock", "Cargo.lock",
+    # Legal / meta
+    "LICENSE", "LICENSE.md", "LICENSE.txt",
+    "CONTRIBUTING.md", "CONTRIBUTORS.md", "CODEOWNERS", ".mailmap",
+    # Linter / formatter config
+    ".prettierrc", ".prettierrc.json", ".eslintrc", ".eslintrc.json",
+    ".eslintrc.js", ".editorconfig", ".gitattributes", ".gitignore",
+    ".npmignore", ".dockerignore",
+    # Bot config
+    "renovate.json", "dependabot.yml", ".mergify.yml",
+}
+
+# Maximum bytes for data-heavy files (.json, .yaml, .yml, .sql, .csv)
+# before they are skipped entirely (data fixtures have no useful signatures).
+_MAX_DATA_FILE_BYTES: int = 200 * 1024
+
+# Extensions treated as data-heavy (subject to _MAX_DATA_FILE_BYTES gate).
+_DATA_EXTENSIONS: set[str] = {".json", ".yaml", ".yml", ".sql", ".csv"}
 
 
 def _get_code_extensions(config: ClawConfig | None = None) -> set[str]:
@@ -1177,6 +1210,11 @@ def serialize_repo(
         suffix = filepath.suffix.lower()
         if suffix not in code_exts:
             continue
+        # Skip generated/vendored/boilerplate files
+        if filepath.name in _SKIP_FILENAMES:
+            continue
+        if any(fnmatch.fnmatch(filepath.name, pat) for pat in _SKIP_FILE_PATTERNS):
+            continue
         # Language filter: skip source files not in the target language,
         # but always keep context files (README, config, docs).
         if language_filter is not None:
@@ -1210,6 +1248,16 @@ def serialize_repo(
         except (OSError, PermissionError) as exc:
             logger.debug("Skipping unreadable file %s: %s", filepath, exc)
             continue
+
+        # Gate: skip oversized data files entirely (no useful signatures)
+        if filepath.suffix.lower() in _DATA_EXTENSIONS:
+            raw_size = filepath.stat().st_size
+            if raw_size > _MAX_DATA_FILE_BYTES:
+                logger.debug(
+                    "Skipping large data file %s (%.0fKB > %dKB limit)",
+                    rel, raw_size / 1024, _MAX_DATA_FILE_BYTES // 1024,
+                )
+                continue
 
         # Pre-screen oversized files: replace with a compact skeleton
         # (head + signatures) to avoid a single file eating the whole budget
@@ -2800,6 +2848,20 @@ class RepoMiner:
                 repo_name=repo_name,
                 repo_path=str(repo_path),
                 error="No source files found",
+            )
+
+        # Gate: skip trivial repos that would waste an LLM call
+        if file_count < 3:
+            return RepoMiningResult(
+                repo_name=repo_name,
+                repo_path=str(repo_path),
+                error=f"Too few source files ({file_count} < 3)",
+            )
+        if len(repo_content.encode("utf-8")) < 1024:
+            return RepoMiningResult(
+                repo_name=repo_name,
+                repo_path=str(repo_path),
+                error="Insufficient code content",
             )
 
         logger.info(
