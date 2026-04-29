@@ -1490,6 +1490,7 @@ class RepoMiner:
             scan_ledger_path or _default_scan_ledger_path(config)
         )
         self._assimilation_parallelism = 4
+        self._scenario_enricher: Any = None  # Lazy-init ScenarioEnricher
 
     @staticmethod
     def _extract_symbols_from_file(repo_path: Path, relative_path: str, max_symbols: int = 8) -> list[dict[str, Any]]:
@@ -3017,6 +3018,22 @@ class RepoMiner:
             accuracy_contract = classify_accuracy_contract(methodology)
             use_directives = extract_use_immediately_directives(methodology)
             tension_qs = generate_tension_questions(methodology)
+
+            # Scenario-anchored enrichment: override generic directives with
+            # grounded, KB-aware directives when scenarios are available.
+            try:
+                enrichment = await self._scenario_enrich(methodology, repo)
+                if enrichment and enrichment.directives:
+                    use_directives = enrichment.directives
+                    logger.debug(
+                        "Scenario enrichment: %d grounded directives for %s",
+                        len(use_directives), methodology.id,
+                    )
+                if enrichment and enrichment.tension_questions:
+                    tension_qs = enrichment.tension_questions
+            except Exception as se:
+                logger.debug("Scenario enrichment skipped for %s: %s", methodology.id, se)
+
             await repo.update_methodology_directives(
                 methodology.id,
                 accuracy_contract=accuracy_contract,
@@ -3084,6 +3101,43 @@ class RepoMiner:
                 )
 
         return methodology.id
+
+    async def _scenario_enrich(
+        self,
+        methodology: Methodology,
+        repository: Repository,
+    ) -> Any:
+        """Apply scenario-anchored enrichment to a methodology.
+
+        Lazy-initializes the ScenarioEnricher and builds scenarios once per
+        mining session (cached on the enricher instance). Returns an
+        EnrichmentResult or None if enrichment is not available.
+        """
+        from claw.scenario_enrichment import ScenarioEnricher
+
+        if self._scenario_enricher is None:
+            self._scenario_enricher = ScenarioEnricher()
+
+        enricher: ScenarioEnricher = self._scenario_enricher
+
+        # Build scenarios once (cached after first call)
+        if enricher._cached_scenarios is None:
+            embed_engine = getattr(self.semantic_memory, "embedding_engine", None)
+            await enricher.build_scenarios(repository, embed_engine)
+
+        # Get methodology embedding for cosine scoring
+        meth_embedding: list[float] | None = None
+        embed_engine = getattr(self.semantic_memory, "embedding_engine", None)
+        if embed_engine is not None:
+            try:
+                meth_embedding = embed_engine.encode(methodology.problem_description[:2000])
+            except Exception:
+                pass
+
+        return enricher.enrich(
+            methodology,
+            methodology_embedding=meth_embedding,
+        )
 
     async def _assimilate_methodologies(self, methodology_ids: list[str]) -> None:
         if self.assimilation_engine is None or not methodology_ids:
