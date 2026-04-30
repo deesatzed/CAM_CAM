@@ -899,8 +899,19 @@ class NoveltyScorer:
         )
         return round(min(1.0, max(0.0, score)), 4)
 
-    async def compute_potential(self, methodology: Methodology) -> float:
-        """Compute potential score (0.0-1.0) from 5 weighted signals."""
+    async def compute_potential(
+        self,
+        methodology: Methodology,
+        *,
+        skip_llm_potential: bool = False,
+    ) -> float:
+        """Compute potential score (0.0-1.0) from 5 weighted signals.
+
+        Args:
+            skip_llm_potential: When True, skip the LLM "potential assessment"
+                call and use only the 4 fast rule-based signals. The LLM weight
+                is redistributed proportionally across the other signals.
+        """
         cap = methodology.capability_data or {}
         cfg = self.cfg
 
@@ -908,6 +919,26 @@ class NoveltyScorer:
         comp_rich = self._composability_richness(cap)
         db = self._domain_breadth(cap)
         sa = self._standalone_score(cap)
+
+        if skip_llm_potential:
+            # Redistribute LLM weight proportionally across fast signals
+            fast_total = (
+                cfg.potential_io_generality_weight
+                + cfg.potential_composability_weight
+                + cfg.potential_domain_breadth_weight
+                + cfg.potential_standalone_weight
+            )
+            if fast_total > 0:
+                scale = 1.0 / fast_total
+            else:
+                scale = 1.0
+            score = (
+                cfg.potential_io_generality_weight * scale * io_gen
+                + cfg.potential_composability_weight * scale * comp_rich
+                + cfg.potential_domain_breadth_weight * scale * db
+                + cfg.potential_standalone_weight * scale * sa
+            )
+            return round(min(1.0, max(0.0, score)), 4)
 
         fast_score = (
             cfg.potential_io_generality_weight * io_gen
@@ -930,8 +961,17 @@ class NoveltyScorer:
         )
         return round(min(1.0, max(0.0, score)), 4)
 
-    async def score(self, methodology_id: str) -> dict[str, float]:
+    async def score(
+        self,
+        methodology_id: str,
+        *,
+        skip_llm_potential: bool = False,
+    ) -> dict[str, float]:
         """Compute both novelty and potential scores, persist to DB.
+
+        Args:
+            skip_llm_potential: When True, skip the LLM potential assessment
+                and use only fast rule-based signals for potential scoring.
 
         Returns dict with 'novelty_score' and 'potential_score'.
         """
@@ -945,7 +985,9 @@ class NoveltyScorer:
         await self._refresh_cache_if_needed()
 
         novelty = await self.compute_novelty(methodology)
-        potential = await self.compute_potential(methodology)
+        potential = await self.compute_potential(
+            methodology, skip_llm_potential=skip_llm_potential,
+        )
 
         await self.repository.update_methodology_novelty_scores(
             methodology_id, novelty, potential
@@ -982,12 +1024,21 @@ class CapabilityAssimilationEngine:
         self.novelty_scorer = NoveltyScorer(repository, llm_client, config)
         self._compositions_this_cycle = 0
 
-    async def assimilate(self, methodology_id: str) -> dict[str, Any]:
+    async def assimilate(
+        self,
+        methodology_id: str,
+        *,
+        skip_llm_potential: bool = False,
+    ) -> dict[str, Any]:
         """Full assimilation pipeline for a methodology.
 
         1. Extract capability_data (if missing)
         2. Discover synergies with existing capabilities
         3. Auto-compose high-confidence synergies
+
+        Args:
+            skip_llm_potential: When True, skip the LLM potential assessment
+                during novelty scoring and use only fast rule-based signals.
 
         Returns a summary dict of what happened.
         """
@@ -1013,7 +1064,9 @@ class CapabilityAssimilationEngine:
         # Step 2: Novelty & potential scoring
         if self.config.assimilation.novelty_enabled:
             try:
-                scores = await self.novelty_scorer.score(methodology_id)
+                scores = await self.novelty_scorer.score(
+                    methodology_id, skip_llm_potential=skip_llm_potential,
+                )
                 result["novelty_score"] = scores["novelty_score"]
                 result["potential_score"] = scores["potential_score"]
             except Exception as e:

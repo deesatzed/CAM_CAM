@@ -6,6 +6,7 @@ Covers:
     3. Large data files (.json, .yaml, etc.) exceeding _MAX_DATA_FILE_BYTES are skipped
     4. Trivial repos (< 3 files or < 1024 bytes) trigger early-exit
     5. Normal code files still pass all filters
+    6. Non-essential .md documentation files are filtered out
 
 All tests use REAL filesystem fixtures via pytest tmp_path — no mocks.
 """
@@ -19,9 +20,12 @@ import pytest
 
 from claw.miner import (
     _DATA_EXTENSIONS,
+    _KEEP_MD_NAMES,
     _MAX_DATA_FILE_BYTES,
+    _MAX_MD_FILE_BYTES,
     _SKIP_FILE_PATTERNS,
     _SKIP_FILENAMES,
+    _SKIP_MD_PATTERNS,
     serialize_repo,
 )
 
@@ -277,3 +281,153 @@ class TestNormalFilesPass:
         assert count == 5
         for name in ["app.ts", "lib.ts", "index.ts", "tsconfig.json", "README.md"]:
             assert name in content
+
+
+# ---------------------------------------------------------------------------
+# 6. Non-essential .md documentation filter
+# ---------------------------------------------------------------------------
+
+class TestMdDocumentationFilter:
+    """PRDs, checklists, white papers, and other prose-heavy .md files are filtered."""
+
+    @pytest.mark.parametrize("filename", [
+        "GPT5_VersionSpec.md",
+        "Feature_PRD.md",
+        "PRD.md",
+        "PRD_Authentication.md",
+        "BUILD_CHECKLIST.md",
+        "Sprint_checklist.md",
+        "STATUS_REPORT.md",
+        "Weekly_STATUS.md",
+        "EXECUTIVE_BRIEFING.md",
+        "Regulus_Executive_White_Paper.md",
+        "Pre_files.md",
+        "MEETING_NOTES.md",
+        "RELEASE_NOTES.md",
+        "MIGRATION_GUIDE.md",
+        "ROADMAP.md",
+        "PROPOSAL.md",
+        "RFC_001.md",
+        "ENHANCEMENT_REQUEST.md",
+        "POSTMORTEM.md",
+        "RUNBOOK.md",
+        "PLAYBOOK.md",
+        "BENCHMARK_RESULTS.md",
+        "PERFORMANCE_REPORT.md",
+        "TROUBLESHOOTING.md",
+        "FAQ.md",
+        "TUTORIAL.md",
+        "ONBOARDING.md",
+        "BLOG_POST.md",
+        "DECISION_LOG.md",
+        "RETROSPECTIVE.md",
+        "GOVERNANCE.md",
+        "COMPLIANCE_REPORT.md",
+        # Mixed-case real-world examples
+        "Cognitron_Build_Checklist.md",
+        "Regulus_Comprehensive_Plan.md",
+        "Regulus_Enhanced_Action_Plan.md",
+        "Regulus_Status_Report_and_Handoff.md",
+        "END_TO_END_TESTING_RESULTS.md",
+        "DEPLOYMENT_README.md",
+        "API_DOCUMENTATION.md",
+        "TRANSPARENCY_INFRASTRUCTURE.md",
+        "MONOREPO_IMPLEMENTATION.md",
+        "BREAKTHROUGH_SUMMARY.md",
+        "Validation_Rules.md",
+    ])
+    def test_skip_md_pattern_catches_doc_files(self, filename: str) -> None:
+        """Non-essential .md filenames match at least one skip pattern (case-insensitive)."""
+        matches = any(fnmatch.fnmatch(filename.lower(), pat) for pat in _SKIP_MD_PATTERNS)
+        assert matches, f"{filename} should match a _SKIP_MD_PATTERNS entry"
+
+    def test_readme_not_caught_by_md_patterns(self) -> None:
+        """README.md must NOT match any skip pattern."""
+        matches = any(fnmatch.fnmatch("readme.md", pat) for pat in _SKIP_MD_PATTERNS)
+        assert not matches, "README.md should not match _SKIP_MD_PATTERNS"
+
+    def test_claude_md_not_caught_by_md_patterns(self) -> None:
+        """CLAUDE.md must NOT match any skip pattern."""
+        matches = any(fnmatch.fnmatch("claude.md", pat) for pat in _SKIP_MD_PATTERNS)
+        assert not matches, "CLAUDE.md should not match _SKIP_MD_PATTERNS"
+
+    def test_readme_in_keep_list(self) -> None:
+        """readme.md (lowercase) must be in _KEEP_MD_NAMES."""
+        assert "readme.md" in _KEEP_MD_NAMES
+
+    def test_claude_md_in_keep_list(self) -> None:
+        """claude.md (lowercase) must be in _KEEP_MD_NAMES."""
+        assert "claude.md" in _KEEP_MD_NAMES
+
+    def test_architecture_md_in_keep_list(self) -> None:
+        """architecture.md must be in _KEEP_MD_NAMES."""
+        assert "architecture.md" in _KEEP_MD_NAMES
+
+    def test_prd_excluded_from_serialize(self, tmp_path: Path) -> None:
+        """PRD .md files should not appear in serialized output."""
+        files = {
+            "main.py": "def main(): pass\n",
+            "utils.py": "def helper(): return 1\n",
+            "app.py": "import main\nimport utils\n",
+            "Feature_PRD.md": "# PRD: Feature X\n## Overview\nLong description...\n",
+        }
+        repo = _make_repo(tmp_path, files)
+        content, count = serialize_repo(repo)
+        assert "Feature_PRD.md" not in content
+        assert count == 3
+
+    def test_readme_still_included(self, tmp_path: Path) -> None:
+        """README.md must still pass through all filters."""
+        files = {
+            "main.py": "def main(): pass\n",
+            "utils.py": "def helper(): return 1\n",
+            "app.py": "import main\nimport utils\n",
+            "README.md": "# My Project\nThis is an important README.\n",
+        }
+        repo = _make_repo(tmp_path, files)
+        content, count = serialize_repo(repo)
+        assert "README.md" in content
+        assert count == 4
+
+    def test_oversized_md_excluded(self, tmp_path: Path) -> None:
+        """A .md file > 15KB should be excluded even if name doesn't match patterns."""
+        big_md = "# Some Doc\n\n" + "Lorem ipsum dolor sit amet. " * 1000 + "\n"
+        assert len(big_md.encode("utf-8")) > _MAX_MD_FILE_BYTES
+        files = {
+            "main.py": "def main(): pass\n",
+            "utils.py": "def helper(): return 1\n",
+            "app.py": "import main\nimport utils\n",
+            "docs_overview.md": big_md,
+        }
+        repo = _make_repo(tmp_path, files)
+        content, count = serialize_repo(repo)
+        assert "docs_overview.md" not in content
+        assert count == 3
+
+    def test_small_generic_md_included(self, tmp_path: Path) -> None:
+        """A small .md file with a non-matching name passes through."""
+        files = {
+            "main.py": "def main(): pass\n",
+            "utils.py": "def helper(): return 1\n",
+            "app.py": "import main\nimport utils\n",
+            "SETUP.md": "# Setup\nRun `pip install -e .`\n",
+        }
+        repo = _make_repo(tmp_path, files)
+        content, count = serialize_repo(repo)
+        assert "SETUP.md" in content
+        assert count == 4
+
+    def test_oversized_readme_still_included(self, tmp_path: Path) -> None:
+        """README.md should pass even if over 15KB (it's in _KEEP_MD_NAMES)."""
+        big_readme = "# Big README\n\n" + "Detailed docs. " * 2000 + "\n"
+        assert len(big_readme.encode("utf-8")) > _MAX_MD_FILE_BYTES
+        files = {
+            "main.py": "def main(): pass\n",
+            "utils.py": "def helper(): return 1\n",
+            "app.py": "import main\nimport utils\n",
+            "README.md": big_readme,
+        }
+        repo = _make_repo(tmp_path, files)
+        content, count = serialize_repo(repo)
+        assert "README.md" in content
+        assert count == 4

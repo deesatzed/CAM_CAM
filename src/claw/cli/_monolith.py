@@ -5860,6 +5860,7 @@ def mine(
     self_assess: bool = typer.Option(False, "--self-assess", help="After mining, classify findings as DUPLICATE/PARTIAL_GAP/NOVEL vs existing CAM knowledge"),
     brain: Optional[str] = typer.Option(None, "--brain", "-b", help="Mining brain: auto (default), python, typescript, go, rust, misc"),
     suggest: bool = typer.Option(False, "--suggest", help="Show repos ranked by gap-filling potential instead of mining"),
+    fast: bool = typer.Option(False, "--fast", help="Fast-mine: defer LLM assimilation, store findings as embryonic. Run `cam enrich` after."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
 ) -> None:
@@ -5937,6 +5938,7 @@ def mine(
                 yield_sort=yield_sort,
                 self_assess=self_assess,
                 brain=brain_value,
+                fast=fast,
             ),
             timeout=max_minutes * 60,
         ))
@@ -6296,6 +6298,7 @@ async def _mine_async(
     yield_sort: bool = True,
     self_assess: bool = False,
     brain: Optional[str] = None,
+    fast: bool = False,
 ) -> None:
     from claw.core.factory import ClawFactory
     from claw.core.models import Project
@@ -6324,6 +6327,7 @@ async def _mine_async(
         console.print(f"  Force rescan: {force_rescan}")
         console.print(f"  Changed only: {changed_only}")
         console.print(f"  Yield sort: {yield_sort}")
+        console.print(f"  Fast mine: {fast}")
         console.print(f"  Database: {ctx.config.database.db_path}")
         console.print()
 
@@ -6358,6 +6362,7 @@ async def _mine_async(
             force_rescan=force_rescan,
             yield_sort=yield_sort,
             brain=brain,
+            fast=fast,
         )
 
         # Display results table
@@ -6413,7 +6418,13 @@ async def _mine_async(
 
             console.print(task_table)
 
-        console.print(f"\n[dim]Use 'claw results' to view tasks, 'claw enhance .' to work on them.[/dim]")
+        if fast and report.total_findings > 0:
+            console.print(
+                f"\n[yellow bold]{report.total_findings} findings stored as embryonic (fast-mine).[/yellow bold]"
+            )
+            console.print("[yellow]Run `cam enrich` to complete LLM assimilation.[/yellow]")
+        else:
+            console.print(f"\n[dim]Use 'claw results' to view tasks, 'claw enhance .' to work on them.[/dim]")
 
         # Self-assessment: classify findings vs existing knowledge
         if self_assess and report.total_findings > 0:
@@ -7385,6 +7396,192 @@ async def _mine_self_async(
                 console.print(task_table)
 
         console.print(f"\n[dim]Findings tagged as '{repo_name}'. Use 'cam learn search \"{repo_name}\"' to query.[/dim]")
+
+    finally:
+        await ctx.close()
+
+
+@app.command()
+def enrich(
+    limit: int = typer.Option(100, "--limit", "-n", help="Maximum methodologies to enrich"),
+    include_ganglia: bool = typer.Option(False, "--include-ganglia", help="Also enrich ganglion DBs (instances/*/claw.db)"),
+    parallelism: int = typer.Option(8, "--parallelism", "-p", help="Concurrent assimilation tasks (max 16)"),
+    skip_llm: bool = typer.Option(True, "--skip-llm/--no-skip-llm", help="Skip LLM potential assessment in novelty scoring"),
+    live_keycheck: bool = typer.Option(True, "--live-keycheck/--no-live-keycheck", help="Validate required provider keys"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Batch-enrich unenriched (embryonic) methodologies with LLM assimilation.
+
+    Processes methodologies that were stored without assimilation (e.g. from
+    `cam mine --fast`). For each methodology, runs capability extraction,
+    novelty scoring, and synergy discovery.
+
+    Examples:
+        cam enrich                     # Enrich up to 100 methodologies
+        cam enrich --limit 500         # Enrich up to 500
+        cam enrich --include-ganglia   # Also process ganglion DBs
+        cam enrich --parallelism 4     # Fewer concurrent tasks
+    """
+    _setup_logging(verbose)
+
+    parallelism = max(1, min(parallelism, 16))
+
+    from claw.core.config import load_config
+
+    cfg = load_config(Path(config) if config else None)
+    _fail_if_missing_api_keys(cfg, "mine")
+    if live_keycheck:
+        _fail_if_live_key_checks_fail(cfg, "mine")
+
+    try:
+        asyncio.run(_enrich_async(
+            limit=limit,
+            include_ganglia=include_ganglia,
+            parallelism=parallelism,
+            skip_llm=skip_llm,
+            config_path=config,
+        ))
+    except Exception as e:
+        console.print(f"[red]Enrichment failed: {e}[/red]")
+        raise typer.Exit(1)
+
+
+async def _enrich_async(
+    *,
+    limit: int,
+    include_ganglia: bool,
+    parallelism: int,
+    skip_llm: bool,
+    config_path: Optional[str],
+) -> None:
+    from claw.core.factory import ClawFactory
+    from claw.evolution.assimilation import CapabilityAssimilationEngine
+
+    config_p = Path(config_path) if config_path else None
+    ctx = await ClawFactory.create(config_path=config_p)
+
+    try:
+        console.print(f"\n[bold]CAM Batch Enrichment[/bold]")
+        console.print(f"  Limit: {limit}")
+        console.print(f"  Parallelism: {parallelism}")
+        console.print(f"  Skip LLM potential: {skip_llm}")
+        console.print(f"  Include ganglia: {include_ganglia}")
+        console.print(f"  Database: {ctx.config.database.db_path}")
+        console.print()
+
+        # --- Primary DB ---
+        unenriched = await ctx.repository.get_unenriched_methodologies(limit)
+        console.print(f"[cyan]Found {len(unenriched)} unenriched methodologies in primary DB[/cyan]")
+
+        enriched_count = 0
+        error_count = 0
+
+        if unenriched and ctx.assimilation_engine is not None:
+            semaphore = asyncio.Semaphore(parallelism)
+
+            async def _enrich_one(meth_id: str) -> bool:
+                nonlocal enriched_count, error_count
+                async with semaphore:
+                    try:
+                        result = await ctx.assimilation_engine.assimilate(
+                            meth_id, skip_llm_potential=skip_llm,
+                        )
+                        if result.get("enriched"):
+                            enriched_count += 1
+                            return True
+                        return False
+                    except Exception as e:
+                        error_count += 1
+                        logging.getLogger("claw.cli").warning(
+                            "Enrich failed for %s: %s", meth_id, e,
+                        )
+                        return False
+
+            tasks = [_enrich_one(m.id) for m in unenriched]
+            await asyncio.gather(*tasks)
+
+            console.print(
+                f"  [green]{enriched_count} enriched[/green], "
+                f"[red]{error_count} errors[/red] "
+                f"(of {len(unenriched)} attempted)"
+            )
+        elif ctx.assimilation_engine is None:
+            console.print("[yellow]Assimilation engine not available (disabled in config?)[/yellow]")
+
+        # --- Ganglia ---
+        if include_ganglia:
+            project_root = Path(ctx.config.database.db_path).parent.parent
+            instances_dir = project_root / "instances"
+            if instances_dir.exists():
+                ganglion_dbs = sorted(instances_dir.glob("*/claw.db"))
+                console.print(f"\n[cyan]Scanning {len(ganglion_dbs)} ganglion DB(s)...[/cyan]")
+
+                for gdb_path in ganglion_dbs:
+                    ganglion_name = gdb_path.parent.name
+                    try:
+                        from claw.db.engine import DatabaseEngine
+                        from claw.db.repository import Repository
+                        g_engine = DatabaseEngine(str(gdb_path))
+                        await g_engine.initialize()
+                        g_repo = Repository(g_engine)
+
+                        g_unenriched = await g_repo.get_unenriched_methodologies(limit)
+                        if not g_unenriched:
+                            console.print(f"  {ganglion_name}: 0 unenriched — skipping")
+                            await g_engine.close()
+                            continue
+
+                        console.print(
+                            f"  {ganglion_name}: {len(g_unenriched)} unenriched — enriching..."
+                        )
+
+                        g_assimilation = CapabilityAssimilationEngine(
+                            g_repo, ctx.llm_client, ctx.config,
+                        )
+
+                        g_enriched = 0
+                        g_errors = 0
+                        g_sem = asyncio.Semaphore(parallelism)
+
+                        async def _enrich_ganglion(mid: str) -> None:
+                            nonlocal g_enriched, g_errors
+                            async with g_sem:
+                                try:
+                                    r = await g_assimilation.assimilate(
+                                        mid, skip_llm_potential=skip_llm,
+                                    )
+                                    if r.get("enriched"):
+                                        g_enriched += 1
+                                except Exception as e:
+                                    g_errors += 1
+                                    logging.getLogger("claw.cli").warning(
+                                        "Ganglion enrich failed for %s/%s: %s",
+                                        ganglion_name, mid, e,
+                                    )
+
+                        g_tasks = [_enrich_ganglion(m.id) for m in g_unenriched]
+                        await asyncio.gather(*g_tasks)
+
+                        console.print(
+                            f"    [green]{g_enriched} enriched[/green], "
+                            f"[red]{g_errors} errors[/red]"
+                        )
+                        enriched_count += g_enriched
+                        error_count += g_errors
+
+                        await g_engine.close()
+                    except Exception as e:
+                        console.print(f"  [red]{ganglion_name}: error — {e}[/red]")
+            else:
+                console.print("[dim]No instances/ directory found — no ganglia to scan.[/dim]")
+
+        # Final summary
+        console.print(f"\n[bold]Enrichment Complete[/bold]")
+        console.print(
+            f"  Total enriched: [green]{enriched_count}[/green], "
+            f"errors: [red]{error_count}[/red]"
+        )
 
     finally:
         await ctx.close()

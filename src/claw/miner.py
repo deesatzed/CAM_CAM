@@ -97,6 +97,10 @@ async def ensure_language_ganglion(
     engine = DatabaseEngine(db_config)
     await engine.connect()
 
+    # Always run migrations so existing ganglion DBs pick up new columns
+    # (e.g. accuracy_contract added in migration 20).
+    await engine.apply_migrations()
+
     if needs_init:
         await engine.initialize_schema()
         logger.info(
@@ -258,6 +262,9 @@ async def ensure_domain_ganglion(
     engine = DatabaseEngine(db_config)
     await engine.connect()
 
+    # Always run migrations so existing ganglion DBs pick up new columns.
+    await engine.apply_migrations()
+
     if needs_init:
         await engine.initialize_schema()
         logger.info(
@@ -349,6 +356,68 @@ _SKIP_FILENAMES: set[str] = {
     ".npmignore", ".dockerignore",
     # Bot config
     "renovate.json", "dependabot.yml", ".mergify.yml",
+    # Documentation with zero mining value
+    "CHANGELOG.md", "CHANGES.md", "HISTORY.md",
+    "CODE_OF_CONDUCT.md", "SECURITY.md", "SUPPORT.md",
+    "FUNDING.yml", ".github",
+}
+
+# fnmatch patterns for .md documentation files that waste serialization budget.
+# PRDs, build checklists, status reports, white papers, executive briefings, etc.
+# are verbose prose with no extractable code patterns. README.md and CLAUDE.md
+# are kept (handled by _README_NAMES / explicit allowlist in filter).
+# NOTE: all patterns are lowercase — matched against filepath.name.lower().
+_SKIP_MD_PATTERNS: tuple[str, ...] = (
+    "*prd*.md", "*_prd.md",
+    "*checklist*.md",
+    "*status*.md",
+    "*report*.md",
+    "*briefing*.md",
+    "*white_paper*.md", "*whitepaper*.md",
+    "*versionspec*.md", "*_spec.md", "*spec_*.md",
+    "*_plan.md", "*plan_*.md",
+    "*_guide.md", "*guide_*.md",
+    "*_notes.md", "*notes_*.md",
+    "*_log.md", "*log_*.md",
+    "*meeting*.md",
+    "*roadmap*.md",
+    "*release*.md",
+    "*migration*.md",
+    "*tutorial*.md",
+    "*blog*.md",
+    "*faq*.md",
+    "*troubleshoot*.md",
+    "*decision*.md",
+    "*retrospective*.md",
+    "*onboarding*.md",
+    "*postmortem*.md",
+    "*runbook*.md",
+    "*playbook*.md",
+    "*governance*.md",
+    "*compliance*.md",
+    "*performance*.md",
+    "*benchmark*.md",
+    "*proposal*.md",
+    "rfc_*.md", "rfc-*.md",
+    "*enhancement*.md",
+    "*pre_files*",
+    "*action_plan*.md",
+    "*handoff*.md",
+    "*deployment*.md",
+    "*testing_results*.md",
+    "*_integration.md", "*_integration_*.md", "*integration_*.md",
+    "*_implementation.md", "*_implementation_*.md", "*implementation_*.md",
+    "*_infrastructure.md", "*_infrastructure_*.md", "*infrastructure_*.md",
+    "*_documentation.md", "*_documentation_*.md",
+    "*_summary.md", "*_summary_*.md",
+    "*_validation.md", "*_validation_*.md", "validation_*.md",
+    "*_breakthrough.md", "*_breakthrough_*.md",
+)
+
+# .md filenames explicitly allowed through the .md filter (mining-valuable docs).
+_KEEP_MD_NAMES: set[str] = {
+    "readme.md", "claude.md", "architecture.md", "design.md",
+    "api.md", "contributing.md",  # contributing has code style info
 }
 
 # Maximum bytes for data-heavy files (.json, .yaml, .yml, .sql, .csv)
@@ -357,6 +426,10 @@ _MAX_DATA_FILE_BYTES: int = 200 * 1024
 
 # Extensions treated as data-heavy (subject to _MAX_DATA_FILE_BYTES gate).
 _DATA_EXTENSIONS: set[str] = {".json", ".yaml", ".yml", ".sql", ".csv"}
+
+# Maximum size for .md files to be serialized (15KB). Most useful .md docs
+# (README, architecture) are under 15KB; large ones are prose-heavy docs.
+_MAX_MD_FILE_BYTES: int = 15 * 1024
 
 
 def _get_code_extensions(config: ClawConfig | None = None) -> set[str]:
@@ -1215,6 +1288,18 @@ def serialize_repo(
             continue
         if any(fnmatch.fnmatch(filepath.name, pat) for pat in _SKIP_FILE_PATTERNS):
             continue
+        # Skip non-essential .md documentation (PRDs, checklists, reports, etc.)
+        if suffix == ".md":
+            name_lower = filepath.name.lower()
+            if name_lower not in _KEEP_MD_NAMES:
+                if any(fnmatch.fnmatch(name_lower, pat) for pat in _SKIP_MD_PATTERNS):
+                    continue
+                # Also skip oversized .md files (>15KB = prose-heavy docs)
+                try:
+                    if filepath.stat().st_size > _MAX_MD_FILE_BYTES:
+                        continue
+                except OSError:
+                    pass
         # Language filter: skip source files not in the target language,
         # but always keep context files (README, config, docs).
         if language_filter is not None:
@@ -1537,7 +1622,12 @@ class RepoMiner:
         self.scan_ledger = RepoScanLedger(
             scan_ledger_path or _default_scan_ledger_path(config)
         )
-        self._assimilation_parallelism = 4
+        # Assimilation parallelism: read from config, default 8, cap 16
+        mining_parallel = getattr(config.mining, "assimilation_parallelism", None)
+        if mining_parallel is None:
+            mining_parallel = 8
+        self._assimilation_parallelism = max(1, min(int(mining_parallel), 16))
+        self._fast_mine: bool = False  # When True, skip assimilation during mining
         self._scenario_enricher: Any = None  # Lazy-init ScenarioEnricher
 
     @staticmethod
@@ -2451,6 +2541,7 @@ class RepoMiner:
         force_rescan: bool = False,
         yield_sort: bool = True,
         brain: str | None = None,
+        fast: bool = False,
     ) -> MiningReport:
         """Discover repos in a directory and mine each.
 
@@ -2521,6 +2612,9 @@ class RepoMiner:
             len(selected_candidates), base, len(skipped_candidates),
         )
 
+        # Enable/disable fast-mine (deferred assimilation)
+        self._fast_mine = fast
+
         report = MiningReport()
         start = time.monotonic()
         report.repos_skipped = len(skipped_candidates)
@@ -2567,6 +2661,14 @@ class RepoMiner:
             maybe_mark_cag_stale(self.config)
             # Refresh manifests for any non-primary ganglia that received findings
             await self._refresh_ganglion_manifests(report)
+
+        if fast and report.total_findings > 0:
+            logger.info(
+                "Fast-mine complete: %d findings stored as embryonic. "
+                "Run `cam enrich` to complete assimilation.",
+                report.total_findings,
+            )
+
         return report
 
     async def _refresh_ganglion_manifests(self, report: MiningReport) -> None:
@@ -2775,6 +2877,12 @@ class RepoMiner:
                     except Exception as e:
                         logger.warning("Failed to store finding '%s': %s", finding.title, e)
 
+                # Per-zone assimilation with ganglion-aware repo binding
+                if zone_meth_ids and self.assimilation_engine is not None and not self._fast_mine:
+                    await self._assimilate_methodologies(
+                        zone_meth_ids, repository=target_repo,
+                    )
+
                 all_findings.extend(findings)
                 all_methodology_ids.extend(zone_meth_ids)
                 tokens_used = response.tokens_used if response else 0
@@ -2793,9 +2901,6 @@ class RepoMiner:
                     error=f"0 findings (recovery={recovery_attempts})",
                     duration_seconds=time.monotonic() - zone_start,
                 ))
-
-        if all_methodology_ids and self.assimilation_engine is not None:
-            await self._assimilate_methodologies(all_methodology_ids)
 
         duration = time.monotonic() - start
         breakdown_summary = ", ".join(
@@ -2976,8 +3081,10 @@ class RepoMiner:
             except Exception as e:
                 logger.warning("Failed to store finding '%s': %s", finding.title, e)
 
-        if methodology_ids and self.assimilation_engine is not None:
-            await self._assimilate_methodologies(methodology_ids)
+        if methodology_ids and self.assimilation_engine is not None and not self._fast_mine:
+            await self._assimilate_methodologies(
+                methodology_ids, repository=target_repo,
+            )
 
         duration = time.monotonic() - start
         return RepoMiningResult(
@@ -3201,9 +3308,23 @@ class RepoMiner:
             methodology_embedding=meth_embedding,
         )
 
-    async def _assimilate_methodologies(self, methodology_ids: list[str]) -> None:
+    async def _assimilate_methodologies(
+        self,
+        methodology_ids: list[str],
+        *,
+        repository: Repository | None = None,
+    ) -> None:
         if self.assimilation_engine is None or not methodology_ids:
             return
+
+        # When a ganglion repository is provided, create a temporary
+        # assimilation engine bound to that repo so lookups succeed.
+        engine = self.assimilation_engine
+        if repository is not None and repository is not self.repository:
+            from claw.evolution.assimilation import CapabilityAssimilationEngine
+            engine = CapabilityAssimilationEngine(
+                repository, self.llm_client, self.config,
+            )
 
         limit = max(1, min(self._assimilation_parallelism, len(methodology_ids)))
         semaphore = asyncio.Semaphore(limit)
@@ -3211,7 +3332,7 @@ class RepoMiner:
         async def _run(methodology_id: str) -> None:
             async with semaphore:
                 try:
-                    await self.assimilation_engine.assimilate(methodology_id)
+                    await engine.assimilate(methodology_id)
                 except Exception as e:
                     logger.warning("Assimilation failed for %s: %s", methodology_id, e)
 

@@ -1190,6 +1190,24 @@ class Repository:
         )
         return [_row_to_methodology(r) for r in rows]
 
+    async def get_unenriched_methodologies(self, limit: int = 100) -> list[Methodology]:
+        """Get methodologies that need assimilation enrichment.
+
+        Returns methodologies where capability_data is NULL (no extraction yet),
+        or novelty_score is NULL (no scoring yet), ordered oldest first.
+        """
+        rows = await self.engine.fetch_all(
+            """SELECT * FROM methodologies
+               WHERE lifecycle_state != 'dead'
+                 AND (capability_data IS NULL
+                      OR json_extract(capability_data, '$.enrichment_status') IN ('seeded', 'partial')
+                      OR novelty_score IS NULL)
+               ORDER BY created_at ASC
+               LIMIT ?""",
+            [limit],
+        )
+        return [_row_to_methodology(r) for r in rows]
+
     # -------------------------------------------------------------------
     # Novelty Scoring
     # -------------------------------------------------------------------

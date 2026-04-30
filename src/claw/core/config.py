@@ -283,6 +283,7 @@ class MiningConfig(BaseModel):
     brains: dict[str, BrainConfig] = Field(default_factory=_default_brains)
     recovery: MiningRecoveryConfig = Field(default_factory=MiningRecoveryConfig)
     domain_brains: dict[str, DomainBrainConfig] = Field(default_factory=dict)
+    assimilation_parallelism: int = 8  # concurrent assimilation tasks (max 16)
 
 
 class GovernanceConfig(BaseModel):
