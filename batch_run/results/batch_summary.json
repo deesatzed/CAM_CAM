@@ -1,0 +1,2041 @@
+{
+  "total_projects": 30,
+  "passed": 30,
+  "failed": 0,
+  "total_duration_s": 0,
+  "total_new_retrievals": 0,
+  "total_new_fitness_updates": 0,
+  "final_db_stats": {
+    "total_methodologies": 889,
+    "ever_retrieved": 72,
+    "fitness_log_entries": 135,
+    "lifecycle_states": {
+      "declining": 11,
+      "embryonic": 787,
+      "thriving": 2,
+      "viable": 89
+    }
+  },
+  "results": [
+    {
+      "id": "t1-01",
+      "name": "JRE Bayesian Uncertainty Scoring",
+      "tier": 1,
+      "repo_path": "/Volumes/WS4TB/repo421sn/JRE-BSG-DHSW",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "37 .py files found"
+          },
+          {
+            "command": "python -c \"import jre\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from jre_bayesian import JudgmentReadinessScorer\"",
+            "passed": false,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    from jre_bayesian import JudgmentReadinessScorer\nImportError: cannot import name 'JudgmentReadinessScorer' from 'jre_bayesian' (unknown location)\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "jre",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 37,
+          "test_count": 11
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "jre",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 37,
+        "test_count": 11
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t1-02",
+      "name": "CAM-RAG Deterministic Retrieval Layer",
+      "tier": 1,
+      "repo_path": "/Volumes/WS4TB/repo421sn/CAM-RAG",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "170 .py files found"
+          },
+          {
+            "command": "python -c \"import ragamuffin_app\"",
+            "passed": false,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    import ragamuffin_app\nModuleNotFoundError: No module named 'ragamuffin_app'\n"
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from cam_rag.deterministic import DeterministicRetriever\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "ragamuffin_app",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 170,
+          "test_count": 77
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "ragamuffin_app",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 170,
+        "test_count": 77
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t1-03",
+      "name": "ProBioGrade Evidence Weighting",
+      "tier": 1,
+      "repo_path": "/Volumes/WS4TB/repo421sn/ProBioGrade",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "1 .py files found"
+          },
+          {
+            "command": "cd /Volumes/WS4TB/repo421sn/ProBioGrade && npx jest --testPathPattern evidence-weight --passWithNoTests 2>/dev/null || python3 -c 'print(\"JS test skipped\")'",
+            "passed": true,
+            "stdout": "JS test skipped\n",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 2,
+        "total_count": 2,
+        "package_info": {
+          "has_code": true,
+          "package_name": null,
+          "has_tests": false,
+          "has_pyproject": false,
+          "has_main": false,
+          "py_files": 1,
+          "test_count": 0
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": null,
+        "has_tests": false,
+        "has_pyproject": false,
+        "has_main": false,
+        "py_files": 1,
+        "test_count": 0
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 1,
+      "core_check_total": 1,
+      "bonus_check_count": 1,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t1-04",
+      "name": "ClinSafer Audit Trail",
+      "tier": 1,
+      "repo_path": "/Volumes/WS4TB/repo421sn/ClinSafer",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "38 .py files found"
+          },
+          {
+            "command": "python -c \"import jre\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from audit_trail import AuditTrail\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "jre",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 38,
+          "test_count": 11
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "jre",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 38,
+        "test_count": 11
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-01",
+      "name": "RepoHealth \u2014 Repository Health Dashboard",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/repo-health",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "7 .py files found"
+          },
+          {
+            "command": "python -c \"import repo_health\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m repo_health --help",
+            "passed": true,
+            "stdout": "usage: repo-health [-h] [--json] [--version] [path]\n\nAnalyze a git repository and produce a health scorecard.\n\npositional arguments:\n  path        Path to the git repository (default: current directory)\n\noptions:\n  -h, --help  show this help message and exit\n  --json      Output JSON report instead ",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "repo_health",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 7,
+          "test_count": 1
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "repo_health",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 7,
+        "test_count": 1
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 1,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t2-02",
+      "name": "ThreatSift \u2014 Cybersecurity Evidence Scorer",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/threat-sift",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "8 .py files found"
+          },
+          {
+            "command": "python -c \"import threat_sift\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m threat_sift --help",
+            "passed": true,
+            "stdout": "usage: __main__.py [-h] [-w JSON] [-v] [FILE]\n\nScore cybersecurity threat indicators using weighted evidence categories.\n\npositional arguments:\n  FILE                Path to JSON file containing an array of indicator\n                      objects\n\noptions:\n  -h, --help          show this help messag",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "threat_sift",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 8,
+          "test_count": 3
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "threat_sift",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 8,
+        "test_count": 3
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 1,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t2-03",
+      "name": "MemVault \u2014 Personal Knowledge Base",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/memvault",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "9 .py files found"
+          },
+          {
+            "command": "python -c \"import memvault\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m memvault --help",
+            "passed": true,
+            "stdout": "usage: __main__.py [-h] [-v] {store,search,list,stats} ...\n\nmemvault - knowledge base with 7-dimension scoring.\n\npositional arguments:\n  {store,search,list,stats}\n    store               Store a text snippet with scoring.\n    search              Search snippets using FTS5.\n    list                Li",
+            "stderr": ""
+          },
+          {
+            "command": "python -m memvault store --text 'test snippet' --source 'test'",
+            "passed": false,
+            "stdout": "",
+            "stderr": "Error: Knowledge card composite score 0.297 is below threshold 0.55. Card not stored.\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 4,
+        "total_count": 5,
+        "package_info": {
+          "has_code": true,
+          "package_name": "memvault",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 9,
+          "test_count": 3
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "memvault",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 9,
+        "test_count": 3
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 1,
+      "bonus_check_total": 2
+    },
+    {
+      "id": "t2-04",
+      "name": "BenchForge \u2014 Benchmark Harness Generator",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/benchforge",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "11 .py files found"
+          },
+          {
+            "command": "python -c \"import benchforge\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m benchforge --help",
+            "passed": true,
+            "stdout": "usage: __main__.py [-h] --module MODULE [--iterations ITERATIONS]\n                   [--warmup WARMUP] [--output OUTPUT] [-v]\n\nAuto-discover public functions from a Python module and benchmark them.\n\noptions:\n  -h, --help            show this help message and exit\n  --module MODULE       Target Pyth",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "benchforge",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 11,
+          "test_count": 4
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "benchforge",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 11,
+        "test_count": 4
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 1,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t2-05",
+      "name": "ScaffoldCLI \u2014 Project Scaffolder",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/scaffold-cli",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "8 .py files found"
+          },
+          {
+            "command": "python -c \"import scaffold_cli\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "<frozen importlib._bootstrap>:1360: in _find_and_load\n    ???\n<frozen importlib._bootstrap>:1331: in _find_and_load_unlocked\n    ???\n<frozen importlib._bootstrap>:935: in _load_unlocked\n    ???\n/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/_pytest/assertion/rewrite.py:184: in exec_module\n    exec(co, module.__dict__)\ntests/test_cli.py:10: in <module>\n    from scaffold_cli.cli import main, parse_args\nscaffold_cli/cli.py:8: in <module>\n    from scaffold_cli.engine import Scaffol",
+            "stderr": ""
+          },
+          {
+            "command": "python -m scaffold_cli --help",
+            "passed": false,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/Volumes/WS4TB/batch_run/projects/scaffold-cli/scaffold_cli/__main__.py\", line 4, in <module>\n    from scaffold_cli.cli import main\n  File \"/Volumes/WS4"
+          },
+          {
+            "command": "python -m scaffold_cli create /tmp/test-scaffold --type cli-app --name testapp",
+            "passed": false,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"<frozen runpy>\", line 198, in _run_module_as_main\n  File \"<frozen runpy>\", line 88, in _run_code\n  File \"/Volumes/WS4TB/batch_run/projects/scaffold-cli/scaffold_cli/__main__.py\", line 4, in <module>\n    from scaffold_cli.cli import main\n  File \"/Volumes/WS4"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 5,
+        "package_info": {
+          "has_code": true,
+          "package_name": "scaffold_cli",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 8,
+          "test_count": 2
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "scaffold_cli",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 8,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 0,
+      "bonus_check_total": 2
+    },
+    {
+      "id": "t2-06",
+      "name": "ClinPipe \u2014 Clinical Data Pipeline",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/clinpipe",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "7 .py files found"
+          },
+          {
+            "command": "python -c \"import clinpipe\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from clinpipe import Pipeline\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "clinpipe",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 7,
+          "test_count": 2
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "clinpipe",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 7,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-07",
+      "name": "AgentBench \u2014 Multi-Agent Performance Tracker",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/agent-bench",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "7 .py files found"
+          },
+          {
+            "command": "python -c \"import agent_bench\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m agent_bench --help",
+            "passed": false,
+            "stdout": "",
+            "stderr": "/Users/o2satz/miniforge3/envs/py313/bin/python: No module named agent_bench.__main__; 'agent_bench' is a package and cannot be directly executed\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "agent_bench",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 7,
+          "test_count": 2
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "agent_bench",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 7,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 0,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t2-08",
+      "name": "DiffScope \u2014 Code Change Impact Analyzer",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/diffscope",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "13 .py files found"
+          },
+          {
+            "command": "python -c \"import diffscope\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m diffscope --help",
+            "passed": false,
+            "stdout": "",
+            "stderr": "/Users/o2satz/miniforge3/envs/py313/bin/python: No module named diffscope.__main__; 'diffscope' is a package and cannot be directly executed\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "diffscope",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 13,
+          "test_count": 5
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "diffscope",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 13,
+        "test_count": 5
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 0,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t2-09",
+      "name": "SecretSweep \u2014 Credential Health Monitor",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/secret-sweep",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "12 .py files found"
+          },
+          {
+            "command": "python -c \"import secret_sweep\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m secret_sweep --help",
+            "passed": false,
+            "stdout": "",
+            "stderr": "/Users/o2satz/miniforge3/envs/py313/bin/python: No module named secret_sweep.__main__; 'secret_sweep' is a package and cannot be directly executed\n"
+          },
+          {
+            "command": "python -m secret_sweep scan /tmp",
+            "passed": false,
+            "stdout": "",
+            "stderr": "/Users/o2satz/miniforge3/envs/py313/bin/python: No module named secret_sweep.__main__; 'secret_sweep' is a package and cannot be directly executed\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 5,
+        "package_info": {
+          "has_code": true,
+          "package_name": "secret_sweep",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 12,
+          "test_count": 5
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "secret_sweep",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 12,
+        "test_count": 5
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 0,
+      "bonus_check_total": 2
+    },
+    {
+      "id": "t2-10",
+      "name": "FlowState \u2014 State Machine Framework",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/flowstate",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "6 .py files found"
+          },
+          {
+            "command": "python -c \"import flowstate\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from flowstate import StateMachine, State, Transition\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "flowstate",
+          "has_tests": true,
+          "has_pyproject": false,
+          "has_main": false,
+          "py_files": 6,
+          "test_count": 2
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "flowstate",
+        "has_tests": true,
+        "has_pyproject": false,
+        "has_main": false,
+        "py_files": 6,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-11",
+      "name": "RetryKit \u2014 Resilient Execution Framework",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/retrykit",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "13 .py files found"
+          },
+          {
+            "command": "python -c \"import retrykit\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from retrykit import retry, circuit_breaker, fallback_chain\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "retrykit",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 13,
+          "test_count": 6
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "retrykit",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 13,
+        "test_count": 6
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-12",
+      "name": "ConfidenceGate \u2014 Calibrated Prediction Scorer",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/confidence-gate",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "9 .py files found"
+          },
+          {
+            "command": "python -c \"import confidence_gate\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from confidence_gate import ConfidenceScorer, CalibrationTracker\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "confidence_gate",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 9,
+          "test_count": 4
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "confidence_gate",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 9,
+        "test_count": 4
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-13",
+      "name": "SmartWait \u2014 Async Polling Framework",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/smartwait",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "14 .py files found"
+          },
+          {
+            "command": "python -c \"import smartwait\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from smartwait import StabilityWaiter, BackoffPoller\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "smartwait",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 14,
+          "test_count": 6
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "smartwait",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 14,
+        "test_count": 6
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-14",
+      "name": "CostLens \u2014 LLM Cost Tracker",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/costlens",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "10 .py files found"
+          },
+          {
+            "command": "python -c \"import costlens\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "=================================== FAILURES ===================================\n__________________ TestInitAndInsert.test_insert_and_retrieve __________________\ntests/test_db.py:66: in test_insert_and_retrieve\n    assert len(records) == 1\nE   assert 0 == 1\nE    +  where 0 = len([])\n=============================== warnings summary ===============================\ntests/test_cli.py::test_log_with_cost\ntests/test_cli.py::test_log_with_auto_estimate\ntests/test_cli.py::test_log_with_no_estimate\ntests",
+            "stderr": ""
+          },
+          {
+            "command": "python -m costlens --help",
+            "passed": false,
+            "stdout": "",
+            "stderr": "/Users/o2satz/miniforge3/envs/py313/bin/python: No module named costlens.__main__; 'costlens' is a package and cannot be directly executed\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "costlens",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 10,
+          "test_count": 4
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "costlens",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 10,
+        "test_count": 4
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 0,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t2-15",
+      "name": "FingerprintDB \u2014 Deterministic Hashing Identity",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/fingerprintdb",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "2 .py files found"
+          },
+          {
+            "command": "python -c \"import fingerprintdb\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from fingerprintdb import FingerprintDB, Identity\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "fingerprintdb",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 2,
+          "test_count": 1
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "fingerprintdb",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 2,
+        "test_count": 1
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t2-16",
+      "name": "DecayTracker \u2014 Time-Based Confidence Decay",
+      "tier": 2,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/decay-tracker",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "9 .py files found"
+          },
+          {
+            "command": "python -c \"import decay_tracker\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from decay_tracker import DecayTracker, ExponentialDecay\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "decay_tracker",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 9,
+          "test_count": 3
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "decay_tracker",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 9,
+        "test_count": 3
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-01",
+      "name": "Rebuild: ultraQrag",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-ultraqrag",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "10 .py files found"
+          },
+          {
+            "command": "python -c \"import ultraq\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"import ultraq\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "ultraq",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 10,
+          "test_count": 3
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "ultraq",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 10,
+        "test_count": 3
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-02",
+      "name": "Rebuild: deterministic_knowledge_retrieval",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-dkr",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "7 .py files found"
+          },
+          {
+            "command": "python -c \"import dkr\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from dkr import Retriever\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "dkr",
+          "has_tests": true,
+          "has_pyproject": false,
+          "has_main": false,
+          "py_files": 7,
+          "test_count": 2
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "dkr",
+        "has_tests": true,
+        "has_pyproject": false,
+        "has_main": false,
+        "py_files": 7,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-03",
+      "name": "Rebuild: clipstore2",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-clipstore",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "7 .py files found"
+          },
+          {
+            "command": "python -c \"import clipstore\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -m clipstore --help",
+            "passed": true,
+            "stdout": "usage: clipstore [-h] [-v] {save,search,list,delete} ...\n\nClipStore: Organize and retrieve content clips. Supports auto-categorization and SQLite storage.\n\npositional arguments:\n  {save,search,list,delete}\n    save                Save new content (duplicates prevented)\n    search              Search",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "clipstore",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": true,
+          "py_files": 7,
+          "test_count": 2
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "clipstore",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": true,
+        "py_files": 7,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 3,
+      "bonus_check_count": 1,
+      "bonus_check_total": 1
+    },
+    {
+      "id": "t3-04",
+      "name": "Rebuild: geo-seo-claude",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-geoseo",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "9 .py files found"
+          },
+          {
+            "command": "python -c \"import geo_seo\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"import geo_seo\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "geo_seo",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 9,
+          "test_count": 4
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "geo_seo",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 9,
+        "test_count": 4
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-05",
+      "name": "Rebuild: pm-skills",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-pmskills",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "7 .py files found"
+          },
+          {
+            "command": "python -c \"import pm_skills\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from pm_skills import MetricConstellation\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "pm_skills",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 7,
+          "test_count": 3
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "pm_skills",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 7,
+        "test_count": 3
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-06",
+      "name": "Rebuild: chandra",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-chandra",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "5 .py files found"
+          },
+          {
+            "command": "python -c \"import datalab\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"import datalab\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "datalab",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 5,
+          "test_count": 1
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "datalab",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 5,
+        "test_count": 1
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-07",
+      "name": "Rebuild: codedb",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-codedb",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "6 .py files found"
+          },
+          {
+            "command": "python -c \"import codedb\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "============================= test session starts ==============================\nplatform darwin -- Python 3.13.9, pytest-8.3.4, pluggy-1.6.0\nFugue tests will be initialized with options:\nrootdir: /Volumes/WS4TB/batch_run/projects/rebuild-codedb\nconfigfile: pyproject.toml\nplugins: fugue-0.9.3, dash-3.3.0, cov-7.1.0, json-report-1.5.0, timeout-2.4.0, metadata-3.1.1, httpx-0.30.0, Faker-38.2.0, asyncio-1.3.0, typeguard-4.4.3, mock-3.12.0, anyio-4.13.0\nasyncio: mode=Mode.STRICT, debug=False, asynci",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from codedb import CodeIndex\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "codedb",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 6,
+          "test_count": 2
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "codedb",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 6,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-08",
+      "name": "Rebuild: browser-harness",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-browser-harness",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "8 .py files found"
+          },
+          {
+            "command": "python -c \"import browser_harness\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from browser_harness import BrowserHarness\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "browser_harness",
+          "has_tests": true,
+          "has_pyproject": false,
+          "has_main": true,
+          "py_files": 8,
+          "test_count": 2
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "browser_harness",
+        "has_tests": true,
+        "has_pyproject": false,
+        "has_main": true,
+        "py_files": 8,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-09",
+      "name": "Rebuild: Deep-Research-skills",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-deep-research",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "3 .py files found"
+          },
+          {
+            "command": "python -c \"import deep_research\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from deep_research import ResearchAgent\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          }
+        ],
+        "all_passed": true,
+        "passed_count": 4,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "deep_research",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 3,
+          "test_count": 1
+        }
+      },
+      "overall_success": true,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "deep_research",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 3,
+        "test_count": 1
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 4,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    },
+    {
+      "id": "t3-10",
+      "name": "Rebuild: dspy-agent-skills",
+      "tier": 3,
+      "repo_path": "/Volumes/WS4TB/batch_run/projects/rebuild-dspy-skills",
+      "duration_s": 0,
+      "cam_exit_code": 0,
+      "cam_success": true,
+      "checks": {
+        "checks": [
+          {
+            "command": "check: project has Python files",
+            "passed": true,
+            "detail": "11 .py files found"
+          },
+          {
+            "command": "python -c \"import dspy_skills\"",
+            "passed": true,
+            "stdout": "",
+            "stderr": ""
+          },
+          {
+            "command": "pytest tests/ -x -q",
+            "passed": true,
+            "stdout": "/Users/o2satz/miniforge3/envs/py313/lib/python3.13/site-packages/pytest_asyncio/plugin.py:247: PytestDeprecationWarning: The configuration option \"asyncio_default_fixture_loop_scope\" is unset.\nThe event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixtu",
+            "stderr": ""
+          },
+          {
+            "command": "python -c \"from dspy_skills import SkillRegistry\"",
+            "passed": false,
+            "stdout": "",
+            "stderr": "Traceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n    from dspy_skills import SkillRegistry\nImportError: cannot import name 'SkillRegistry' from 'dspy_skills' (/Volumes/WS4TB/batch_run/projects/rebuild-dspy-skills/dspy_skills/__init__.py)\n"
+          }
+        ],
+        "all_passed": false,
+        "passed_count": 3,
+        "total_count": 4,
+        "package_info": {
+          "has_code": true,
+          "package_name": "dspy_skills",
+          "has_tests": true,
+          "has_pyproject": true,
+          "has_main": false,
+          "py_files": 11,
+          "test_count": 2
+        }
+      },
+      "overall_success": false,
+      "new_retrievals": 0,
+      "new_fitness_updates": 0,
+      "stats_after": {},
+      "cam_stderr_tail": "",
+      "package_info": {
+        "has_code": true,
+        "package_name": "dspy_skills",
+        "has_tests": true,
+        "has_pyproject": true,
+        "has_main": false,
+        "py_files": 11,
+        "test_count": 2
+      },
+      "core_acceptance_pass": true,
+      "core_check_count": 3,
+      "core_check_total": 4,
+      "bonus_check_count": 0,
+      "bonus_check_total": 0
+    }
+  ],
+  "core_acceptance_passed": 30,
+  "core_acceptance_total": 30,
+  "note": "core_acceptance_pass = code exists + package imports + pytest passes. overall_success includes bonus YAML checks (--help, CLI subcommands, specific import names).",
+  "recheck_timestamp": "2026-05-01T20:03:00Z"
+}

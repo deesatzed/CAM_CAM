@@ -923,7 +923,8 @@ class Verifier:
     _ENV_ERROR_PATTERNS: list[tuple[str, str, Optional[str]]] = [
         # (regex, human message, suggested recovery command or None)
         (r"ModuleNotFoundError:\s*No module named ['\"]?(\S+)", "Python module {0} missing", "pip install -r requirements.txt"),
-        (r"ImportError:\s*cannot import name", "Python import failed — missing dependency", "pip install -r requirements.txt"),
+        # NOTE: ImportError for missing names is handled specially in _detect_env_error
+        # to distinguish internal package imports (correctable) from external (env setup).
         (r"Cannot find module ['\"]([^'\"]+)", "Node module {0} missing", "npm install"),
         (r"ERR_MODULE_NOT_FOUND", "ES module not found", "npm install"),
         (r"Error: Cannot find module", "Node module not found", "npm install"),
@@ -937,6 +938,16 @@ class Verifier:
         (r"SyntaxError: Unexpected (?:token|string) in JSON", "JSON file corrupted — parse error", None),
         (r"(?:npm ERR!|npm error).*Invalid package\.json", "package.json is invalid", None),
     ]
+
+    # Regex to capture: ImportError: cannot import name 'Foo' from 'package.module'
+    # Handles both quoted and unquoted forms.
+    _IMPORT_NAME_ERROR_RE = re.compile(
+        r"ImportError:\s*cannot import name\s+'([^']+)'\s+from\s+'([^']+)'"
+        r"|"
+        r'ImportError:\s*cannot import name\s+"([^"]+)"\s+from\s+"([^"]+)"'
+        r"|"
+        r"ImportError:\s*cannot import name\s+(\S+)\s+from\s+(\S+)"
+    )
 
     @staticmethod
     def _classify_exit_code(returncode: int) -> Optional[str]:
@@ -952,17 +963,77 @@ class Verifier:
             return "permission_denied"
         return None
 
+    @staticmethod
+    def _is_internal_package(package_name: str, workspace: Optional[Path]) -> bool:
+        """Check if a Python package name belongs to the project itself.
+
+        Looks for the package as a directory (with __init__.py) or as a .py file
+        directly in the workspace. This distinguishes project-internal imports
+        (correctable by the agent — e.g. missing __init__.py re-export) from
+        third-party dependency imports (environment_setup — not correctable).
+        """
+        if workspace is None:
+            return False
+        # Get the top-level package name (e.g. 'retrykit' from 'retrykit._logging')
+        top_package = package_name.split(".")[0]
+        # Check as directory package
+        pkg_dir = workspace / top_package
+        if pkg_dir.is_dir() and (pkg_dir / "__init__.py").exists():
+            return True
+        # Check in src/ layout (common for pip-installable projects)
+        src_pkg_dir = workspace / "src" / top_package
+        if src_pkg_dir.is_dir() and (src_pkg_dir / "__init__.py").exists():
+            return True
+        # Check as single-file module
+        if (workspace / f"{top_package}.py").exists():
+            return True
+        return False
+
     @classmethod
-    def _detect_env_error(cls, output: str) -> Optional[tuple[str, Optional[str]]]:
+    def _detect_env_error(
+        cls, output: str, workspace: Optional[Path] = None
+    ) -> Optional[tuple[str, Optional[str]]]:
         """Scan test output for environment error patterns.
+
+        When *workspace* is provided, ``ImportError: cannot import name``
+        errors from the project's own packages are treated as correctable
+        test failures (return None) rather than environment errors.
 
         Returns:
             (human_message, recovery_command) if an env error is detected, else None.
         """
+        # Special handling for ImportError: cannot import name — distinguish
+        # internal vs external packages.
+        m = cls._IMPORT_NAME_ERROR_RE.search(output)
+        if m:
+            # Extract from whichever alternation matched (groups come in pairs)
+            groups = m.groups()
+            missing_name = groups[0] or groups[2] or groups[4]
+            source_package = groups[1] or groups[3] or groups[5]
+            if cls._is_internal_package(source_package, workspace):
+                # Internal import error — the agent can fix this by updating
+                # __init__.py or the module. NOT an environment error.
+                logger.info(
+                    "Internal import error detected (correctable): "
+                    "cannot import '%s' from '%s' — agent can fix __init__.py exports",
+                    missing_name, source_package,
+                )
+                return None
+            else:
+                # External package import error — environment issue
+                return (
+                    f"Python import failed — cannot import '{missing_name}' from '{source_package}'",
+                    "pip install -r requirements.txt",
+                )
+
+        # Also catch bare ImportError without the 'from' clause
+        if re.search(r"ImportError:\s*cannot import name", output):
+            return "Python import failed — missing dependency", "pip install -r requirements.txt"
+
         for pattern, msg_template, recovery in cls._ENV_ERROR_PATTERNS:
-            m = re.search(pattern, output)
-            if m:
-                groups = m.groups()
+            m_pat = re.search(pattern, output)
+            if m_pat:
+                groups = m_pat.groups()
                 msg = msg_template.format(*groups) if groups else msg_template
                 return msg, recovery
         return None
@@ -1177,7 +1248,7 @@ class Verifier:
 
         # Check for env errors hidden in output (exit code 1 but caused by missing deps)
         if proc.returncode != 0:
-            env_error = self._detect_env_error(full_output)
+            env_error = self._detect_env_error(full_output, workspace=workspace)
             if env_error:
                 msg, recovery = env_error
                 detail = f"{msg}."
