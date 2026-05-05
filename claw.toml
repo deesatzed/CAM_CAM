@@ -14,14 +14,19 @@ model_cooldown_seconds = 90
 # This is model-level fallback (within one agent), separate from the
 # DegradationManager's agent-level fallback (which routes to a different agent).
 # Leave empty to disable model-level fallback.
-fallback_models = []
+fallback_models = [
+    "qwen/qwen3.6-flash",
+    "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro",
+    "openai/gpt-mini-latest",
+]
 
 [embeddings]
-model = "perplexity/pplx-embed-v1-4b"
+model = "hash-embedding-384"
 dimension = 384
-api_key_env = "OPENROUTER_API_KEY"
+api_key_env = ""
 task_type = "RETRIEVAL_DOCUMENT"
-required_model = "perplexity/pplx-embed-v1-4b"
+required_model = "hash-embedding-384"
 
 [memory]
 mmr_enabled = true
@@ -146,9 +151,11 @@ max_chunks = 4
 escalation_order = ["codex", "gemini", "claude"]
 token_estimate_chars_per_token = 4.0
 min_context_headroom_pct = 0.20
+max_prompt_tokens = 80000
 
 [assimilation]
 enabled = true
+capability_llm_enabled = false
 synergy_candidate_limit = 20
 synergy_score_threshold = 0.6
 auto_compose_threshold = 0.8
@@ -156,7 +163,7 @@ max_compositions_per_cycle = 3
 io_compatibility_weight = 0.3
 domain_overlap_weight = 0.2
 embedding_similarity_weight = 0.3
-llm_analysis_weight = 0.2
+llm_analysis_weight = 0.0
 # Novelty scoring
 novelty_enabled = true
 novelty_nearest_neighbor_k = 5
@@ -169,7 +176,7 @@ potential_io_generality_weight = 0.30
 potential_composability_weight = 0.25
 potential_domain_breadth_weight = 0.20
 potential_standalone_weight = 0.10
-potential_llm_weight = 0.15
+potential_llm_weight = 0.0
 potential_llm_threshold = 0.4
 # Lifecycle + retrieval integration
 novelty_lifecycle_protection_days = 90
@@ -181,40 +188,40 @@ potential_retrieval_boost = 0.10
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "qwen/qwen3.5-plus-20260420"
+model = "deepseek/deepseek-v4-flash"
 max_concurrent = 2
 timeout = 600
-max_budget_usd = 5.0
+max_budget_usd = 10.0
 context_window_tokens = 1000000
 
 [agents.codex]
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+model = "deepseek/deepseek-v4-flash"
 max_concurrent = 4
-timeout = 300
-max_budget_usd = 0.0
-context_window_tokens = 256000
+timeout = 600
+max_budget_usd = 10.0
+context_window_tokens = 1000000
 
 [agents.gemini]
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "poolside/laguna-m.1:free"
+model = "qwen/qwen3.6-flash"
 max_concurrent = 2
 timeout = 600
-max_budget_usd = 0.0
-context_window_tokens = 131072
+max_budget_usd = 10.0
+context_window_tokens = 1000000
 
 [agents.grok]
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "qwen/qwen3.5-plus-20260420"
+model = "deepseek/deepseek-v4-pro"
 max_concurrent = 2
-timeout = 300
-max_budget_usd = 1.0
+timeout = 600
+max_budget_usd = 10.0
 context_window_tokens = 1000000
 
 # ---------------------------------------------------------------------------

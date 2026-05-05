@@ -19,15 +19,21 @@ from claw.core.models import (
     SynergyExploration,
     Task,
 )
+from claw.core.config import AgentConfig, ClawConfig
+from claw.core.exceptions import ModelRejectedError
 from claw.evolution.assimilation import (
+    CapabilityExtractor,
     CapabilityComposer,
+    NoveltyScorer,
     SynergyDiscoverer,
     _canonical_pair,
+    _deterministic_capability_fallback,
     _merge_capability_dicts,
     _needs_capability_enrichment,
     _parse_capability_json,
     _parse_synergy_json,
 )
+from claw.llm.client import LLMResponse
 
 
 # ---------------------------------------------------------------------------
@@ -617,6 +623,17 @@ class TestParseCapabilityJson:
         assert result is not None
         assert result["capability_type"] == "detection"
 
+    def test_json_wrapped_in_reasoning_text(self):
+        raw = (
+            "Reasoning: this capability handles validation.\n"
+            '{"inputs": [], "outputs": [], "domain": ["test"], '
+            '"capability_type": "validation"}\n'
+            "Use this only when the data contract is explicit."
+        )
+        result = _parse_capability_json(raw)
+        assert result is not None
+        assert result["capability_type"] == "validation"
+
     def test_invalid_json(self):
         result = _parse_capability_json("not json at all")
         assert result is None
@@ -667,6 +684,26 @@ class TestCapabilityMergeHelpers:
         assert merged["inputs"][0]["name"] == "repo"
         assert "missing_tests" in merged["activation_triggers"]
 
+    def test_merge_capability_dicts_preserves_partial_fallback_status(self):
+        seed = _make_capability_data(enrichment_status="seeded")
+        fallback = _make_capability_data(enrichment_status="partial")
+        merged = _merge_capability_dicts(seed, fallback)
+        assert merged["enrichment_status"] == "partial"
+
+    def test_deterministic_capability_fallback_uses_tags_and_files(self):
+        methodology = _make_methodology(
+            problem="[Mined from repo-a] add CLI validation",
+            tags=["mined", "source:repo-a", "category:testing"],
+            files_affected=["src/cli.py"],
+            language="python",
+        )
+        fallback = _deterministic_capability_fallback(methodology)
+        assert fallback["enrichment_status"] == "partial"
+        assert "testing" in fallback["domain"]
+        assert "repo-a" in fallback["source_repos"]
+        assert fallback["capability_type"] == "validation"
+        assert fallback["source_artifacts"][0]["file_path"] == "src/cli.py"
+
     def test_needs_capability_enrichment(self):
         assert _needs_capability_enrichment(None) is True
         assert _needs_capability_enrichment({"enrichment_status": "seeded"}) is True
@@ -692,8 +729,263 @@ class TestParseSynergyJson:
         assert result is not None
         assert result["has_synergy"] is False
 
+    def test_synergy_json_wrapped_in_reasoning_text(self):
+        raw = (
+            "The pair is related, but weak.\n"
+            '{"has_synergy": true, "synergy_score": 0.42, '
+            '"synergy_type": "enhances"}\n'
+            "Final answer above."
+        )
+        result = _parse_synergy_json(raw)
+        assert result is not None
+        assert result["synergy_score"] == 0.42
+
     def test_invalid_returns_none(self):
         assert _parse_synergy_json("garbage") is None
+
+
+class TestAssimilationJsonMode:
+    @staticmethod
+    def _config() -> ClawConfig:
+        config = ClawConfig()
+        config.agents = {
+            "claude": AgentConfig(
+                enabled=True,
+                mode="openrouter",
+                model="deepseek/deepseek-v4-flash",
+            )
+        }
+        return config
+
+    @pytest.mark.asyncio
+    async def test_capability_extractor_requests_json_object_response_format(self):
+        class FakeLLM:
+            def __init__(self):
+                self.response_formats = []
+
+            async def complete(self, **kwargs):
+                self.response_formats.append(kwargs.get("response_format"))
+                return LLMResponse(
+                    content=json.dumps(
+                        {
+                            "inputs": [],
+                            "outputs": [],
+                            "domain": ["testing"],
+                            "capability_type": "validation",
+                        }
+                    ),
+                    model="fake",
+                )
+
+        llm = FakeLLM()
+        extractor = CapabilityExtractor(None, llm, self._config())
+        result = await extractor.extract_capability(_make_methodology())
+
+        assert result is not None
+        assert llm.response_formats == [{"type": "json_object"}]
+
+    @pytest.mark.asyncio
+    async def test_capability_extractor_prefers_qwen_route_for_json_work(self):
+        config = ClawConfig()
+        config.agents = {
+            "claude": AgentConfig(
+                enabled=True,
+                mode="openrouter",
+                model="deepseek/deepseek-v4-flash",
+            ),
+            "gemini": AgentConfig(
+                enabled=True,
+                mode="openrouter",
+                model="qwen/qwen3.6-flash",
+            ),
+        }
+
+        class FakeLLM:
+            def __init__(self):
+                self.models = []
+
+            async def complete(self, **kwargs):
+                self.models.append(kwargs["model"])
+                return LLMResponse(
+                    content=json.dumps({"domain": ["testing"]}),
+                    model=kwargs["model"],
+                )
+
+        llm = FakeLLM()
+        extractor = CapabilityExtractor(None, llm, config)
+        result = await extractor.extract_capability(_make_methodology())
+
+        assert result is not None
+        assert llm.models == ["qwen/qwen3.6-flash"]
+
+    @pytest.mark.asyncio
+    async def test_enrich_methodology_falls_back_to_partial_metadata_on_invalid_json(
+        self, repository, sample_project, sample_task
+    ):
+        class FakeLLM:
+            async def complete(self, **kwargs):
+                return LLMResponse(content="reasoning only without JSON", model="fake")
+
+        config = self._config()
+        methodology = _make_methodology(
+            problem="[Mined from repo-a] validation pattern",
+            tags=["mined", "source:repo-a", "category:testing"],
+            files_affected=["src/validate.py"],
+            source_task_id=sample_task.id,
+            capability_data=_make_capability_data(enrichment_status="seeded"),
+        )
+        saved = await repository.save_methodology(methodology)
+
+        extractor = CapabilityExtractor(repository, FakeLLM(), config)
+        ok = await extractor.enrich_methodology(saved.id)
+
+        assert ok is True
+        updated = await repository.get_methodology(saved.id)
+        assert updated.capability_data["enrichment_status"] == "partial"
+        assert "llm_json_parse_failed" in updated.capability_data["activation_triggers"]
+        assert "src/validate.py" in updated.capability_data["evidence"][0]
+
+    @pytest.mark.asyncio
+    async def test_enrich_methodology_skips_llm_when_capability_llm_disabled(
+        self, repository, sample_project, sample_task
+    ):
+        class FailingLLM:
+            async def complete(self, **kwargs):
+                raise AssertionError("Capability LLM extraction should be skipped")
+
+        config = self._config()
+        config.assimilation.capability_llm_enabled = False
+        methodology = _make_methodology(
+            problem="[Mined from repo-a] validation pattern",
+            tags=["mined", "source:repo-a", "category:testing"],
+            files_affected=["src/validate.py"],
+            source_task_id=sample_task.id,
+            capability_data=_make_capability_data(enrichment_status="seeded"),
+        )
+        saved = await repository.save_methodology(methodology)
+
+        extractor = CapabilityExtractor(repository, FailingLLM(), config)
+        ok = await extractor.enrich_methodology(saved.id)
+
+        assert ok is True
+        updated = await repository.get_methodology(saved.id)
+        assert updated.capability_data["enrichment_status"] == "partial"
+        assert "deterministic_fallback" in updated.capability_data["activation_triggers"]
+        assert "seed-repo" in updated.capability_data["source_repos"]
+        assert "repo-a" in updated.capability_data["source_repos"]
+
+    @pytest.mark.asyncio
+    async def test_capability_extractor_falls_back_when_json_mode_rejected(self):
+        class FakeLLM:
+            def __init__(self):
+                self.response_formats = []
+
+            async def complete(self, **kwargs):
+                self.response_formats.append(kwargs.get("response_format"))
+                if kwargs.get("response_format"):
+                    raise ModelRejectedError("json mode unsupported")
+                return LLMResponse(
+                    content=json.dumps({"domain": ["testing"]}),
+                    model="fake",
+                )
+
+        llm = FakeLLM()
+        extractor = CapabilityExtractor(None, llm, self._config())
+        result = await extractor.extract_capability(_make_methodology())
+
+        assert result is not None
+        assert llm.response_formats == [{"type": "json_object"}, None]
+
+    @pytest.mark.asyncio
+    async def test_synergy_discoverer_requests_json_object_response_format(self):
+        class FakeLLM:
+            def __init__(self):
+                self.response_formats = []
+
+            async def complete(self, **kwargs):
+                self.response_formats.append(kwargs.get("response_format"))
+                return LLMResponse(
+                    content=json.dumps(
+                        {
+                            "has_synergy": True,
+                            "synergy_type": "enhances",
+                            "synergy_score": 0.7,
+                            "composite_description": "A improves B",
+                        }
+                    ),
+                    model="fake",
+                )
+
+        llm = FakeLLM()
+        discoverer = SynergyDiscoverer(None, llm, self._config())
+        meth_a = _make_methodology(capability_data=_make_capability_data())
+        meth_b = _make_methodology(capability_data=_make_capability_data())
+
+        score, synergy_type, composite = await discoverer._llm_synergy_analysis(
+            meth_a,
+            meth_b,
+        )
+
+        assert score == 0.7
+        assert synergy_type == "enhances"
+        assert composite == "A improves B"
+        assert llm.response_formats == [{"type": "json_object"}]
+
+
+class TestAssimilationBudgetMode:
+    @pytest.mark.asyncio
+    async def test_synergy_discovery_skips_llm_when_weight_is_zero(
+        self, repository, sample_project, sample_task
+    ):
+        class NoCallLLM:
+            async def complete(self, **kwargs):
+                raise AssertionError("LLM synergy analysis should be skipped")
+
+        config = ClawConfig()
+        config.assimilation.llm_analysis_weight = 0.0
+        meth_a = await repository.save_methodology(
+            _make_methodology(
+                problem="produce metrics",
+                capability_data=_make_capability_data(
+                    outputs=[{"name": "metrics", "type": "metrics_data"}],
+                    inputs=[],
+                    domain=["testing"],
+                ),
+                source_task_id=sample_task.id,
+            )
+        )
+        await repository.save_methodology(
+            _make_methodology(
+                problem="consume metrics",
+                capability_data=_make_capability_data(
+                    inputs=[{"name": "metrics", "type": "metrics_data"}],
+                    outputs=[],
+                    domain=["testing"],
+                ),
+                source_task_id=sample_task.id,
+            )
+        )
+
+        discoverer = SynergyDiscoverer(repository, NoCallLLM(), config)
+        explorations = await discoverer.discover_synergies(meth_a.id)
+
+        assert explorations
+        assert all(exp.details["llm_triggered"] is False for exp in explorations)
+
+    @pytest.mark.asyncio
+    async def test_potential_scoring_skips_llm_when_weight_is_zero(self):
+        class NoCallLLM:
+            async def complete(self, **kwargs):
+                raise AssertionError("LLM potential assessment should be skipped")
+
+        config = ClawConfig()
+        config.assimilation.potential_llm_weight = 0.0
+        scorer = NoveltyScorer(None, NoCallLLM(), config)
+        methodology = _make_methodology(capability_data=_make_capability_data())
+
+        score = await scorer.compute_potential(methodology)
+
+        assert 0.0 <= score <= 1.0
 
 
 # ---------------------------------------------------------------------------

@@ -43,6 +43,8 @@ Return a JSON object:
 - **none**: No directional relationship
 
 ## Rules
+- CRITICAL: Return a single valid JSON object in the message content. Do not put
+  the answer only in reasoning. Do not include prose before or after the JSON.
 - synergy_score: 0.0 to 1.0 (0 = no synergy, 1 = perfect synergy)
 - Be conservative — only score > 0.6 if there is genuine functional compatibility
 - Look for TYPE compatibility between outputs and inputs

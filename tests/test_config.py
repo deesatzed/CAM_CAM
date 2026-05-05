@@ -1,5 +1,6 @@
 """Tests for CLAW configuration system."""
 
+import json
 from pathlib import Path
 import os
 
@@ -61,6 +62,24 @@ class TestLoadConfig:
         monkeypatch.setenv("OPENROUTER_API_KEY", "from-shell")
         load_config(repo / "claw.toml")
         assert os.getenv("OPENROUTER_API_KEY") == "from-shell"
+
+    def test_evolution_champion_db_opt_in(self, tmp_path, monkeypatch):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        champion_db = repo / "instances" / "evolution" / "champion.db"
+        champion_db.parent.mkdir(parents=True)
+        champion_db.write_text("")
+        (repo / "claw.toml").write_text("[database]\ndb_path='data/control.db'\n")
+        (repo / "instances" / "evolution" / "current_champion.json").write_text(
+            json.dumps({"db_path": str(champion_db)})
+        )
+
+        monkeypatch.setenv("CLAW_USE_EVOLUTION_CHAMPION", "1")
+        monkeypatch.delenv("CLAW_DB_PATH", raising=False)
+
+        config = load_config(repo / "claw.toml")
+
+        assert config.database.db_path == str(champion_db)
 
 
 class TestDefaults:

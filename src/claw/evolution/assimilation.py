@@ -32,6 +32,7 @@ from claw.core.models import (
     SynergyExploration,
 )
 from claw.db.repository import Repository
+from claw.core.exceptions import ModelRejectedError
 from claw.llm.client import LLMClient, LLMMessage
 
 logger = logging.getLogger("claw.evolution.assimilation")
@@ -46,14 +47,29 @@ def _canonical_pair(id_a: str, id_b: str) -> tuple[str, str]:
     return (id_a, id_b) if id_a < id_b else (id_b, id_a)
 
 
-def _parse_capability_json(raw: str) -> Optional[dict]:
-    """Parse LLM response into a capability_data dict, tolerant of fencing."""
+def _extract_json_object_text(raw: str) -> str:
+    """Extract the first JSON object from fenced or prose-wrapped model output."""
     cleaned = raw.strip()
-    # Strip markdown code fences
     if cleaned.startswith("```"):
         lines = cleaned.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
+        lines = [line for line in lines if not line.strip().startswith("```")]
         cleaned = "\n".join(lines).strip()
+
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(cleaned):
+        if char != "{":
+            continue
+        try:
+            _obj, end = decoder.raw_decode(cleaned[idx:])
+        except json.JSONDecodeError:
+            continue
+        return cleaned[idx : idx + end]
+    return cleaned
+
+
+def _parse_capability_json(raw: str) -> Optional[dict]:
+    """Parse LLM response into a capability_data dict, tolerant of fencing."""
+    cleaned = _extract_json_object_text(raw)
     try:
         data = json.loads(cleaned)
         # Validate required keys
@@ -89,7 +105,7 @@ def _merge_capability_dicts(seed: Optional[dict], extracted: dict) -> dict:
 
     merged = dict(seed)
     merged["schema_version"] = max(int(seed.get("schema_version", 1)), int(extracted.get("schema_version", 1)), 2)
-    merged["enrichment_status"] = "merged"
+    merged["enrichment_status"] = "partial" if extracted.get("enrichment_status") == "partial" else "merged"
 
     for key in ("inputs", "outputs", "domain"):
         seed_values = list(seed.get(key, []) or [])
@@ -150,6 +166,74 @@ def _merge_capability_dicts(seed: Optional[dict], extracted: dict) -> dict:
     return CapabilityData(**merged).model_dump()
 
 
+def _deterministic_capability_fallback(methodology: Methodology) -> dict:
+    """Build partial capability metadata when the JSON LLM route fails."""
+    domains: list[str] = []
+    source_repos: list[str] = []
+    triggers: list[str] = ["llm_json_parse_failed", "deterministic_fallback"]
+
+    for tag in methodology.tags:
+        if tag.startswith("category:"):
+            value = tag.split(":", 1)[1]
+            if value and value not in domains:
+                domains.append(value)
+        elif tag.startswith("source:"):
+            value = tag.split(":", 1)[1]
+            if value and value not in source_repos:
+                source_repos.append(value)
+        elif tag and tag not in triggers:
+            triggers.append(tag)
+
+    if methodology.language and methodology.language not in domains:
+        domains.append(methodology.language)
+    if not domains:
+        domains.append("cross_cutting")
+
+    capability_type = (
+        "validation"
+        if any(domain in {"testing", "security", "code_quality"} for domain in domains)
+        else "transformation"
+    )
+    source_artifacts = [
+        {
+            "file_path": path,
+            "symbol_name": None,
+            "symbol_kind": "file",
+            "note": "Preserved by deterministic assimilation fallback",
+        }
+        for path in methodology.files_affected
+    ]
+
+    return CapabilityData(
+        enrichment_status="partial",
+        inputs=[
+            CapabilityIO(
+                name="methodology_context",
+                type="methodology_text",
+                description="Problem, solution, notes, tags, and source artifacts",
+            )
+        ],
+        outputs=[
+            CapabilityIO(
+                name="adapted_capability",
+                type="reusable_pattern",
+                description="A target-specific adaptation of the mined methodology",
+            )
+        ],
+        domain=domains,
+        capability_type=capability_type,
+        source_repos=source_repos,
+        source_artifacts=source_artifacts,
+        applicability=[methodology.problem_description[:500]],
+        non_applicability=["Partial deterministic metadata; retry LLM enrichment when JSON route is healthy."],
+        activation_triggers=triggers,
+        dependencies=[],
+        risks=["LLM enrichment returned invalid JSON, so IO/composability fields are conservative."],
+        composition_candidates=[],
+        evidence=[f"source_file:{path}" for path in methodology.files_affected],
+    ).model_dump()
+
+
 def _needs_capability_enrichment(capability_data: Optional[dict]) -> bool:
     """Return True if capability data is missing or only lightly seeded."""
     if not capability_data:
@@ -166,11 +250,7 @@ def _needs_capability_enrichment(capability_data: Optional[dict]) -> bool:
 
 def _parse_synergy_json(raw: str) -> Optional[dict]:
     """Parse LLM synergy analysis response."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.split("\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        cleaned = "\n".join(lines).strip()
+    cleaned = _extract_json_object_text(raw)
     try:
         data = json.loads(cleaned)
         if not isinstance(data, dict):
@@ -211,7 +291,10 @@ class CapabilityExtractor:
 
     def _get_model(self) -> str:
         """Get an available model from agent configs."""
-        for agent_name in ("claude", "gemini", "codex", "grok"):
+        # JSON assimilation favors the cheapest route that has behaved reliably
+        # in OpenRouter probes. DeepSeek flash remains useful for mining, but
+        # often returns JSON work in reasoning-only text.
+        for agent_name in ("gemini", "claude", "codex", "grok"):
             agent_cfg = self.config.agents.get(agent_name)
             if agent_cfg and agent_cfg.enabled and agent_cfg.model:
                 return agent_cfg.model
@@ -230,12 +313,21 @@ class CapabilityExtractor:
 
         try:
             model = self._get_model()
-            response = await self.llm_client.complete(
-                messages=[LLMMessage(role="user", content=prompt)],
-                model=model,
-                temperature=0.2,
-                max_tokens=1024,
-            )
+            try:
+                response = await self.llm_client.complete(
+                    messages=[LLMMessage(role="user", content=prompt)],
+                    model=model,
+                    temperature=0.2,
+                    max_tokens=1024,
+                    response_format={"type": "json_object"},
+                )
+            except ModelRejectedError:
+                response = await self.llm_client.complete(
+                    messages=[LLMMessage(role="user", content=prompt)],
+                    model=model,
+                    temperature=0.2,
+                    max_tokens=1024,
+                )
             return _parse_capability_json(response.content)
         except Exception as e:
             logger.error("Capability extraction failed for %s: %s", methodology.id, e)
@@ -255,9 +347,20 @@ class CapabilityExtractor:
             logger.debug("Methodology %s already enriched", methodology_id)
             return True
 
-        cap_data = await self.extract_capability(methodology)
+        if not self.config.assimilation.capability_llm_enabled:
+            cap_data = _deterministic_capability_fallback(methodology)
+            logger.info(
+                "Applied deterministic capability enrichment for %s",
+                methodology_id,
+            )
+        else:
+            cap_data = await self.extract_capability(methodology)
         if cap_data is None:
-            return False
+            cap_data = _deterministic_capability_fallback(methodology)
+            logger.info(
+                "Applied deterministic partial capability fallback for %s",
+                methodology_id,
+            )
 
         merged = _merge_capability_dicts(methodology.capability_data, cap_data)
         await self.repository.update_methodology_capability_data(methodology_id, merged)
@@ -302,7 +405,7 @@ class SynergyDiscoverer:
         return self._synergy_prompt
 
     def _get_model(self) -> str:
-        for agent_name in ("claude", "gemini", "codex", "grok"):
+        for agent_name in ("gemini", "claude", "codex", "grok"):
             agent_cfg = self.config.agents.get(agent_name)
             if agent_cfg and agent_cfg.enabled and agent_cfg.model:
                 return agent_cfg.model
@@ -390,12 +493,21 @@ class SynergyDiscoverer:
 
         try:
             model = self._get_model()
-            response = await self.llm_client.complete(
-                messages=[LLMMessage(role="user", content=prompt)],
-                model=model,
-                temperature=0.2,
-                max_tokens=512,
-            )
+            try:
+                response = await self.llm_client.complete(
+                    messages=[LLMMessage(role="user", content=prompt)],
+                    model=model,
+                    temperature=0.2,
+                    max_tokens=512,
+                    response_format={"type": "json_object"},
+                )
+            except ModelRejectedError:
+                response = await self.llm_client.complete(
+                    messages=[LLMMessage(role="user", content=prompt)],
+                    model=model,
+                    temperature=0.2,
+                    max_tokens=512,
+                )
             result = _parse_synergy_json(response.content)
             if result is None:
                 return 0.0, None, None
@@ -464,7 +576,7 @@ class SynergyDiscoverer:
             composite_desc = None
             llm_triggered = False
 
-            if fast_score > 0.4 * (1.0 - cfg.llm_analysis_weight):
+            if cfg.llm_analysis_weight > 0 and fast_score > 0.4 * (1.0 - cfg.llm_analysis_weight):
                 llm_score, synergy_type, composite_desc = await self._llm_synergy_analysis(
                     methodology, candidate
                 )
@@ -920,7 +1032,7 @@ class NoveltyScorer:
         db = self._domain_breadth(cap)
         sa = self._standalone_score(cap)
 
-        if skip_llm_potential:
+        if skip_llm_potential or cfg.potential_llm_weight <= 0:
             # Redistribute LLM weight proportionally across fast signals
             fast_total = (
                 cfg.potential_io_generality_weight

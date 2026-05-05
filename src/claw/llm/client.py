@@ -22,6 +22,7 @@ from claw.core.exceptions import (
     AuthenticationError,
     LLMError,
     ModelNotFoundError,
+    ModelRejectedError,
     RateLimitError,
     ResponseParseError,
 )
@@ -218,6 +219,12 @@ class LLMClient:
                     logger.warning("Server error %d. Waiting %.1fs", resp.status_code, delay)
                     await asyncio.sleep(delay)
                     continue
+                if 400 <= resp.status_code < 500:
+                    detail = _response_error_detail(resp)
+                    raise ModelRejectedError(
+                        f"Provider rejected model request "
+                        f"({resp.status_code}, model={payload.get('model')}): {detail}"
+                    )
 
                 resp.raise_for_status()
                 data = resp.json()
@@ -333,6 +340,22 @@ def _backoff_delay(attempt: int, base_seconds: float = 2.0) -> float:
     delay = min(base_seconds * (2 ** attempt), 60)
     jitter = random.uniform(0, delay * 0.25)
     return delay + jitter
+
+
+def _response_error_detail(resp: httpx.Response) -> str:
+    """Extract a short provider error body for diagnostics."""
+    try:
+        data = resp.json()
+    except Exception:
+        return resp.text[:500]
+    if isinstance(data, dict):
+        error = data.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error.get("code") or error
+            return str(message)[:500]
+        if error:
+            return str(error)[:500]
+    return str(data)[:500]
 
 
 def _parse_json_response(text: str) -> dict[str, Any]:

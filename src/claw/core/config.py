@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+import json
 import toml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -66,6 +67,7 @@ class OrchestratorConfig(BaseModel):
     loop_guard_max_repeats: int = 2
     pipeline_adaptation_enabled: bool = True
     max_correction_attempts: int = 3
+    auto_fix_enabled: bool = True
 
 
 class SentinelConfig(BaseModel):
@@ -267,6 +269,7 @@ class MiningRecoveryConfig(BaseModel):
     )
     token_estimate_chars_per_token: float = 4.0
     min_context_headroom_pct: float = 0.20
+    max_prompt_tokens: int = 80_000
 
 
 class DomainBrainConfig(BaseModel):
@@ -307,6 +310,7 @@ class GovernanceConfig(BaseModel):
 class AssimilationConfig(BaseModel):
     """Capability assimilation configuration."""
     enabled: bool = True
+    capability_llm_enabled: bool = True
     synergy_candidate_limit: int = 20
     synergy_score_threshold: float = 0.6
     auto_compose_threshold: float = 0.8
@@ -640,6 +644,26 @@ def _env_flag(name: str) -> Optional[bool]:
     return None
 
 
+def _resolve_evolution_champion_db(config_path: Path) -> Optional[str]:
+    """Resolve the current champion DB pointer for opt-in downstream commands."""
+    pointer_path = config_path.parent / "instances" / "evolution" / "current_champion.json"
+    if not pointer_path.exists():
+        return None
+    try:
+        data = json.loads(pointer_path.read_text())
+    except Exception:
+        return None
+    db_path = data.get("db_path")
+    if not db_path:
+        return None
+    path = Path(str(db_path))
+    if not path.is_absolute():
+        path = (config_path.parent / path).resolve()
+    if not path.exists():
+        return None
+    return str(path)
+
+
 def load_config(config_path: Optional[Path] = None) -> ClawConfig:
     """Load CLAW config from TOML file.
 
@@ -681,6 +705,10 @@ def load_config(config_path: Optional[Path] = None) -> ClawConfig:
     db_path_env = os.getenv("CLAW_DB_PATH")
     if db_path_env:
         raw.setdefault("database", {})["db_path"] = db_path_env
+    elif _env_flag("CLAW_USE_EVOLUTION_CHAMPION") is True:
+        champion_db = _resolve_evolution_champion_db(config_path)
+        if champion_db:
+            raw.setdefault("database", {})["db_path"] = champion_db
 
     flag_env_map = {
         "CLAW_FEATURE_COMPONENT_CARDS": "component_cards",

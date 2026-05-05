@@ -19,6 +19,7 @@ Advanced groups:
   doctor <subcommand>    — preflight and environment diagnostics
   kb <subcommand>        — low-level knowledge browser
   self-enhance <sub>     — self-enhancement pipeline (clone, validate, swap)
+  evolution <subcommand> — serial champion/challenger evolution
   cag <subcommand>       — CAG cache-augmented generation (vectorless retrieval)
 """
 
@@ -46,6 +47,7 @@ from claw.cli._monolith import (  # noqa: F811
     pulse_app,
     self_enhance_app,
     ab_test_app,
+    evolution_app,
     security_app,
     cag_app,
     kb_app,

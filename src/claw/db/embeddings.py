@@ -3,18 +3,20 @@
 Wraps sentence-transformers for encode/cosine_similarity and provides
 sqlite-vec compatible storage via binary serialization.
 
-Supports three embedding backends:
+Supports four embedding backends:
   1. OpenRouter API (OpenAI-compatible /v1/embeddings) — for models like
      perplexity/pplx-embed-v1-4b, google/gemini-embedding-2-preview, etc.
      Detected when model name contains a "/" (provider/model format).
   2. Gemini direct API (google.genai) — for gemini-embedding-* models
      called directly against Google's API (requires GOOGLE_API_KEY).
-  3. Local sentence-transformers — for models like all-MiniLM-L6-v2.
+  3. Local deterministic hash embeddings — for zero-cost automation paths.
+  4. Local sentence-transformers — for models like all-MiniLM-L6-v2.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
 import struct
@@ -142,11 +144,15 @@ class EmbeddingEngine:
             and (self.model_name.startswith("gemini-embedding") or self.model_name.startswith("models/gemini-embedding"))
         )
         self._uses_mlx = self.model_name.startswith("mlx-community/") or self.model_name.startswith("mlx-embeddings:")
+        self._uses_hash = self.model_name in {
+            "hash-embedding-384",
+            "local-hash-embedding",
+        }
         self._mlx_model = None
 
     @property
     def model(self):
-        if self._uses_openrouter or self._uses_gemini_api or self._uses_mlx:
+        if self._uses_openrouter or self._uses_gemini_api or self._uses_mlx or self._uses_hash:
             return None
         if self._model is None:
             SentenceTransformer = _get_sentence_transformer()
@@ -179,6 +185,24 @@ class EmbeddingEngine:
         from mlx_embeddings import encode as mlx_encode
         embeddings = mlx_encode(model, texts)
         return [self._normalize_dimension(list(float(x) for x in v)) for v in embeddings]
+
+    def _embed_with_hash(self, texts: list[str]) -> list[list[float]]:
+        """Encode texts with deterministic local vectors for zero-cost routing."""
+        vectors: list[list[float]] = []
+        for text in texts:
+            values: list[float] = []
+            counter = 0
+            seed = text.encode("utf-8", errors="replace")
+            while len(values) < self.dimension:
+                digest = hashlib.sha256(counter.to_bytes(4, "big") + seed).digest()
+                values.extend((byte / 127.5) - 1.0 for byte in digest)
+                counter += 1
+            vec = values[: self.dimension]
+            norm = float(np.linalg.norm(np.array(vec)))
+            if norm > 0:
+                vec = [value / norm for value in vec]
+            vectors.append(vec)
+        return vectors
 
     def _get_openrouter_client(self):
         """Lazily create an httpx client for OpenRouter embeddings API."""
@@ -424,6 +448,8 @@ class EmbeddingEngine:
             return self._embed_with_gemini([clipped])[0]
         if self._uses_mlx:
             return self._embed_with_mlx([text])[0]
+        if self._uses_hash:
+            return self._embed_with_hash([text])[0]
         vec = self.model.encode(text, show_progress_bar=False)
         return vec.tolist()
 
@@ -447,6 +473,10 @@ class EmbeddingEngine:
             if not texts:
                 return []
             return self._embed_with_mlx(texts)
+        if self._uses_hash:
+            if not texts:
+                return []
+            return self._embed_with_hash(texts)
         vecs = self.model.encode(texts, show_progress_bar=False, batch_size=32)
         return [v.tolist() for v in vecs]
 

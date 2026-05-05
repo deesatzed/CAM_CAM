@@ -41,6 +41,7 @@ from claw.connectome.lineage import build_initial_lineage, rebuild_lineage_stats
 from claw.db.engine import DatabaseEngine
 from claw.db.repository import Repository
 from claw.llm.client import LLMClient, LLMMessage, LLMResponse
+from claw.core.exceptions import ModelNotFoundError
 from claw.mining.component_extractor import extract_components_from_file
 from claw.mining.scip_loader import load_repo_scip
 from claw.memory.semantic import SemanticMemory
@@ -336,9 +337,11 @@ _CONTENT_HASH_MAX_FILES: int = 200
 # fnmatch patterns for machine-generated / vendored files — zero learning value.
 _SKIP_FILE_PATTERNS: tuple[str, ...] = (
     "*.min.js", "*.min.css", "*.bundle.js", "*.chunk.js",
+    "*-bundle.js", "*bundle*.js",
     "*.js.map", "*.css.map",
     "*_pb2.py", "*.pb.go", "*.pb.ts",
     "*.generated.*", "*.auto.*",
+    "acl-manifests.json", "desktop-schema.json", "macOS-schema.json",
 )
 
 # Exact filenames to skip — lock files, legal boilerplate, linter config.
@@ -658,6 +661,11 @@ class LanguageZone:
     pct: float  # Percentage of total code files in repo
 
 
+def should_skip_polyglot_zone(zone: LanguageZone, total_zones: int) -> bool:
+    """Return True when a secondary polyglot zone is too small for a paid pass."""
+    return total_zones > 1 and zone.file_count < _MIN_ZONE_FILES
+
+
 def detect_all_repo_languages(
     repo_path: Path,
     config: ClawConfig | None = None,
@@ -874,24 +882,33 @@ class MiningModelSelector:
         """
         eligible = self.get_eligible_agents(estimated_tokens)
         chain: list[tuple[str, str]] = []
-        seen: set[str] = set()
+        seen_agents: set[str] = set()
+        seen_models: set[str] = set()
 
         for name, cfg in eligible:
-            if name not in seen:
+            if name not in seen_agents and cfg.model not in seen_models:
                 chain.append((name, cfg.model))
-                seen.add(name)
+                seen_agents.add(name)
+                seen_models.add(cfg.model)
 
         for name in self.config.mining.recovery.escalation_order:
-            if name not in seen:
+            if name not in seen_agents:
                 cfg = self.config.agents.get(name)
-                if cfg and cfg.enabled and cfg.model:
+                if cfg and cfg.enabled and cfg.model and cfg.model not in seen_models:
                     chain.append((name, cfg.model))
-                    seen.add(name)
+                    seen_agents.add(name)
+                    seen_models.add(cfg.model)
 
         for name, cfg in self.config.agents.items():
-            if name not in seen and cfg.enabled and cfg.model:
+            if (
+                name not in seen_agents
+                and cfg.enabled
+                and cfg.model
+                and cfg.model not in seen_models
+            ):
                 chain.append((name, cfg.model))
-                seen.add(name)
+                seen_agents.add(name)
+                seen_models.add(cfg.model)
 
         return chain
 
@@ -1629,6 +1646,7 @@ class RepoMiner:
         self._assimilation_parallelism = max(1, min(int(mining_parallel), 16))
         self._fast_mine: bool = False  # When True, skip assimilation during mining
         self._scenario_enricher: Any = None  # Lazy-init ScenarioEnricher
+        self._quarantined_mining_models: set[str] = set()
 
     @staticmethod
     def _extract_symbols_from_file(repo_path: Path, relative_path: str, max_symbols: int = 8) -> list[dict[str, Any]]:
@@ -1759,8 +1777,9 @@ class RepoMiner:
             )
 
         triggers = list(_CATEGORY_TRIGGER_MAP.get(finding.category, []))
+        triggers.append("has_action_template_candidate")
         if finding.execution_steps or finding.acceptance_checks:
-            triggers.append("has_action_template_candidate")
+            triggers.append("has_explicit_runbook")
         if finding.relevance_score >= 0.8:
             triggers.append("high_relevance")
 
@@ -1793,6 +1812,63 @@ class RepoMiner:
             "evidence": [f"source_file:{path}" for path in finding.source_files],
             "license_type": getattr(self, "_current_mine_metadata", {}).get("license_type", ""),
         }
+
+    @staticmethod
+    def _build_action_template_from_finding(
+        finding: MiningFinding,
+        methodology_id: str,
+    ) -> ActionTemplate:
+        """Create a source-linked action template for an accepted finding.
+
+        Model-provided runbooks are preserved. Findings without explicit steps
+        still get a conservative adaptation template so serial evolution can
+        measure whether mined artifacts are actually usable for later CAM tasks.
+        """
+        execution_steps = [step.strip() for step in finding.execution_steps if step.strip()]
+        acceptance_checks = [check.strip() for check in finding.acceptance_checks if check.strip()]
+        rollback_steps = [step.strip() for step in finding.rollback_steps if step.strip()]
+        preconditions = [item.strip() for item in finding.preconditions if item.strip()]
+
+        if execution_steps or acceptance_checks:
+            confidence = finding.relevance_score
+        else:
+            source_files = [path.strip() for path in finding.source_files if path.strip()]
+            source_hint = ", ".join(source_files[:5]) if source_files else "the mined methodology and source context"
+            category = finding.category or "cross_cutting"
+            title = finding.title.strip() or "mined pattern"
+
+            execution_steps = [
+                f"Inspect source artifacts from {finding.source_repo}: {source_hint}",
+                f"Map the pattern '{title}' to the target task constraints",
+                "Adapt the implementation sketch while preserving rollback boundaries",
+            ]
+            acceptance_checks = [
+                f"Retrieved methodology {methodology_id} is cited in the task rationale",
+                "Adapted change satisfies the task's existing tests or verification command",
+                "No unrelated files are changed",
+            ]
+            rollback_steps = [
+                "Remove the adapted change and any generated config or test additions",
+                "Re-run the verification command that failed or changed",
+            ]
+            preconditions = [
+                f"Source repo {finding.source_repo} was mined and accepted",
+                f"Target task matches category {category}",
+                *preconditions,
+            ]
+            confidence = min(finding.relevance_score, 0.75)
+
+        return ActionTemplate(
+            title=finding.title[:200],
+            problem_pattern=finding.description[:2000],
+            execution_steps=execution_steps,
+            acceptance_checks=acceptance_checks,
+            rollback_steps=rollback_steps,
+            preconditions=preconditions,
+            source_methodology_id=methodology_id,
+            source_repo=finding.source_repo,
+            confidence=confidence,
+        )
 
     @staticmethod
     def _infer_component_type(text: str, symbol_kind: str, category: str) -> str:
@@ -2081,6 +2157,80 @@ class RepoMiner:
             self._prompt_cache[prompt_name] = prompt_path.read_text(encoding="utf-8")
         return self._prompt_cache[prompt_name]
 
+    def _build_repo_mining_prompt(
+        self,
+        repo_content: str,
+        brain_config: BrainConfig,
+        domain_info: dict[str, Any],
+        overlap: Any,
+    ) -> str:
+        template = self._get_prompt_template(brain_config.prompt)
+        prompt = template.replace("{repo_content}", repo_content)
+        context_lines = self._build_mining_context(domain_info, overlap)
+        if context_lines:
+            prompt = "\n".join(context_lines) + "\n\n" + prompt
+        return prompt
+
+    def _estimate_prompt_tokens(self, prompt: str) -> int:
+        cpt = self.config.mining.recovery.token_estimate_chars_per_token
+        return int(len(prompt) / cpt)
+
+    def _cap_repo_content_for_prompt_budget(
+        self,
+        *,
+        repo_path: str | Path,
+        repo_name: str,
+        repo_content: str,
+        file_count: int,
+        brain: str,
+        brain_config: BrainConfig,
+        domain_info: dict[str, Any],
+        overlap: Any,
+        secret_scan_files: set[str] | None,
+        language_filter: Optional[set[str]] = None,
+    ) -> tuple[str, int, str, int]:
+        """Shrink serialized content before the first paid call if prompt is too large."""
+        prompt = self._build_repo_mining_prompt(
+            repo_content, brain_config, domain_info, overlap,
+        )
+        estimated_tokens = self._estimate_prompt_tokens(prompt)
+        max_prompt_tokens = self.config.mining.recovery.max_prompt_tokens
+        if max_prompt_tokens <= 0 or estimated_tokens <= max_prompt_tokens:
+            return repo_content, file_count, prompt, estimated_tokens
+
+        original_bytes = len(repo_content.encode("utf-8"))
+        scale = max_prompt_tokens / max(estimated_tokens, 1)
+        capped_bytes = max(65_536, int(original_bytes * scale * 0.90))
+        capped_bytes = min(capped_bytes, max(original_bytes - 1, 0))
+        if capped_bytes <= 0 or capped_bytes >= original_bytes:
+            return repo_content, file_count, prompt, estimated_tokens
+
+        capped_content, capped_count = serialize_repo(
+            repo_path,
+            max_bytes=capped_bytes,
+            exclude_files=secret_scan_files,
+            config=self.config,
+            language_filter=language_filter,
+        )
+        if not capped_content:
+            return repo_content, file_count, prompt, estimated_tokens
+
+        capped_prompt = self._build_repo_mining_prompt(
+            capped_content, brain_config, domain_info, overlap,
+        )
+        capped_estimate = self._estimate_prompt_tokens(capped_prompt)
+        logger.info(
+            "Capped %s prompt for %s from ~%dK to ~%dK tokens "
+            "(%dKB -> %dKB)",
+            brain,
+            repo_name,
+            estimated_tokens // 1000,
+            capped_estimate // 1000,
+            original_bytes // 1024,
+            len(capped_content.encode("utf-8")) // 1024,
+        )
+        return capped_content, capped_count, capped_prompt, capped_estimate
+
     def _get_mining_model(self) -> str:
         """Get the model to use for mining from config.
 
@@ -2092,6 +2242,61 @@ class RepoMiner:
             if agent_cfg and agent_cfg.enabled and agent_cfg.model:
                 return agent_cfg.model
         raise ValueError("No model configured in any agent. Set a model in claw.toml.")
+
+    def _available_escalation_chain(
+        self,
+        model_selector: MiningModelSelector,
+        estimated_tokens: int,
+    ) -> list[tuple[str, str]]:
+        """Build a mining chain with hard-failed models removed."""
+        chain = model_selector.build_escalation_chain(estimated_tokens)
+        if not self._quarantined_mining_models:
+            return chain
+        return [
+            (agent_name, model)
+            for agent_name, model in chain
+            if model not in self._quarantined_mining_models
+        ]
+
+    async def _select_non_quarantined_model(
+        self,
+        model_selector: MiningModelSelector,
+        estimated_tokens: int,
+    ) -> tuple[str, str]:
+        """Select a model, falling back when RL points at a quarantined route."""
+        agent_name, model = await model_selector.select_best_model(estimated_tokens)
+        if model not in self._quarantined_mining_models:
+            return agent_name, model
+
+        chain = self._available_escalation_chain(model_selector, estimated_tokens)
+        if chain:
+            return chain[0]
+        raise ValueError("No mining models remain after quarantine")
+
+    def _quarantine_model_if_hard_failure(self, model: str, error: Exception) -> None:
+        """Skip a model for the rest of this miner lifetime after hard provider failure."""
+        if not model:
+            return
+        message = str(error).lower()
+        is_hard_failure = isinstance(error, ModelNotFoundError) or any(
+            marker in message
+            for marker in (
+                "provider rejected model request",
+                "model not found",
+                "unsupported model",
+                "invalid model",
+                "no endpoints found",
+            )
+        )
+        if not is_hard_failure:
+            return
+        if model not in self._quarantined_mining_models:
+            logger.warning(
+                "Quarantining mining model '%s' for this run after %s",
+                model,
+                type(error).__name__,
+            )
+        self._quarantined_mining_models.add(model)
 
     # ------------------------------------------------------------------
     # Self-recovery mining loop
@@ -2128,7 +2333,10 @@ class RepoMiner:
         recovery = self.config.mining.recovery
 
         if not recovery.enabled:
-            agent_name, model = await model_selector.select_best_model(estimated_tokens)
+            agent_name, model = await self._select_non_quarantined_model(
+                model_selector,
+                estimated_tokens,
+            )
             try:
                 resp = await asyncio.wait_for(
                     self.llm_client.complete(
@@ -2156,9 +2364,10 @@ class RepoMiner:
                     success=False, findings_count=0, response=None,
                     start_time=start_time, error=e,
                 )
+                self._quarantine_model_if_hard_failure(model, e)
                 return None, [], 0, "primary"
 
-        escalation_chain = model_selector.build_escalation_chain(estimated_tokens)
+        escalation_chain = self._available_escalation_chain(model_selector, estimated_tokens)
         attempts = 0
 
         # --- STRATEGY 1: Model escalation ---
@@ -2195,6 +2404,7 @@ class RepoMiner:
                     success=False, findings_count=0, response=None,
                     start_time=start_time, error=e,
                 )
+                self._quarantine_model_if_hard_failure(model, e)
                 continue
 
             findings = parse_findings(resp.content, repo_name)
@@ -2243,13 +2453,13 @@ class RepoMiner:
 
             reduced_est = model_selector.estimate_prompt_tokens(reduced_prompt)
             try:
-                best_agent, best_model = await model_selector.select_best_model(
+                best_agent, best_model = await self._select_non_quarantined_model(
+                    model_selector,
                     reduced_est,
                 )
             except ValueError:
-                best_agent, best_model = (
-                    escalation_chain[0] if escalation_chain else ("", "")
-                )
+                fresh_chain = self._available_escalation_chain(model_selector, reduced_est)
+                best_agent, best_model = fresh_chain[0] if fresh_chain else ("", "")
 
             if best_model:
                 try:
@@ -2294,6 +2504,7 @@ class RepoMiner:
                         success=False, findings_count=0, response=None,
                         start_time=start_time, error=e,
                     )
+                    self._quarantine_model_if_hard_failure(best_model, e)
 
         # --- STRATEGY 3: Chunk mining ---
         # Always attempt as last resort.
@@ -2351,7 +2562,7 @@ class RepoMiner:
             return []
 
         # Determine chunk size from first eligible model
-        chain = model_selector.build_escalation_chain(0)
+        chain = self._available_escalation_chain(model_selector, 0)
         if not chain:
             return []
 
@@ -2406,7 +2617,10 @@ class RepoMiner:
 
             est = model_selector.estimate_prompt_tokens(chunk_prompt)
             try:
-                best_agent, best_model = await model_selector.select_best_model(est)
+                best_agent, best_model = await self._select_non_quarantined_model(
+                    model_selector,
+                    est,
+                )
             except ValueError:
                 break
 
@@ -2439,6 +2653,7 @@ class RepoMiner:
                     "Mining %s chunk %d/%d failed: %s",
                     repo_name, i + 1, len(chunks), e,
                 )
+                self._quarantine_model_if_hard_failure(best_model, e)
 
         deduped = self._deduplicate_chunk_findings(all_findings)
         return deduped[:_MAX_FINDINGS_PER_REPO]
@@ -2761,6 +2976,13 @@ class RepoMiner:
                 repo_name=repo_name, repo_path=str(repo_path),
                 error="No recognizable source files found",
             )
+        nonempty_zones = {
+            brain_name: zone
+            for brain_name, zone in zones.items()
+            if zone.file_count > 0
+        }
+        if nonempty_zones:
+            zones = nonempty_zones
 
         if len(zones) == 1:
             # Single-language repo → standard single-brain path
@@ -2790,6 +3012,21 @@ class RepoMiner:
         # Mine each zone with its brain (largest zone first)
         for zone_brain, zone in sorted(zones.items(), key=lambda x: -x[1].file_count):
             zone_start = time.monotonic()
+            if should_skip_polyglot_zone(zone, len(zones)):
+                logger.info(
+                    "Skipping %s zone=%s (%d files) below paid polyglot threshold",
+                    repo_name, zone_brain, zone.file_count,
+                )
+                brain_breakdown.append(PolyglotMiningResult(
+                    brain=zone_brain,
+                    error=(
+                        f"skipped_small_polyglot_zone: "
+                        f"{zone.file_count} < {_MIN_ZONE_FILES}"
+                    ),
+                    duration_seconds=0.0,
+                ))
+                continue
+
             brain_config = self.config.mining.brains.get(
                 zone_brain,
                 self.config.mining.brains.get("misc", BrainConfig()),
@@ -2825,19 +3062,25 @@ class RepoMiner:
             # Pass 2: Knowledge overlap
             overlap = await self._assess_knowledge_overlap(repo_name, domain_info)
 
-            # Pass 3: LLM mining with recovery
-            template = self._get_prompt_template(brain_config.prompt)
-            prompt = template.replace("{repo_content}", repo_content)
-            context_lines = self._build_mining_context(domain_info, overlap)
-            if context_lines:
-                prompt = "\n".join(context_lines) + "\n\n" + prompt
-
             token_budget = {
                 "small": 4096, "medium": 6144, "large": 8192,
             }.get(domain_info["complexity"], 6144)
 
             model_selector = MiningModelSelector(self.config, self.repository)
-            estimated_tokens = model_selector.estimate_prompt_tokens(prompt)
+            repo_content, file_count, prompt, estimated_tokens = (
+                self._cap_repo_content_for_prompt_budget(
+                    repo_path=repo_path,
+                    repo_name=repo_name,
+                    repo_content=repo_content,
+                    file_count=file_count,
+                    brain=zone_brain,
+                    brain_config=brain_config,
+                    domain_info=domain_info,
+                    overlap=overlap,
+                    secret_scan_files=secret_scan_files,
+                    language_filter=zone.file_extensions,
+                )
+            )
 
             response, findings, recovery_attempts, recovery_strategy = (
                 await self._mine_with_recovery(
@@ -2994,15 +3237,6 @@ class RepoMiner:
             overlap.suggested_focus,
         )
 
-        # === PASS 3: Focused Deep-Dive Mining (LLM call, brain-aware) ===
-        template = self._get_prompt_template(brain_config.prompt)
-        prompt = template.replace("{repo_content}", repo_content)
-
-        # Build structured context from Pass 1 + Pass 2
-        context_lines = self._build_mining_context(domain_info, overlap)
-        if context_lines:
-            prompt = "\n".join(context_lines) + "\n\n" + prompt
-
         # Adaptive token budget based on repo complexity
         token_budget = {
             "small": 4096,
@@ -3012,7 +3246,19 @@ class RepoMiner:
 
         # --- Self-recovering LLM call with model escalation ---
         model_selector = MiningModelSelector(self.config, self.repository)
-        estimated_tokens = model_selector.estimate_prompt_tokens(prompt)
+        repo_content, file_count, prompt, estimated_tokens = (
+            self._cap_repo_content_for_prompt_budget(
+                repo_path=repo_path,
+                repo_name=repo_name,
+                repo_content=repo_content,
+                file_count=file_count,
+                brain=brain,
+                brain_config=brain_config,
+                domain_info=domain_info,
+                overlap=overlap,
+                secret_scan_files=secret_scan_files,
+            )
+        )
         logger.info(
             "Estimated prompt tokens for %s: ~%dK (brain=%s)",
             repo_name, estimated_tokens // 1000, brain,
@@ -3227,27 +3473,17 @@ class RepoMiner:
 
         logger.debug("Stored finding '%s' as methodology %s", finding.title, methodology.id)
 
-        # Build a reusable executable action template when the finding includes
-        # concrete runbook steps and checks.
-        if finding.execution_steps or finding.acceptance_checks:
-            action_template = ActionTemplate(
-                title=finding.title[:200],
-                problem_pattern=finding.description[:2000],
-                execution_steps=finding.execution_steps,
-                acceptance_checks=finding.acceptance_checks,
-                rollback_steps=finding.rollback_steps,
-                preconditions=finding.preconditions,
-                source_methodology_id=methodology.id,
-                source_repo=finding.source_repo,
-                confidence=finding.relevance_score,
-            )
-            await repo.create_action_template(action_template)
-            finding.action_template_id = action_template.id
-            logger.debug(
-                "Created action template %s for finding '%s'",
-                action_template.id,
-                finding.title,
-            )
+        action_template = self._build_action_template_from_finding(
+            finding,
+            methodology.id,
+        )
+        await repo.create_action_template(action_template)
+        finding.action_template_id = action_template.id
+        logger.debug(
+            "Created action template %s for finding '%s'",
+            action_template.id,
+            finding.title,
+        )
 
         # Trigger capability assimilation
         if run_assimilation and self.assimilation_engine is not None:

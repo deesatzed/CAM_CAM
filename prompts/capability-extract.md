@@ -43,6 +43,8 @@ Use one of: analysis, transformation, detection, generation, validation, optimiz
 Use lowercase_snake_case. Examples: ml_training, web_development, testing, security, data_processing, code_quality, api_design, database, devops, documentation, error_handling, performance, refactoring, architecture
 
 ## Rules
+- CRITICAL: Return a single valid JSON object in the message content. Do not put
+  the answer only in reasoning. Do not include prose before or after the JSON.
 - Extract REAL inputs and outputs based on what the code actually consumes and produces
 - Domain tags should reflect the actual problem domain, not generic software terms
 - can_chain_after: what types of capabilities typically produce this capability's inputs

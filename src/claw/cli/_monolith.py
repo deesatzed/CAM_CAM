@@ -16,6 +16,7 @@ Advanced groups:
   doctor <subcommand>    — preflight and environment diagnostics
   kb <subcommand>        — low-level knowledge browser
   self-enhance <sub>     — self-enhancement pipeline (clone, validate, swap)
+  evolution <subcommand> — serial champion/challenger evolution
   cag <subcommand>       — CAG cache-augmented generation (vectorless retrieval)
 """
 
@@ -27,6 +28,7 @@ import json
 import logging
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -108,6 +110,12 @@ self_enhance_app = typer.Typer(
 ab_test_app = typer.Typer(
     name="ab-test",
     help="A/B knowledge ablation testing — prove whether knowledge injection improves outcomes",
+    no_args_is_help=True,
+)
+
+evolution_app = typer.Typer(
+    name="evolution",
+    help="Serial champion/challenger evolution — autonomous budget-bound improvement loop",
     no_args_is_help=True,
 )
 
@@ -9844,6 +9852,7 @@ app.add_typer(kb_app, name="kb")
 app.add_typer(pulse_app, name="pulse")
 app.add_typer(self_enhance_app, name="self-enhance")
 app.add_typer(ab_test_app, name="ab-test")
+app.add_typer(evolution_app, name="evolution")
 app.add_typer(security_app, name="security")
 app.add_typer(cag_app, name="cag")
 
@@ -12583,6 +12592,411 @@ def ab_test_stop() -> None:
 
     asyncio.run(_run())
     console.print("[green]Knowledge ablation test stopped and data cleared.[/green]")
+
+
+# ---------------------------------------------------------------------------
+# Serial Evolution Commands
+# ---------------------------------------------------------------------------
+
+
+async def _serial_evolution_runner(
+    config: Optional[str] = None,
+    live_mining: bool = False,
+    live_repo_timeout_seconds: int = 180,
+):
+    from claw.core.config import load_config
+    from claw.db.engine import DatabaseEngine
+    from claw.db.repository import Repository
+    from claw.evolution.serial import (
+        LiveMiningBinding,
+        PromotionGateConfig,
+        SerialEvolutionRunner,
+    )
+
+    cfg_path = Path(config).resolve() if config else None
+    cfg = load_config(cfg_path)
+    repo_path = cfg_path.parent if cfg_path else Path.cwd().resolve()
+    db_path_raw = str(cfg.database.db_path)
+    if db_path_raw == ":memory:":
+        db_path = None
+    else:
+        db_path = Path(db_path_raw)
+        if not db_path.is_absolute():
+            db_path = (repo_path / db_path).resolve()
+        cfg.database.db_path = str(db_path)
+
+    if live_mining:
+        from claw.core.models import Project
+        from claw.db.embeddings import EmbeddingEngine
+        from claw.llm.client import LLMClient
+
+        engine = DatabaseEngine(cfg.database)
+        await engine.connect()
+        await engine.apply_migrations()
+        await engine.initialize_schema()
+        repository = Repository(engine)
+        embeddings = EmbeddingEngine(cfg.embeddings)
+        llm_client = LLMClient(cfg.llm)
+
+        class _LiveEvolutionContext:
+            async def close(self) -> None:
+                try:
+                    embeddings.close()
+                finally:
+                    await llm_client.close()
+                    await engine.close()
+
+        async def _build_challenger_mining_binding(
+            challenger: dict[str, Any],
+        ) -> LiveMiningBinding:
+            from claw.core.factory import _build_search_stack
+            from claw.db.engine import DatabaseEngine
+            from claw.evolution.assimilation import CapabilityAssimilationEngine
+            from claw.miner import RepoMiner
+
+            challenger_db = challenger.get("db_path")
+            if not challenger_db:
+                raise RuntimeError("Live mining requires an isolated challenger DB")
+
+            challenger_config = cfg.model_copy(deep=True)
+            challenger_config.database.db_path = str(Path(challenger_db).resolve())
+            challenger_engine = DatabaseEngine(challenger_config.database)
+            await challenger_engine.connect()
+            await challenger_engine.apply_migrations()
+            await challenger_engine.initialize_schema()
+
+            search = _build_search_stack(
+                challenger_config,
+                challenger_engine,
+                embeddings,
+            )
+            assimilation_engine = CapabilityAssimilationEngine(
+                repository=search.repository,
+                llm_client=llm_client,
+                config=challenger_config,
+            )
+            miner = RepoMiner(
+                repository=search.repository,
+                llm_client=llm_client,
+                semantic_memory=search.semantic_memory,
+                config=challenger_config,
+                governance=search.governance,
+                assimilation_engine=assimilation_engine,
+            )
+            project = await search.repository.get_project_by_repo_path(str(repo_path))
+            if project is None:
+                project = await search.repository.create_project(
+                    Project(
+                        name=repo_path.name,
+                        repo_path=str(repo_path),
+                        tech_stack={
+                            "purpose": "serial_evolution_challenger",
+                            "source_champion_db": str(db_path) if db_path else None,
+                        },
+                    )
+                )
+
+            async def _close() -> None:
+                await challenger_engine.close()
+
+            return LiveMiningBinding(
+                repo_miner=miner,
+                target_project_id=project.id,
+                db_path=Path(challenger_config.database.db_path),
+                close=_close,
+            )
+
+        return SerialEvolutionRunner(
+            repository,
+            repo_path=repo_path,
+            db_path=db_path,
+            gate_config=PromotionGateConfig(require_validation_gate=True),
+            live_mining_factory=_build_challenger_mining_binding,
+            live_repo_timeout_seconds=live_repo_timeout_seconds,
+            require_live_source_preflight=True,
+            repo_preflight_config=cfg,
+        ), _LiveEvolutionContext()
+
+    engine = DatabaseEngine(cfg.database)
+    await engine.connect()
+    await engine.apply_migrations()
+    await engine.initialize_schema()
+    return SerialEvolutionRunner(
+        Repository(engine),
+        repo_path=repo_path,
+        db_path=db_path,
+    ), engine
+
+
+@evolution_app.command(name="register")
+def evolution_register(
+    version_label: str = typer.Option("v0", "--version-label", help="Champion version label"),
+    force_new: bool = typer.Option(False, "--force-new", help="Create a new champion record even if one exists"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Register the current workspace as the serial evolution champion."""
+    _setup_logging(verbose)
+
+    async def _run() -> dict[str, Any]:
+        runner, engine = await _serial_evolution_runner(config)
+        try:
+            return await runner.register_current_workspace(
+                version_label=version_label,
+                force_new=force_new,
+            )
+        finally:
+            await engine.close()
+
+    champion = asyncio.run(_run())
+    console.print("[green]Champion registered.[/green]")
+    console.print(f"  id: {champion['id']}")
+    console.print(f"  version: {champion['version_label']}")
+    console.print(f"  repo: {champion['repo_path']}")
+    console.print(f"  git_ref: {champion.get('git_ref') or 'unknown'}")
+
+
+@evolution_app.command(name="run")
+def evolution_run(
+    layer: Optional[str] = typer.Option(None, "--layer", help="Override layer: data_feature, prompt_config, strategy_policy, model"),
+    objective: Optional[str] = typer.Option(None, "--objective", help="Cycle objective statement"),
+    mining_dir: Optional[str] = typer.Option(None, "--mining-dir", help="Folder of repos to mine for data-feature cycles"),
+    repos_per_round: int = typer.Option(3, "--repos-per-round", help="Repos to mine from --mining-dir in this cycle"),
+    materialize_copy: bool = typer.Option(False, "--materialize-copy", help="Create an isolated filesystem copy for the challenger"),
+    allow_model_layer: bool = typer.Option(False, "--allow-model-layer", help="Allow model-level cycles in this conservative runner"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Run one conservative champion/challenger evolution cycle."""
+    _setup_logging(verbose)
+
+    async def _run():
+        runner, engine = await _serial_evolution_runner(config)
+        try:
+            return await runner.run_minimal_cycle(
+                layer_override=layer,
+                objective=objective,
+                materialize_copy=materialize_copy,
+                allow_model_layer=allow_model_layer,
+                mining_dir=Path(mining_dir).resolve() if mining_dir else None,
+                repos_per_round=repos_per_round,
+            )
+        finally:
+            await engine.close()
+
+    try:
+        result = asyncio.run(_run())
+    except RuntimeError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    console.print("[green]Evolution cycle recorded.[/green]")
+    console.print(f"  run: {result.run_id}")
+    console.print(f"  cycle: {result.cycle_number}")
+    console.print(f"  layer: {result.layer}")
+    console.print(f"  decision: {result.decision}")
+    console.print(f"  reason: {result.decision_reason}")
+    console.print(f"  score delta: {result.promotion_score_delta:+.4f}")
+    console.print(f"  report: {result.report_path}")
+    if result.decision == "pause":
+        console.print("[dim]Manual promotion is available with: cam evolution approve RUN_ID[/dim]")
+
+
+@evolution_app.command(name="loop")
+def evolution_loop(
+    mining_dir: str = typer.Argument(..., help="Folder containing repos to mine"),
+    repos_per_round: int = typer.Option(3, "--repos-per-round", help="Number of repos to mine each round"),
+    max_rounds: Optional[int] = typer.Option(None, "--max-rounds", help="Optional hard cap on rounds"),
+    min_budget_remaining: float = typer.Option(0.01, "--min-budget-remaining", help="Minimum OpenRouter key credits required before starting another round"),
+    live_repo_timeout_seconds: int = typer.Option(180, "--live-repo-timeout-seconds", help="Hard timeout for each live-mined repo"),
+    summary_only: bool = typer.Option(False, "--summary-only", help="Do not invoke live LLM mining; record deterministic repo summaries only"),
+    skip_live_probe: bool = typer.Option(False, "--skip-live-probe", help="Skip the tiny OpenRouter model probe before live mining"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Run autonomous data-feature evolution until OpenRouter budget or repo supply stops."""
+    _setup_logging(verbose)
+
+    async def _run():
+        runner, engine = await _serial_evolution_runner(
+            config,
+            live_mining=not summary_only,
+            live_repo_timeout_seconds=live_repo_timeout_seconds,
+        )
+        try:
+            return await runner.run_autonomous_loop(
+                mining_dir=Path(mining_dir).resolve(),
+                repos_per_round=repos_per_round,
+                max_rounds=max_rounds,
+                min_budget_remaining_credits=min_budget_remaining,
+                require_live_probe=(not summary_only and not skip_live_probe),
+            )
+        finally:
+            await engine.close()
+
+    try:
+        result = asyncio.run(_run())
+    except (RuntimeError, ValueError, FileNotFoundError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    console.print("[green]Autonomous evolution loop stopped.[/green]")
+    console.print(f"  rounds_attempted: {result.rounds_attempted}")
+    console.print(f"  stop_reason: {result.stop_reason}")
+    if result.last_budget_status.remaining_credits is not None:
+        console.print(f"  budget_remaining: {result.last_budget_status.remaining_credits:.4f}")
+    if result.live_probe_status is not None:
+        probe = result.live_probe_status
+        console.print(
+            f"  live_probe: {'ok' if probe.can_continue else 'failed'} "
+            f"model={probe.model_used or 'none'} tokens={probe.tokens_used}"
+        )
+        if probe.failures:
+            console.print(f"  live_probe_failures: {len(probe.failures)}")
+    for cycle in result.cycle_results:
+        console.print(
+            f"  cycle {cycle.cycle_number}: {cycle.decision} "
+            f"layer={cycle.layer} delta={cycle.promotion_score_delta:+.4f}"
+        )
+
+
+@evolution_app.command(name="status")
+def evolution_status(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Show current champion, active run, and recent serial evolution decisions."""
+    _setup_logging(verbose)
+
+    async def _run() -> dict[str, Any]:
+        runner, engine = await _serial_evolution_runner(config)
+        try:
+            return await runner.status()
+        finally:
+            await engine.close()
+
+    status = asyncio.run(_run())
+    champion = status.get("champion")
+    if champion:
+        console.print("[bold]Current Champion[/bold]")
+        console.print(f"  id: {champion['id']}")
+        console.print(f"  version: {champion['version_label']}")
+        console.print(f"  repo: {champion['repo_path']}")
+        console.print(f"  db: {champion.get('db_path') or 'unset'}")
+        console.print(f"  pointer: {status.get('champion_pointer')}")
+    else:
+        console.print("[yellow]No champion registered.[/yellow]")
+
+    active = status.get("active_run")
+    console.print("\n[bold]Active Run[/bold]")
+    if active:
+        console.print(f"  {active['id']} status={active['status']} layer={active['layer']}")
+    else:
+        console.print("  none")
+
+    table = Table(title="Recent Evolution Runs")
+    table.add_column("Cycle", justify="right")
+    table.add_column("Run")
+    table.add_column("Layer")
+    table.add_column("Status")
+    table.add_column("Objective", max_width=48)
+    for run in status.get("recent_runs", []):
+        table.add_row(
+            str(run["cycle_number"]),
+            run["id"][:8],
+            run["layer"],
+            run["status"],
+            run["objective"],
+        )
+    console.print(table)
+
+    decision_table = Table(title="Recent Decisions")
+    decision_table.add_column("Decision")
+    decision_table.add_column("Run")
+    decision_table.add_column("Reason", max_width=60)
+    for decision in status.get("recent_decisions", []):
+        decision_table.add_row(
+            decision["decision"],
+            decision["run_id"][:8],
+            decision["reason"],
+        )
+    console.print(decision_table)
+
+
+@evolution_app.command(name="champion-db")
+def evolution_champion_db(
+    export_env: bool = typer.Option(False, "--export-env", help="Print shell export commands for downstream use"),
+    sync_pointer: bool = typer.Option(True, "--sync-pointer/--no-sync-pointer", help="Rewrite current_champion.json before printing"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Print the active champion DB pointer for downstream CAM commands."""
+    _setup_logging(verbose)
+
+    async def _run() -> dict[str, Any]:
+        runner, engine = await _serial_evolution_runner(config)
+        try:
+            if sync_pointer:
+                return await runner.sync_champion_pointer()
+            status = await runner.status()
+            champion = status.get("champion")
+            if not champion:
+                raise ValueError("No current evolution champion is registered")
+            return {
+                "champion": champion,
+                "pointer_path": status.get("champion_pointer"),
+            }
+        finally:
+            await engine.close()
+
+    try:
+        payload = asyncio.run(_run())
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    champion = payload["champion"]
+    db_path = champion.get("db_path")
+    if export_env:
+        console.print(f"export CLAW_USE_EVOLUTION_CHAMPION=1")
+        if db_path:
+            console.print(f"export CLAW_DB_PATH={shlex.quote(str(db_path))}")
+        return
+
+    console.print("[bold]Champion DB[/bold]")
+    console.print(f"  instance: {champion['id']}")
+    console.print(f"  version: {champion['version_label']}")
+    console.print(f"  db: {db_path or 'unset'}")
+    console.print(f"  pointer: {payload.get('pointer_path')}")
+
+
+@evolution_app.command(name="approve", hidden=True)
+def evolution_approve(
+    run_id: str = typer.Argument(..., help="Paused evolution run to promote"),
+    decided_by: str = typer.Option("operator", "--decided-by", help="Decision actor label"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Manually promote a paused challenger after reviewing its decision report."""
+    _setup_logging(verbose)
+
+    async def _run() -> dict[str, Any]:
+        runner, engine = await _serial_evolution_runner(config)
+        try:
+            return await runner.approve_paused_run(run_id, decided_by=decided_by)
+        finally:
+            await engine.close()
+
+    try:
+        decision = asyncio.run(_run())
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1)
+
+    console.print("[green]Paused challenger promoted.[/green]")
+    console.print(f"  run: {decision['run_id']}")
+    console.print(f"  promoted_instance: {decision.get('promoted_instance_id')}")
+    console.print(f"  rollback_instance: {decision.get('rollback_instance_id')}")
 
 
 # ---------------------------------------------------------------------------

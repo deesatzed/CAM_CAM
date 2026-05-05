@@ -45,6 +45,10 @@ class ModelNotFoundError(LLMError):
     """Requested model not available."""
 
 
+class ModelRejectedError(ModelNotFoundError):
+    """Provider rejected the model request as non-retryable."""
+
+
 class ResponseParseError(LLMError):
     """Failed to parse LLM response."""
 

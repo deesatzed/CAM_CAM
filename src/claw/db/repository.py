@@ -92,6 +92,323 @@ class Repository:
         self.engine = engine
 
     # -------------------------------------------------------------------
+    # Serial evolution
+    # -------------------------------------------------------------------
+
+    async def create_evolution_instance(self, instance: dict[str, Any]) -> dict[str, Any]:
+        """Create a champion/challenger/archive lineage record."""
+        instance_id = instance.get("id") or str(uuid.uuid4())
+        await self.engine.execute(
+            """INSERT INTO evolution_instances
+               (id, parent_instance_id, role, version_label, repo_path, db_path,
+                git_ref, config_hash, code_hash, knowledge_hash, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                instance_id,
+                instance.get("parent_instance_id"),
+                instance["role"],
+                instance["version_label"],
+                instance["repo_path"],
+                instance.get("db_path"),
+                instance.get("git_ref"),
+                instance.get("config_hash"),
+                instance.get("code_hash"),
+                instance.get("knowledge_hash"),
+                instance.get("notes"),
+            ],
+        )
+        row = await self.get_evolution_instance(instance_id)
+        return row or {**instance, "id": instance_id}
+
+    async def get_evolution_instance(self, instance_id: str) -> Optional[dict[str, Any]]:
+        return await self.engine.fetch_one(
+            "SELECT * FROM evolution_instances WHERE id = ?",
+            [instance_id],
+        )
+
+    async def get_current_evolution_champion(self) -> Optional[dict[str, Any]]:
+        return await self.engine.fetch_one(
+            """SELECT * FROM evolution_instances
+               WHERE role = 'champion'
+               ORDER BY created_at DESC
+               LIMIT 1"""
+        )
+
+    async def list_evolution_instances(
+        self,
+        role: Optional[str] = None,
+        limit: int = 25,
+    ) -> list[dict[str, Any]]:
+        if role:
+            return await self.engine.fetch_all(
+                """SELECT * FROM evolution_instances
+                   WHERE role = ?
+                   ORDER BY created_at DESC
+                   LIMIT ?""",
+                [role, limit],
+            )
+        return await self.engine.fetch_all(
+            """SELECT * FROM evolution_instances
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            [limit],
+        )
+
+    async def update_evolution_instance_role(
+        self,
+        instance_id: str,
+        role: str,
+        notes: Optional[str] = None,
+    ) -> None:
+        archived_at_expr = (
+            "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+            if role in {"archived", "rejected"}
+            else "NULL"
+        )
+        await self.engine.execute(
+            f"""UPDATE evolution_instances
+                SET role = ?, notes = COALESCE(?, notes), archived_at = {archived_at_expr}
+                WHERE id = ?""",
+            [role, notes, instance_id],
+        )
+
+    async def create_evolution_run(self, run: dict[str, Any]) -> dict[str, Any]:
+        run_id = run.get("id") or str(uuid.uuid4())
+        await self.engine.execute(
+            """INSERT INTO evolution_runs
+               (id, champion_instance_id, challenger_instance_id, cycle_number,
+                layer, status, objective, selected_by)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                run_id,
+                run["champion_instance_id"],
+                run.get("challenger_instance_id"),
+                run["cycle_number"],
+                run["layer"],
+                run.get("status", "planned"),
+                run["objective"],
+                run.get("selected_by", "rotation"),
+            ],
+        )
+        row = await self.get_evolution_run(run_id)
+        return row or {**run, "id": run_id}
+
+    async def get_evolution_run(self, run_id: str) -> Optional[dict[str, Any]]:
+        return await self.engine.fetch_one(
+            "SELECT * FROM evolution_runs WHERE id = ?",
+            [run_id],
+        )
+
+    async def get_active_evolution_run(self) -> Optional[dict[str, Any]]:
+        return await self.engine.fetch_one(
+            """SELECT * FROM evolution_runs
+               WHERE status IN ('planned','mining','mutating','training','evaluating','paused')
+               ORDER BY started_at DESC
+               LIMIT 1"""
+        )
+
+    async def get_latest_evolution_run(self) -> Optional[dict[str, Any]]:
+        return await self.engine.fetch_one(
+            """SELECT * FROM evolution_runs
+               ORDER BY cycle_number DESC, started_at DESC
+               LIMIT 1"""
+        )
+
+    async def list_evolution_runs(self, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.engine.fetch_all(
+            """SELECT * FROM evolution_runs
+               ORDER BY cycle_number DESC, started_at DESC
+               LIMIT ?""",
+            [limit],
+        )
+
+    async def update_evolution_run_status(
+        self,
+        run_id: str,
+        status: str,
+        failure_reason: Optional[str] = None,
+    ) -> None:
+        completed_statuses = {"promoted", "rejected", "failed", "paused"}
+        completed_expr = (
+            "strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+            if status in completed_statuses
+            else "completed_at"
+        )
+        await self.engine.execute(
+            f"""UPDATE evolution_runs
+                SET status = ?, failure_reason = COALESCE(?, failure_reason),
+                    completed_at = {completed_expr}
+                WHERE id = ?""",
+            [status, failure_reason, run_id],
+        )
+
+    async def attach_evolution_challenger(self, run_id: str, challenger_instance_id: str) -> None:
+        await self.engine.execute(
+            "UPDATE evolution_runs SET challenger_instance_id = ? WHERE id = ?",
+            [challenger_instance_id, run_id],
+        )
+
+    async def record_evolution_mined_input(self, item: dict[str, Any]) -> dict[str, Any]:
+        item_id = item.get("id") or str(uuid.uuid4())
+        payload = item.get("extracted_payload", {})
+        await self.engine.execute(
+            """INSERT INTO evolution_mined_inputs
+               (id, run_id, source_type, source_uri, source_ref, license_type,
+                novelty_score, relevance_score, accepted, rejection_reason, extracted_payload)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                item_id,
+                item["run_id"],
+                item["source_type"],
+                item["source_uri"],
+                item.get("source_ref"),
+                item.get("license_type"),
+                item.get("novelty_score"),
+                item.get("relevance_score"),
+                1 if item.get("accepted") else 0,
+                item.get("rejection_reason"),
+                _json_dumps(payload),
+            ],
+        )
+        row = await self.engine.fetch_one(
+            "SELECT * FROM evolution_mined_inputs WHERE id = ?",
+            [item_id],
+        )
+        return row or {**item, "id": item_id}
+
+    async def list_evolution_mined_inputs(self, run_id: str) -> list[dict[str, Any]]:
+        return await self.engine.fetch_all(
+            """SELECT * FROM evolution_mined_inputs
+               WHERE run_id = ?
+               ORDER BY created_at ASC""",
+            [run_id],
+        )
+
+    async def record_evolution_mutation(self, mutation: dict[str, Any]) -> dict[str, Any]:
+        mutation_id = mutation.get("id") or str(uuid.uuid4())
+        await self.engine.execute(
+            """INSERT INTO evolution_mutations
+               (id, run_id, layer, mutation_type, target_ref, before_hash, after_hash,
+                mutation_manifest, rollback_manifest)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                mutation_id,
+                mutation["run_id"],
+                mutation["layer"],
+                mutation["mutation_type"],
+                mutation["target_ref"],
+                mutation.get("before_hash"),
+                mutation.get("after_hash"),
+                _json_dumps(mutation.get("mutation_manifest", {})),
+                _json_dumps(mutation.get("rollback_manifest", {})),
+            ],
+        )
+        row = await self.engine.fetch_one(
+            "SELECT * FROM evolution_mutations WHERE id = ?",
+            [mutation_id],
+        )
+        return row or {**mutation, "id": mutation_id}
+
+    async def list_evolution_mutations(self, run_id: str) -> list[dict[str, Any]]:
+        return await self.engine.fetch_all(
+            """SELECT * FROM evolution_mutations
+               WHERE run_id = ?
+               ORDER BY created_at ASC""",
+            [run_id],
+        )
+
+    async def record_evolution_evaluation(self, evaluation: dict[str, Any]) -> dict[str, Any]:
+        evaluation_id = evaluation.get("id") or str(uuid.uuid4())
+        await self.engine.execute(
+            """INSERT INTO evolution_evaluations
+               (id, run_id, eval_slice, champion_score, challenger_score,
+                delta_score, p_value, effect_size, bootstrap_ci_low,
+                bootstrap_ci_high, passed, metrics_json)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                evaluation_id,
+                evaluation["run_id"],
+                evaluation["eval_slice"],
+                evaluation["champion_score"],
+                evaluation["challenger_score"],
+                evaluation["delta_score"],
+                evaluation.get("p_value"),
+                evaluation.get("effect_size"),
+                evaluation.get("bootstrap_ci_low"),
+                evaluation.get("bootstrap_ci_high"),
+                1 if evaluation.get("passed") else 0,
+                _json_dumps(evaluation.get("metrics", evaluation.get("metrics_json", {}))),
+            ],
+        )
+        row = await self.engine.fetch_one(
+            "SELECT * FROM evolution_evaluations WHERE id = ?",
+            [evaluation_id],
+        )
+        return row or {**evaluation, "id": evaluation_id}
+
+    async def list_evolution_evaluations(self, run_id: str) -> list[dict[str, Any]]:
+        return await self.engine.fetch_all(
+            """SELECT * FROM evolution_evaluations
+               WHERE run_id = ?
+               ORDER BY created_at ASC""",
+            [run_id],
+        )
+
+    async def record_evolution_decision(self, decision: dict[str, Any]) -> dict[str, Any]:
+        decision_id = decision.get("id") or str(uuid.uuid4())
+        await self.engine.execute(
+            """INSERT INTO evolution_decisions
+               (id, run_id, decision, decided_by, reason, gate_report,
+                promoted_instance_id, rollback_instance_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                decision_id,
+                decision["run_id"],
+                decision["decision"],
+                decision.get("decided_by", "promotion_gate"),
+                decision["reason"],
+                _json_dumps(decision.get("gate_report", {})),
+                decision.get("promoted_instance_id"),
+                decision.get("rollback_instance_id"),
+            ],
+        )
+        row = await self.engine.fetch_one(
+            "SELECT * FROM evolution_decisions WHERE id = ?",
+            [decision_id],
+        )
+        return row or {**decision, "id": decision_id}
+
+    async def list_evolution_decisions(self, limit: int = 20) -> list[dict[str, Any]]:
+        return await self.engine.fetch_all(
+            """SELECT * FROM evolution_decisions
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            [limit],
+        )
+
+    async def record_evolution_monitor_event(self, event: dict[str, Any]) -> dict[str, Any]:
+        event_id = event.get("id") or str(uuid.uuid4())
+        await self.engine.execute(
+            """INSERT INTO evolution_monitor_events
+               (id, run_id, instance_id, severity, event_type, message, payload)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            [
+                event_id,
+                event.get("run_id"),
+                event.get("instance_id"),
+                event["severity"],
+                event["event_type"],
+                event["message"],
+                _json_dumps(event.get("payload", {})),
+            ],
+        )
+        row = await self.engine.fetch_one(
+            "SELECT * FROM evolution_monitor_events WHERE id = ?",
+            [event_id],
+        )
+        return row or {**event, "id": event_id}
+
+    # -------------------------------------------------------------------
     # Projects
     # -------------------------------------------------------------------
 
@@ -157,8 +474,8 @@ class Repository:
         await self.engine.execute(
             """INSERT INTO tasks (id, project_id, title, description, status, priority,
                task_type, recommended_agent, assigned_agent, action_template_id,
-               execution_steps, acceptance_checks)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               execution_steps, acceptance_checks, excluded_agents)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             [
                 task.id,
                 task.project_id,
@@ -172,6 +489,7 @@ class Repository:
                 task.action_template_id,
                 json.dumps(task.execution_steps),
                 json.dumps(task.acceptance_checks),
+                json.dumps(task.excluded_agents),
             ],
         )
         return task
@@ -222,6 +540,98 @@ class Repository:
         await self.engine.execute(
             "UPDATE tasks SET escalation_count = escalation_count + 1, updated_at = ? WHERE id = ?",
             [now, task_id],
+        )
+
+    async def update_task_excluded_agents(self, task_id: str, excluded: list[str]) -> None:
+        """Persist excluded_agents list for a task (agent rotation bookkeeping)."""
+        now = datetime.now(UTC).isoformat()
+        await self.engine.execute(
+            "UPDATE tasks SET excluded_agents = ?, updated_at = ? WHERE id = ?",
+            [json.dumps(excluded), now, task_id],
+        )
+
+    # ------------------------------------------------------------------
+    # Failure Knowledge — cross-task preventive patterns
+    # ------------------------------------------------------------------
+
+    async def record_failure_knowledge(
+        self,
+        error_signature: str,
+        error_category: str,
+        diagnosis: str,
+        prevention_hint: str,
+        agent_id: str | None = None,
+        task_type: str | None = None,
+        project_id: str | None = None,
+        source_task_id: str | None = None,
+    ) -> None:
+        """Upsert a failure knowledge entry.
+
+        If an entry with the same error_signature already exists, increment
+        occurrence_count and update diagnosis/prevention_hint. Otherwise insert.
+        """
+        existing = await self.engine.fetch_one(
+            "SELECT id, occurrence_count FROM failure_knowledge WHERE error_signature = ?",
+            [error_signature],
+        )
+        now = datetime.now(UTC).isoformat()
+        if existing:
+            await self.engine.execute(
+                """UPDATE failure_knowledge
+                   SET occurrence_count = occurrence_count + 1,
+                       diagnosis = ?, prevention_hint = ?, updated_at = ?
+                   WHERE id = ?""",
+                [diagnosis, prevention_hint, now, existing["id"]],
+            )
+        else:
+            import uuid as _uuid
+            fk_id = str(_uuid.uuid4())
+            await self.engine.execute(
+                """INSERT INTO failure_knowledge
+                   (id, error_signature, error_category, diagnosis, prevention_hint,
+                    agent_id, task_type, project_id, source_task_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [fk_id, error_signature, error_category, diagnosis, prevention_hint,
+                 agent_id, task_type, project_id, source_task_id],
+            )
+
+    async def get_failure_knowledge_for_context(
+        self,
+        task_type: str | None = None,
+        project_id: str | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Retrieve unresolved failure knowledge entries for enrichment.
+
+        Filters by task_type and/or project_id if provided. Returns the most
+        frequently occurring patterns first.
+        """
+        conditions = ["resolved = 0"]
+        params: list = []
+        if task_type:
+            conditions.append("(task_type = ? OR task_type IS NULL)")
+            params.append(task_type)
+        if project_id:
+            conditions.append("(project_id = ? OR project_id IS NULL)")
+            params.append(project_id)
+        where_clause = " AND ".join(conditions)
+        params.append(limit)
+        rows = await self.engine.fetch_all(
+            f"SELECT * FROM failure_knowledge WHERE {where_clause} ORDER BY occurrence_count DESC LIMIT ?",
+            params,
+        )
+        return rows
+
+    async def mark_failure_knowledge_resolved(
+        self, error_signature: str, resolution_approach: str
+    ) -> None:
+        """Mark a failure knowledge entry as resolved."""
+        now = datetime.now(UTC).isoformat()
+        await self.engine.execute(
+            """UPDATE failure_knowledge
+               SET resolved = 1, resolution_approach = ?, updated_at = ?
+               WHERE error_signature = ? AND resolved = 0""",
+            [resolution_approach, now, error_signature],
         )
 
     async def get_tasks_by_status(self, project_id: str, status: TaskStatus) -> list[Task]:
@@ -3127,6 +3537,10 @@ def _row_to_task(row: dict[str, Any]) -> Task:
     if isinstance(acceptance_checks, str):
         acceptance_checks = json.loads(acceptance_checks)
 
+    excluded_agents = row.get("excluded_agents", "[]")
+    if isinstance(excluded_agents, str):
+        excluded_agents = json.loads(excluded_agents)
+
     return Task(
         id=row["id"],
         project_id=row["project_id"],
@@ -3143,6 +3557,7 @@ def _row_to_task(row: dict[str, Any]) -> Task:
         context_snapshot_id=row.get("context_snapshot_id"),
         attempt_count=row.get("attempt_count", 0),
         escalation_count=row.get("escalation_count", 0),
+        excluded_agents=excluded_agents,
         created_at=_parse_dt(row.get("created_at")),
         updated_at=_parse_dt(row.get("updated_at")),
         completed_at=_parse_dt(row.get("completed_at")),

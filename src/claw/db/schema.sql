@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     context_snapshot_id TEXT,
     attempt_count INTEGER DEFAULT 0,
     escalation_count INTEGER DEFAULT 0,
+    excluded_agents TEXT NOT NULL DEFAULT '[]',
     created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     completed_at TEXT
@@ -446,6 +447,123 @@ CREATE INDEX IF NOT EXISTS idx_ab_samples_project ON ab_quality_samples(project_
 CREATE INDEX IF NOT EXISTS idx_ab_samples_variant ON ab_quality_samples(variant_label);
 CREATE INDEX IF NOT EXISTS idx_ab_samples_task ON ab_quality_samples(task_id);
 
+-- 19.5 SERIAL_EVOLUTION (Champion/challenger lineage and promotion records)
+CREATE TABLE IF NOT EXISTS evolution_instances (
+    id TEXT PRIMARY KEY,
+    parent_instance_id TEXT REFERENCES evolution_instances(id) ON DELETE SET NULL,
+    role TEXT NOT NULL CHECK (role IN ('champion','challenger','archived','rejected')),
+    version_label TEXT NOT NULL,
+    repo_path TEXT NOT NULL,
+    db_path TEXT,
+    git_ref TEXT,
+    config_hash TEXT,
+    code_hash TEXT,
+    knowledge_hash TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    archived_at TEXT,
+    notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_instances_role ON evolution_instances(role);
+CREATE INDEX IF NOT EXISTS idx_evolution_instances_parent ON evolution_instances(parent_instance_id);
+
+CREATE TABLE IF NOT EXISTS evolution_runs (
+    id TEXT PRIMARY KEY,
+    champion_instance_id TEXT NOT NULL REFERENCES evolution_instances(id),
+    challenger_instance_id TEXT REFERENCES evolution_instances(id),
+    cycle_number INTEGER NOT NULL,
+    layer TEXT NOT NULL CHECK (layer IN (
+        'data_feature',
+        'strategy_policy',
+        'prompt_config',
+        'model'
+    )),
+    status TEXT NOT NULL DEFAULT 'planned'
+        CHECK (status IN ('planned','mining','mutating','training','evaluating','promoted','rejected','failed','paused')),
+    objective TEXT NOT NULL,
+    started_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    completed_at TEXT,
+    selected_by TEXT NOT NULL DEFAULT 'rotation',
+    failure_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_runs_cycle ON evolution_runs(cycle_number);
+CREATE INDEX IF NOT EXISTS idx_evolution_runs_status ON evolution_runs(status);
+CREATE INDEX IF NOT EXISTS idx_evolution_runs_layer ON evolution_runs(layer);
+
+CREATE TABLE IF NOT EXISTS evolution_mined_inputs (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES evolution_runs(id) ON DELETE CASCADE,
+    source_type TEXT NOT NULL,
+    source_uri TEXT NOT NULL,
+    source_ref TEXT,
+    license_type TEXT,
+    novelty_score REAL,
+    relevance_score REAL,
+    accepted INTEGER NOT NULL DEFAULT 0,
+    rejection_reason TEXT,
+    extracted_payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_mined_run ON evolution_mined_inputs(run_id);
+
+CREATE TABLE IF NOT EXISTS evolution_mutations (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES evolution_runs(id) ON DELETE CASCADE,
+    layer TEXT NOT NULL,
+    mutation_type TEXT NOT NULL,
+    target_ref TEXT NOT NULL,
+    before_hash TEXT,
+    after_hash TEXT,
+    mutation_manifest TEXT NOT NULL DEFAULT '{}',
+    rollback_manifest TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_mutations_run ON evolution_mutations(run_id);
+
+CREATE TABLE IF NOT EXISTS evolution_evaluations (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES evolution_runs(id) ON DELETE CASCADE,
+    eval_slice TEXT NOT NULL,
+    champion_score REAL NOT NULL,
+    challenger_score REAL NOT NULL,
+    delta_score REAL NOT NULL,
+    p_value REAL,
+    effect_size REAL,
+    bootstrap_ci_low REAL,
+    bootstrap_ci_high REAL,
+    passed INTEGER NOT NULL DEFAULT 0,
+    metrics_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_eval_run ON evolution_evaluations(run_id);
+CREATE INDEX IF NOT EXISTS idx_evolution_eval_passed ON evolution_evaluations(passed);
+
+CREATE TABLE IF NOT EXISTS evolution_decisions (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES evolution_runs(id) ON DELETE CASCADE,
+    decision TEXT NOT NULL CHECK (decision IN ('promote','reject','pause','rollback')),
+    decided_by TEXT NOT NULL DEFAULT 'promotion_gate',
+    reason TEXT NOT NULL,
+    gate_report TEXT NOT NULL DEFAULT '{}',
+    promoted_instance_id TEXT REFERENCES evolution_instances(id),
+    rollback_instance_id TEXT REFERENCES evolution_instances(id),
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_decisions_run ON evolution_decisions(run_id);
+CREATE INDEX IF NOT EXISTS idx_evolution_decisions_decision ON evolution_decisions(decision);
+
+CREATE TABLE IF NOT EXISTS evolution_monitor_events (
+    id TEXT PRIMARY KEY,
+    run_id TEXT REFERENCES evolution_runs(id) ON DELETE SET NULL,
+    instance_id TEXT REFERENCES evolution_instances(id) ON DELETE SET NULL,
+    severity TEXT NOT NULL CHECK (severity IN ('info','warning','critical')),
+    event_type TEXT NOT NULL,
+    message TEXT NOT NULL,
+    payload TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_evolution_monitor_run ON evolution_monitor_events(run_id);
+CREATE INDEX IF NOT EXISTS idx_evolution_monitor_severity ON evolution_monitor_events(severity);
+
 -- 20. METHODOLOGY_BANDIT_OUTCOMES (RL bandit stats per methodology × task_type)
 CREATE TABLE IF NOT EXISTS methodology_bandit_outcomes (
     methodology_id TEXT NOT NULL REFERENCES methodologies(id) ON DELETE CASCADE,
@@ -819,3 +937,25 @@ CREATE INDEX IF NOT EXISTS idx_governance_policies_family ON governance_policies
 CREATE INDEX IF NOT EXISTS idx_governance_policies_status ON governance_policies(status);
 CREATE INDEX IF NOT EXISTS idx_mining_missions_run ON mining_missions(run_id);
 CREATE INDEX IF NOT EXISTS idx_mining_missions_status ON mining_missions(status);
+
+-- 41. FAILURE_KNOWLEDGE (cross-task preventive failure patterns)
+CREATE TABLE IF NOT EXISTS failure_knowledge (
+    id TEXT PRIMARY KEY,
+    error_signature TEXT NOT NULL,
+    error_category TEXT NOT NULL,
+    diagnosis TEXT NOT NULL,
+    prevention_hint TEXT NOT NULL,
+    agent_id TEXT,
+    task_type TEXT,
+    project_id TEXT,
+    source_task_id TEXT,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
+    resolved INTEGER NOT NULL DEFAULT 0,
+    resolution_approach TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_failure_knowledge_sig ON failure_knowledge(error_signature);
+CREATE INDEX IF NOT EXISTS idx_failure_knowledge_category ON failure_knowledge(error_category);
+CREATE INDEX IF NOT EXISTS idx_failure_knowledge_task_type ON failure_knowledge(task_type);
+CREATE INDEX IF NOT EXISTS idx_failure_knowledge_resolved ON failure_knowledge(resolved);

@@ -1,10 +1,11 @@
 """Tests for CLAW LLM client and token tracker."""
 
+import httpx
 import pytest
 
 from claw.llm.client import LLMClient, LLMMessage, LLMResponse, _backoff_delay, _parse_json_response
 from claw.llm.token_tracker import TokenTracker
-from claw.core.exceptions import ResponseParseError
+from claw.core.exceptions import ModelRejectedError, ResponseParseError
 
 
 class TestLLMMessage:
@@ -67,6 +68,33 @@ class TestParseJson:
 
 
 class TestLLMClientCooldown:
+    async def test_provider_400_is_non_retryable_model_rejection(self):
+        class FakeHTTPClient:
+            is_closed = False
+
+            def __init__(self):
+                self.calls = 0
+
+            async def post(self, url, json, headers):
+                self.calls += 1
+                return httpx.Response(
+                    400,
+                    request=httpx.Request("POST", url),
+                    json={"error": {"message": "bad model route"}},
+                )
+
+        fake = FakeHTTPClient()
+        client = LLMClient(api_key="test-key")
+        client._client = fake
+
+        with pytest.raises(ModelRejectedError, match="bad model route"):
+            await client.complete(
+                [LLMMessage("user", "hello")],
+                model="openai/gpt-mini-latest",
+            )
+
+        assert fake.calls == 1
+
     def test_cooldown_mechanism(self):
         client = LLMClient()
         # Simulate failures

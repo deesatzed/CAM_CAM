@@ -34,6 +34,7 @@ from claw.memory.semantic import SemanticMemory
 from claw.miner import (
     MiningFinding,
     MiningReport,
+    MiningModelSelector,
     RepoCandidate,
     RepoMiner,
     RepoMiningResult,
@@ -86,6 +87,41 @@ class FixedEmbeddingEngine:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+class TestMiningModelSelector:
+    def test_escalation_chain_dedupes_model_ids_across_agents(self):
+        config = ClawConfig()
+        config.agents = {
+            "claude": AgentConfig(
+                enabled=True,
+                mode="openrouter",
+                model="deepseek/deepseek-v4-flash",
+                context_window_tokens=1_000_000,
+            ),
+            "codex": AgentConfig(
+                enabled=True,
+                mode="openrouter",
+                model="deepseek/deepseek-v4-flash",
+                context_window_tokens=1_000_000,
+            ),
+            "gemini": AgentConfig(
+                enabled=True,
+                mode="openrouter",
+                model="qwen/qwen3.6-flash",
+                context_window_tokens=1_000_000,
+            ),
+        }
+        config.mining.recovery.escalation_order = ["claude", "codex", "gemini"]
+
+        chain = MiningModelSelector(config).build_escalation_chain(
+            estimated_tokens=10_000,
+        )
+
+        assert chain == [
+            ("claude", "deepseek/deepseek-v4-flash"),
+            ("gemini", "qwen/qwen3.6-flash"),
+        ]
+
 
 @pytest.fixture
 def embedding_engine() -> FixedEmbeddingEngine:
@@ -1208,6 +1244,35 @@ class TestStoreFinding:
         assert template.execution_steps == ["npm install", "npm run build"]
         assert template.acceptance_checks == ["npm test -- --runInBand"]
         assert template.source_repo == "nanochat"
+
+    async def test_store_finding_creates_fallback_action_template_for_accepted_pattern(
+        self, repo_miner, repository, sample_project
+    ):
+        """Accepted findings without explicit runbooks still create source-linked templates."""
+        await repository.create_project(sample_project)
+        finding = MiningFinding(
+            title="Policy first validation",
+            description="Validate requests against a policy object before mutation",
+            category="code_quality",
+            source_repo="policy-engine",
+            source_files=["src/policy.py", "tests/test_policy.py"],
+            implementation_sketch="Use a small validator object before writes.",
+            augmentation_notes="Adapt checks to the target persistence layer.",
+            relevance_score=0.91,
+        )
+        method_id = await repo_miner.store_finding(finding, sample_project.id)
+        assert method_id
+        assert finding.action_template_id is not None
+
+        template = await repository.get_action_template(finding.action_template_id)
+        assert template is not None
+        assert template.source_methodology_id == method_id
+        assert template.source_repo == "policy-engine"
+        assert template.confidence == 0.75
+        assert "src/policy.py" in template.execution_steps[0]
+        assert method_id in template.acceptance_checks[0]
+        assert template.rollback_steps
+        assert "Source repo policy-engine was mined and accepted" in template.preconditions
 
     async def test_store_finding_seeds_capability_data_with_provenance_and_triggers(
         self, repo_miner, repository, sample_project

@@ -32,6 +32,7 @@ from claw.miner import (
     detect_all_repo_languages,
     detect_repo_language,
     serialize_repo,
+    should_skip_polyglot_zone,
 )
 
 
@@ -198,6 +199,27 @@ class TestLanguageZone:
         assert zone.pct == 63.2
         assert ".ts" in zone.file_extensions
 
+    def test_small_secondary_zone_skipped_for_paid_polyglot_pass(self):
+        zone = LanguageZone(
+            brain="rust",
+            file_count=_MIN_ZONE_FILES - 1,
+            file_extensions={".rs"},
+            pct=0.8,
+        )
+
+        assert should_skip_polyglot_zone(zone, total_zones=2) is True
+        assert should_skip_polyglot_zone(zone, total_zones=1) is False
+
+    def test_large_secondary_zone_not_skipped_for_paid_polyglot_pass(self):
+        zone = LanguageZone(
+            brain="go",
+            file_count=_MIN_ZONE_FILES,
+            file_extensions={".go"},
+            pct=5.0,
+        )
+
+        assert should_skip_polyglot_zone(zone, total_zones=2) is False
+
 
 # ===========================================================================
 # 3. _BRAIN_EXTENSIONS mapping
@@ -313,6 +335,23 @@ class TestSerializeRepoLanguageFilter:
 
         content, count = serialize_repo(repo, max_bytes=5000, language_filter={".ts"})
         assert len(content.encode()) <= 5000
+
+    def test_generated_bundles_and_schemas_are_skipped(self, tmp_path):
+        repo = tmp_path / "generated-assets"
+        repo.mkdir()
+        (repo / "app.ts").write_text("export const app = 1;")
+        (repo / "codemirror-bundle.js").write_text("generated_bundle();" * 100)
+        (repo / "desktop-schema.json").write_text('{"generated": true}')
+        (repo / "macOS-schema.json").write_text('{"generated": true}')
+        (repo / "acl-manifests.json").write_text('{"generated": true}')
+
+        content, count = serialize_repo(repo)
+
+        assert "app.ts" in content
+        assert "codemirror-bundle.js" not in content
+        assert "desktop-schema.json" not in content
+        assert "macOS-schema.json" not in content
+        assert "acl-manifests.json" not in content
 
 
 # ===========================================================================

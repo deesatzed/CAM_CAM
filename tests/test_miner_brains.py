@@ -52,6 +52,7 @@ from claw.miner import (
     _LANGUAGE_SIGNALS,
     _LANGUAGE_TO_BRAIN,
     _register_sibling_if_needed,
+    detect_all_repo_languages,
     detect_repo_language,
     ensure_language_ganglion,
     serialize_repo,
@@ -283,6 +284,41 @@ class TestDetectRepoLanguage:
         config = ClawConfig()
         result = detect_repo_language(repo, config)
         assert result == "go"
+
+    @pytest.mark.asyncio
+    async def test_mine_repo_drops_zero_file_config_signal_zones(self, tmp_path):
+        """A tsconfig without TS files should not trigger a zero-file model call."""
+        repo = tmp_path / "py-with-empty-ts-zone"
+        repo.mkdir()
+        (repo / "tsconfig.json").write_text('{"compilerOptions": {}}')
+        for idx in range(3):
+            (repo / f"mod{idx}.py").write_text(f"x = {idx}\n")
+
+        zones = detect_all_repo_languages(repo, ClawConfig())
+        assert zones["typescript"].file_count == 0
+        assert zones["python"].file_count == 3
+
+        miner = RepoMiner(
+            repository=None,
+            llm_client=None,
+            semantic_memory=None,
+            config=ClawConfig(),
+        )
+        seen: list[str] = []
+
+        async def fake_single_brain(**kwargs):
+            seen.append(kwargs["brain"])
+            return RepoMiningResult(
+                repo_name=kwargs["repo_name"],
+                repo_path=str(kwargs["repo_path"]),
+                findings=[],
+            )
+
+        miner._mine_single_brain = fake_single_brain
+
+        await miner.mine_repo(repo, "py-with-empty-ts-zone", "project-1")
+
+        assert seen == ["python"]
 
 
 # ===========================================================================

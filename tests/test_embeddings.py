@@ -114,6 +114,31 @@ class TestGeminiEmbeddingPath:
             pass
 
 
+class TestHashEmbeddingPath:
+    def test_hash_embedding_is_local_deterministic_and_384_dimensional(self):
+        cfg = EmbeddingsConfig(model="hash-embedding-384", dimension=384)
+        engine = EmbeddingEngine(cfg)
+
+        vec1 = engine.encode("same text")
+        vec2 = engine.encode("same text")
+        vec3 = engine.encode("different text")
+
+        assert engine._uses_hash is True
+        assert engine._uses_openrouter is False
+        assert len(vec1) == 384
+        assert vec1 == vec2
+        assert vec1 != vec3
+
+    def test_hash_embedding_batch(self):
+        cfg = EmbeddingsConfig(model="hash-embedding-384", dimension=8)
+        engine = EmbeddingEngine(cfg)
+
+        vecs = engine.encode_batch(["a", "b"])
+
+        assert len(vecs) == 2
+        assert all(len(vec) == 8 for vec in vecs)
+
+
 class TestMLXEmbeddingRouting:
     """Verify MLX model selection routes to _embed_with_mlx."""
 
