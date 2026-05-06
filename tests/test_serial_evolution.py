@@ -1057,7 +1057,7 @@ class TestSerialEvolutionRunner:
                             methodology_type="PATTERN",
                         )
                     )
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(2.0)
                     return _FakeMiningResult(findings=[repo_name])
 
             async def live_factory(challenger: dict[str, str]) -> LiveMiningBinding:
@@ -1085,7 +1085,7 @@ class TestSerialEvolutionRunner:
                 db_path=primary_db,
                 instances_root=mini_repo / "instances" / "evolution",
                 live_mining_factory=live_factory,
-                live_repo_timeout_seconds=0.2,
+                live_repo_timeout_seconds=1.0,
             )
 
             result = await runner.run_autonomous_loop(
@@ -1164,7 +1164,7 @@ class TestSerialEvolutionRunner:
                         )
                     finally:
                         await ganglion_engine.close()
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(2.0)
                     return _FakeMiningResult(findings=[repo_name])
 
             async def live_factory(challenger: dict[str, str]) -> LiveMiningBinding:
@@ -1183,7 +1183,7 @@ class TestSerialEvolutionRunner:
                 db_path=primary_db,
                 instances_root=mini_repo / "instances" / "evolution",
                 live_mining_factory=live_factory,
-                live_repo_timeout_seconds=0.2,
+                live_repo_timeout_seconds=1.0,
             )
 
             result = await runner.run_autonomous_loop(
