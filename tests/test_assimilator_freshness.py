@@ -60,13 +60,27 @@ async def assimilator(pulse_engine):
 # TestGetHeadSha
 # ---------------------------------------------------------------------------
 
+def _init_repo_with_identity(path: str) -> None:
+    subprocess.run(["git", "init", path], capture_output=True, check=True)
+    subprocess.run(
+        ["git", "-C", path, "config", "user.email", "ci@example.invalid"],
+        capture_output=True,
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", path, "config", "user.name", "CAM CI"],
+        capture_output=True,
+        check=True,
+    )
+
+
 class TestGetHeadSha:
     """Tests for PulseAssimilator._get_head_sha() using real git repos."""
 
     async def test_get_head_sha_real_git_repo(self):
         """Create a real temp git repo, verify _get_head_sha returns 40-char hex."""
         with tempfile.TemporaryDirectory() as td:
-            subprocess.run(["git", "init", td], capture_output=True, check=True)
+            _init_repo_with_identity(td)
             subprocess.run(
                 ["git", "-C", td, "commit", "--allow-empty", "-m", "init"],
                 capture_output=True, check=True,
@@ -84,7 +98,7 @@ class TestGetHeadSha:
     async def test_get_head_sha_matches_subprocess(self):
         """SHA returned by _get_head_sha matches direct subprocess call."""
         with tempfile.TemporaryDirectory() as td:
-            subprocess.run(["git", "init", td], capture_output=True, check=True)
+            _init_repo_with_identity(td)
             subprocess.run(
                 ["git", "-C", td, "commit", "--allow-empty", "-m", "test"],
                 capture_output=True, check=True,
@@ -99,7 +113,7 @@ class TestGetHeadSha:
     async def test_get_head_sha_changes_after_new_commit(self):
         """A new commit produces a different SHA."""
         with tempfile.TemporaryDirectory() as td:
-            subprocess.run(["git", "init", td], capture_output=True, check=True)
+            _init_repo_with_identity(td)
             subprocess.run(
                 ["git", "-C", td, "commit", "--allow-empty", "-m", "first"],
                 capture_output=True, check=True,

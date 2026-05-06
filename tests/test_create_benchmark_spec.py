@@ -221,7 +221,7 @@ class TestCreateBenchmarkSpecHelpers:
             title="Tiny app",
             task_type="architecture",
             execution_steps=[],
-            acceptance_checks=["test -f README.md", "rg -q 'modernizer' README.md"],
+            acceptance_checks=["test -f README.md", "grep -q 'modernizer' README.md"],
             spec_items=[],
         )
         (repo_path / "README.md").write_text("hello modernizer changed\n", encoding="utf-8")

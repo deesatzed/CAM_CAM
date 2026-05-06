@@ -34,7 +34,7 @@ from claw.validation_gate import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-LIVE_DIR = Path("/Volumes/WS4TB/a_aSatzClaw/multiclaw")
+LIVE_DIR = Path(__file__).resolve().parents[1]
 
 
 def _make_copy_dir(tmp_path: Path) -> Path:
