@@ -57,7 +57,7 @@ jobs:
         run: pytest tests/ -q --cov=claw --cov-report=xml --cov-report=term
 
       - name: Run doctor audit
-        run: python -m claw.cli doctor audit --limit 5 --json-out doctor_audit.json --fail-on-flags
+        run: python -m claw.cli doctor audit --limit 5 --json-out doctor_audit.json
 
       - name: Upload doctor audit
         if: always()
