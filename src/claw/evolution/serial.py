@@ -64,7 +64,7 @@ class PromotionGateConfig:
     require_manual_approval: bool = False
     require_validation_gate: bool = False
     allowed_layers: set[str] = field(
-        default_factory=lambda: {"data_feature", "prompt_config"}
+        default_factory=lambda: {"data_feature", "prompt_config", "strategy_policy"}
     )
     weights: dict[str, float] = field(default_factory=lambda: dict(PROMOTION_WEIGHTS))
 
@@ -1544,6 +1544,7 @@ class SerialEvolutionRunner:
         }
 
     async def _mine_strategy_policy(self, run_id: str) -> list[dict[str, Any]]:
+        mined = await self._mine_static_strategy_policy(run_id)
         rows = await self.repository.engine.fetch_all(
             """SELECT agent_id, task_type, successes, failures, total_attempts,
                       avg_quality_score, avg_cost_usd
@@ -1551,10 +1552,12 @@ class SerialEvolutionRunner:
                ORDER BY total_attempts DESC, avg_quality_score DESC
                LIMIT 10"""
         )
-        mined = []
+        skipped = 0
         for row in rows:
             attempts = int(row.get("total_attempts") or 0)
-            accepted = attempts >= 5
+            if attempts < 5:
+                skipped += 1
+                continue
             item = await self.repository.record_evolution_mined_input(
                 {
                     "run_id": run_id,
@@ -1562,14 +1565,122 @@ class SerialEvolutionRunner:
                     "source_uri": f"{row['agent_id']}:{row['task_type']}",
                     "source_ref": f"{row['agent_id']}:{row['task_type']}",
                     "relevance_score": float(row.get("avg_quality_score") or 0.0),
-                    "accepted": accepted,
-                    "rejection_reason": None if accepted else "insufficient_attempts",
+                    "accepted": True,
                     "extracted_payload": dict(row),
                 }
             )
             mined.append(item)
+        if skipped:
+            await self.repository.record_evolution_monitor_event(
+                {
+                    "run_id": run_id,
+                    "severity": "info",
+                    "event_type": "strategy_policy_low_sample_rows_skipped",
+                    "message": (
+                        f"Skipped {skipped} agent_score rows with fewer than 5 attempts"
+                    ),
+                    "payload": {"skipped_count": skipped, "min_attempts": 5},
+                }
+            )
         if not mined:
             await self._record_no_mining_material(run_id, "agent_score")
+        return mined
+
+    async def _mine_static_strategy_policy(self, run_id: str) -> list[dict[str, Any]]:
+        mined: list[dict[str, Any]] = []
+        config_path = self.repo_path / "claw.toml"
+        if config_path.exists():
+            text = self._safe_read_text(config_path, max_chars=120_000)
+            try:
+                config_data = tomllib.loads(text)
+            except tomllib.TOMLDecodeError:
+                config_data = {}
+            routing = config_data.get("routing", {}) if isinstance(config_data, dict) else {}
+            static_priors = (
+                routing.get("static_priors", {}) if isinstance(routing, dict) else {}
+            )
+            if isinstance(routing, dict) and routing:
+                item = await self.repository.record_evolution_mined_input(
+                    {
+                        "run_id": run_id,
+                        "source_type": "routing_policy_config",
+                        "source_uri": "claw.toml#routing",
+                        "source_ref": hashlib.sha256(
+                            json.dumps(routing, sort_keys=True).encode("utf-8")
+                        ).hexdigest(),
+                        "novelty_score": 0.45,
+                        "relevance_score": 0.75,
+                        "accepted": True,
+                        "extracted_payload": {
+                            "exploration_rate": routing.get("exploration_rate"),
+                            "score_decay_factor": routing.get("score_decay_factor"),
+                            "min_samples_for_routing": routing.get("min_samples_for_routing"),
+                            "static_prior_count": (
+                                len(static_priors) if isinstance(static_priors, dict) else 0
+                            ),
+                        },
+                    }
+                )
+                mined.append(item)
+            if isinstance(static_priors, dict):
+                for task_type, agent_id in sorted(static_priors.items())[:10]:
+                    item = await self.repository.record_evolution_mined_input(
+                        {
+                            "run_id": run_id,
+                            "source_type": "routing_static_prior",
+                            "source_uri": f"claw.toml#routing.static_priors.{task_type}",
+                            "source_ref": f"{task_type}:{agent_id}",
+                            "novelty_score": 0.4,
+                            "relevance_score": 0.68,
+                            "accepted": True,
+                            "extracted_payload": {
+                                "task_type": task_type,
+                                "agent_id": agent_id,
+                                "bootstrap_reason": "static_routing_policy",
+                            },
+                        }
+                    )
+                    mined.append(item)
+            kelly = config_data.get("kelly", {}) if isinstance(config_data, dict) else {}
+            if isinstance(kelly, dict) and kelly:
+                item = await self.repository.record_evolution_mined_input(
+                    {
+                        "run_id": run_id,
+                        "source_type": "kelly_policy_config",
+                        "source_uri": "claw.toml#kelly",
+                        "source_ref": hashlib.sha256(
+                            json.dumps(kelly, sort_keys=True).encode("utf-8")
+                        ).hexdigest(),
+                        "novelty_score": 0.45,
+                        "relevance_score": 0.75,
+                        "accepted": True,
+                        "extracted_payload": dict(kelly),
+                    }
+                )
+                mined.append(item)
+
+        failure_rows = await self.repository.engine.fetch_all(
+            """SELECT id, error_signature, error_category, diagnosis, prevention_hint,
+                      occurrence_count, resolved
+               FROM failure_knowledge
+               ORDER BY occurrence_count DESC, updated_at DESC
+               LIMIT 10"""
+        )
+        for row in failure_rows:
+            occurrences = int(row.get("occurrence_count") or 0)
+            item = await self.repository.record_evolution_mined_input(
+                {
+                    "run_id": run_id,
+                    "source_type": "failure_policy_signal",
+                    "source_uri": f"failure_knowledge:{row['id']}",
+                    "source_ref": row["error_signature"],
+                    "novelty_score": 0.5,
+                    "relevance_score": min(1.0, 0.55 + (0.05 * max(1, occurrences))),
+                    "accepted": True,
+                    "extracted_payload": dict(row),
+                }
+            )
+            mined.append(item)
         return mined
 
     async def _mine_model(self, run_id: str) -> list[dict[str, Any]]:
@@ -2475,7 +2586,7 @@ class SerialEvolutionRunner:
         evaluations: list[dict[str, Any]],
     ) -> dict[str, Any]:
         layer = str(run.get("layer") or "")
-        if layer == "prompt_config":
+        if layer in {"prompt_config", "strategy_policy"}:
             preferred = ("layer_specific", "holdout_proxy", "paired_task_readiness", "paired_retrieval")
         else:
             preferred = ("paired_task_readiness", "paired_retrieval", "layer_specific", "holdout_proxy")

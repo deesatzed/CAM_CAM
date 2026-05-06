@@ -514,6 +514,77 @@ class TestSerialEvolutionRunner:
         assert gate_report["primary_champion_score"] == 0.685
         assert gate_report["primary_challenger_score"] == 0.71
 
+    async def test_strategy_policy_cycle_bootstraps_routing_policy_and_skips_weak_rows(
+        self,
+        evolution_engine: DatabaseEngine,
+        mini_repo: Path,
+    ):
+        (mini_repo / "claw.toml").write_text(
+            "\n".join(
+                [
+                    "[database]",
+                    "db_path=':memory:'",
+                    "[routing]",
+                    "exploration_rate = 0.10",
+                    "score_decay_factor = 0.95",
+                    "min_samples_for_routing = 5",
+                    "[routing.static_priors]",
+                    "analysis = 'claude'",
+                    "quick_fixes = 'grok'",
+                    "refactoring = 'codex'",
+                    "[kelly]",
+                    "enabled = true",
+                    "kappa = 10.0",
+                ]
+            )
+            + "\n"
+        )
+        await evolution_engine.execute(
+            """INSERT INTO agent_scores
+               (id, agent_id, task_type, successes, failures, total_attempts,
+                avg_quality_score, avg_cost_usd)
+               VALUES ('score-strong', 'claude', 'mining', 4, 2, 6, 0.7, 0.0)"""
+        )
+        await evolution_engine.execute(
+            """INSERT INTO agent_scores
+               (id, agent_id, task_type, successes, failures, total_attempts,
+                avg_quality_score, avg_cost_usd)
+               VALUES ('score-weak', 'grok', 'mining', 1, 1, 2, 0.5, 0.0)"""
+        )
+        await evolution_engine.execute(
+            """INSERT INTO failure_knowledge
+               (id, error_signature, error_category, diagnosis, prevention_hint,
+                occurrence_count)
+               VALUES ('fk-1', 'timeout', 'runtime', 'agent timed out', 'rotate agent', 2)"""
+        )
+        runner = SerialEvolutionRunner(
+            Repository(evolution_engine),
+            repo_path=mini_repo,
+            instances_root=mini_repo / "instances" / "evolution",
+        )
+
+        result = await runner.run_minimal_cycle(layer_override="strategy_policy")
+
+        assert result.layer == "strategy_policy"
+        assert result.decision == "promote"
+        mined = await evolution_engine.fetch_all(
+            "SELECT source_type, source_uri, accepted FROM evolution_mined_inputs WHERE run_id = ?",
+            [result.run_id],
+        )
+        assert all(row["accepted"] == 1 for row in mined)
+        source_types = {row["source_type"] for row in mined}
+        assert "agent_score" in source_types
+        assert "routing_policy_config" in source_types
+        assert "routing_static_prior" in source_types
+        assert "kelly_policy_config" in source_types
+        assert "failure_policy_signal" in source_types
+        assert all(row["source_uri"] != "grok:mining" for row in mined)
+        event = await evolution_engine.fetch_one(
+            "SELECT * FROM evolution_monitor_events WHERE run_id = ? AND event_type = ?",
+            [result.run_id, "strategy_policy_low_sample_rows_skipped"],
+        )
+        assert event is not None
+
     async def test_active_mutating_run_blocks_a_second_cycle(
         self,
         evolution_engine: DatabaseEngine,
