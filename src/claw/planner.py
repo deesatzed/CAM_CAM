@@ -23,6 +23,7 @@ Planner's recommendation and the Dispatcher's fallback routing.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -58,6 +59,13 @@ class EvaluationResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 CATEGORY_TO_TASK_TYPE: dict[str, str] = {
+    # Evaluation battery phases
+    "orientation": "analysis",
+    "deep_analysis": "analysis",
+    "truth_verification": "testing",
+    "quality_assessment": "testing",
+    "remediation_planning": "architecture",
+    "additional": "analysis",
     # Documentation
     "docs": "documentation",
     "documentation": "documentation",
@@ -131,6 +139,15 @@ TASK_TYPE_TIER: dict[str, int] = {
 }
 
 DEFAULT_TIER = 5
+
+
+class NormalizedFinding(BaseModel):
+    """Planner-facing shape extracted from a raw evaluation finding."""
+
+    title_text: str
+    description_text: str
+    execution_steps: list[str] = Field(default_factory=list)
+    acceptance_checks: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -282,14 +299,17 @@ class Planner:
             recommended_agent = STATIC_ROUTING.get(task_type, DEFAULT_AGENT)
 
             for finding in eval_result.findings:
+                normalized_finding = self._normalize_finding(finding)
                 # Build a descriptive title from the finding
                 title = self._build_title(
-                    finding, eval_result.prompt_name, eval_result.category
+                    normalized_finding.title_text,
+                    eval_result.prompt_name,
+                    eval_result.category,
                 )
 
                 # Build description with full context
                 description = self._build_description(
-                    finding=finding,
+                    finding=normalized_finding.description_text,
                     prompt_name=eval_result.prompt_name,
                     category=eval_result.category,
                     severity=eval_result.severity,
@@ -303,6 +323,8 @@ class Planner:
                     priority=priority,
                     task_type=task_type,
                     recommended_agent=recommended_agent,
+                    execution_steps=normalized_finding.execution_steps,
+                    acceptance_checks=normalized_finding.acceptance_checks,
                 )
 
                 tasks.append(task)
@@ -497,6 +519,135 @@ class Planner:
                 )
 
         return dependencies
+
+    def _normalize_finding(self, finding: str) -> NormalizedFinding:
+        """Extract task-ready text and runbook hints from an evaluation finding.
+
+        Evaluation prompts often return a JSON object with fields like
+        ``summary`` and ``recommendations``. Without this normalization the
+        dry-run planner shows raw JSON as the task title and loses executable
+        hints.
+        """
+        raw = finding.strip()
+        payload = self._parse_structured_finding(raw)
+        if not payload:
+            return NormalizedFinding(title_text=raw, description_text=raw)
+
+        title_text = self._first_text(
+            payload,
+            ("title", "task_title", "summary", "finding", "problem", "issue"),
+        )
+        if not title_text:
+            title_text = raw
+
+        sections: list[str] = []
+        for key in ("summary", "finding", "problem", "issue", "description", "rationale"):
+            value = payload.get(key)
+            text = self._stringify_structured_value(value)
+            if text and text not in sections:
+                sections.append(text)
+
+        execution_steps = self._extract_string_list(
+            payload,
+            (
+                "execution_steps",
+                "steps",
+                "next_steps",
+                "recommendations",
+                "recommended_actions",
+                "actions",
+                "remediation_steps",
+            ),
+        )
+        acceptance_checks = self._extract_string_list(
+            payload,
+            (
+                "acceptance_checks",
+                "checks",
+                "validation",
+                "verification",
+                "tests",
+                "success_criteria",
+            ),
+        )
+
+        if execution_steps:
+            sections.append("Execution steps:\n" + "\n".join(f"- {step}" for step in execution_steps))
+        if acceptance_checks:
+            sections.append("Acceptance checks:\n" + "\n".join(f"- {check}" for check in acceptance_checks))
+
+        if raw not in sections:
+            sections.append("Raw evaluation output:\n" + raw)
+
+        return NormalizedFinding(
+            title_text=title_text,
+            description_text="\n\n".join(sections),
+            execution_steps=execution_steps,
+            acceptance_checks=acceptance_checks,
+        )
+
+    def _parse_structured_finding(self, finding: str) -> Optional[dict[str, Any]]:
+        """Parse a JSON object finding, including fenced markdown JSON."""
+        text = finding.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines and lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].strip() == "```":
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+
+        if not text.startswith("{"):
+            return None
+
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            decoder = json.JSONDecoder()
+            try:
+                parsed, _ = decoder.raw_decode(text)
+            except json.JSONDecodeError:
+                return None
+
+        return parsed if isinstance(parsed, dict) else None
+
+    def _first_text(self, payload: dict[str, Any], keys: tuple[str, ...]) -> str:
+        for key in keys:
+            text = self._stringify_structured_value(payload.get(key))
+            if text:
+                return text
+        return ""
+
+    def _extract_string_list(self, payload: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
+        values: list[str] = []
+        seen: set[str] = set()
+        for key in keys:
+            raw_value = payload.get(key)
+            items = raw_value if isinstance(raw_value, list) else [raw_value]
+            for item in items:
+                text = self._stringify_structured_value(item)
+                if text and text not in seen:
+                    values.append(text)
+                    seen.add(text)
+        return values
+
+    def _stringify_structured_value(self, value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, dict):
+            for key in ("title", "summary", "description", "action", "step", "check", "name"):
+                text = self._stringify_structured_value(value.get(key))
+                if text:
+                    return text
+            return json.dumps(value, sort_keys=True)
+        if isinstance(value, list):
+            parts = [self._stringify_structured_value(item) for item in value]
+            return "; ".join(part for part in parts if part)
+        return str(value).strip()
 
     def _build_title(
         self, finding: str, prompt_name: str, category: str

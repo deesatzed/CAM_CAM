@@ -142,6 +142,20 @@ class Dispatcher:
         """
         task_type = task.task_type or ""
 
+        # Build exclusion set from task.excluded_agents, populated by agent rotation.
+        excluded = set(getattr(task, "excluded_agents", None) or [])
+        if excluded:
+            logger.info(
+                "Routing with excluded_agents=%s for task %s",
+                sorted(excluded), task.id,
+            )
+            if excluded >= set(self._available_agent_ids):
+                logger.warning(
+                    "All agents excluded for task %s — clearing exclusions for fallback",
+                    task.id,
+                )
+                excluded = set()
+
         # 1. User-explicit agent override (--agent flag) takes absolute priority.
         #    Distinguished from planner-assigned recommended_agent by checking
         #    whether Kelly has data — if Kelly can route, it overrides the
@@ -150,7 +164,7 @@ class Dispatcher:
 
         # 2. Kelly-weighted routing (if enabled and has performance data)
         kelly_agent = await self._kelly_route(task_type)
-        if kelly_agent:
+        if kelly_agent and kelly_agent not in excluded:
             if user_explicit and task.recommended_agent != kelly_agent:
                 logger.info(
                     "Kelly routing overrides recommended_agent='%s' with '%s' "
@@ -160,7 +174,7 @@ class Dispatcher:
             return kelly_agent
 
         # 3. Fall back to recommended_agent (from planner static table)
-        if user_explicit:
+        if user_explicit and task.recommended_agent not in excluded:
             logger.info(
                 "Using recommended_agent='%s' for task_type='%s'",
                 task.recommended_agent, task_type,
@@ -169,7 +183,7 @@ class Dispatcher:
 
         # 4. Classic routing: exploration + learned scores + static table
         if self._should_explore():
-            chosen = self._pick_random_agent()
+            chosen = self._pick_random_agent(excluded=excluded)
             logger.info(
                 "Exploration triggered: task_type='%s' -> random agent '%s'",
                 task_type, chosen,
@@ -178,7 +192,7 @@ class Dispatcher:
 
         # 5. Try learned scores from repository
         learned_agent = await self._lookup_learned_scores(task_type)
-        if learned_agent:
+        if learned_agent and learned_agent not in excluded:
             logger.info(
                 "Learned routing: task_type='%s' -> agent '%s'",
                 task_type, learned_agent,
@@ -187,7 +201,7 @@ class Dispatcher:
 
         # 6. Static routing table
         static_agent = self._lookup_static(task_type)
-        if static_agent:
+        if static_agent and static_agent not in excluded:
             logger.info(
                 "Static routing: task_type='%s' -> agent '%s'",
                 task_type, static_agent,
@@ -195,7 +209,7 @@ class Dispatcher:
             return static_agent
 
         # 7. Absolute fallback
-        fallback = self._resolve_fallback(task_type)
+        fallback = self._resolve_fallback(task_type, excluded=excluded)
         logger.info(
             "Fallback routing: task_type='%s' -> agent '%s'",
             task_type, fallback,
@@ -206,9 +220,14 @@ class Dispatcher:
         """Roll the dice for exploration."""
         return random.random() < self.exploration_rate
 
-    def _pick_random_agent(self) -> str:
-        """Pick a uniformly random available agent."""
-        return random.choice(self._available_agent_ids)
+    def _pick_random_agent(self, excluded: set[str] | None = None) -> str:
+        """Pick a uniformly random available agent, respecting exclusions."""
+        candidates = self._available_agent_ids
+        if excluded:
+            candidates = [a for a in candidates if a not in excluded]
+        if not candidates:
+            candidates = self._available_agent_ids
+        return random.choice(candidates)
 
     async def _kelly_route(self, task_type: str) -> Optional[str]:
         """Route using Bayesian Kelly fractions when kelly_sizer is active.
@@ -317,8 +336,8 @@ class Dispatcher:
             )
         return None
 
-    def _resolve_fallback(self, task_type: str) -> str:
-        """Determine the fallback agent.
+    def _resolve_fallback(self, task_type: str, excluded: set[str] | None = None) -> str:
+        """Determine the fallback agent, respecting exclusions.
 
         Prefers DEFAULT_AGENT if available, otherwise picks the first
         available agent alphabetically.
@@ -327,8 +346,14 @@ class Dispatcher:
             RoutingError: If the available agents dict is empty (should not
                           happen as __init__ validates this).
         """
-        if DEFAULT_AGENT in self.agents:
+        excluded = excluded or set()
+
+        if DEFAULT_AGENT in self.agents and DEFAULT_AGENT not in excluded:
             return DEFAULT_AGENT
+
+        candidates = [a for a in self._available_agent_ids if a not in excluded]
+        if candidates:
+            return candidates[0]
 
         if self._available_agent_ids:
             return self._available_agent_ids[0]

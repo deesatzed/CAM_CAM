@@ -509,6 +509,7 @@ class Task(BaseModel):
     context_snapshot_id: Optional[str] = None
     attempt_count: int = 0
     escalation_count: int = 0
+    excluded_agents: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=_now)
     updated_at: datetime = Field(default_factory=_now)
     completed_at: Optional[datetime] = None
@@ -883,6 +884,8 @@ class CorrectionFeedback(BaseModel):
     quality_score: float = 0.0
     failure_reason: Optional[str] = None
     failure_detail: Optional[str] = None
+    known_fix_hint: Optional[str] = None
+    auto_fixes_applied: list[str] = Field(default_factory=list)
 
 
 class TaskContext(BaseModel):

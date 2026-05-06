@@ -119,6 +119,40 @@ class TestAnalyzeGaps:
         tasks = await planner.analyze_gaps(results)
         assert len(tasks) == 1
 
+    async def test_structured_json_finding_uses_summary_and_runbook_hints(self):
+        planner = Planner(PROJECT_ID)
+        results = [
+            _eval(
+                prompt_name="app__mitigen",
+                findings=[
+                    """{
+                      "summary": "Add targeted CAM-Pulse assimilation task generation",
+                      "recommendations": [
+                        "Parse guide manifest rows into implementation tasks",
+                        "Preserve source file and acceptance-test hints"
+                      ],
+                      "acceptance_checks": [
+                        "pytest tests/test_camify.py tests/test_planner.py"
+                      ]
+                    }"""
+                ],
+                severity="medium",
+                category="remediation_planning",
+            )
+        ]
+        tasks = await planner.analyze_gaps(results)
+        assert len(tasks) == 1
+        assert tasks[0].title == "[Remediation_planning] Add targeted CAM-Pulse assimilation task generation"
+        assert "{" not in tasks[0].title
+        assert tasks[0].task_type == "architecture"
+        assert tasks[0].execution_steps == [
+            "Parse guide manifest rows into implementation tasks",
+            "Preserve source file and acceptance-test hints",
+        ]
+        assert tasks[0].acceptance_checks == [
+            "pytest tests/test_camify.py tests/test_planner.py"
+        ]
+
 
 # ============================================================================
 # Severity to Priority Mapping

@@ -684,6 +684,53 @@ class DatabaseEngine:
                 await self.conn.commit()
                 logger.info("Migration 20 applied: methodologies pseudo-RAG columns (accuracy_contract, concept_type, use_immediately_as, tension_questions, triage_score)")
 
+        # Migration 21: add excluded_agents column to tasks for rotation bookkeeping
+        if tables_exist:
+            tasks_table = await self.fetch_one(
+                "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='tasks'"
+            )
+            row = await self.fetch_one(
+                "SELECT COUNT(*) as cnt FROM pragma_table_info('tasks') WHERE name = 'excluded_agents'"
+            ) if tasks_table and tasks_table["cnt"] > 0 else None
+            if tasks_table and tasks_table["cnt"] > 0 and row and row["cnt"] == 0:
+                await self.conn.execute(
+                    "ALTER TABLE tasks ADD COLUMN excluded_agents TEXT NOT NULL DEFAULT '[]'"
+                )
+                await self.conn.commit()
+                logger.info("Migration 21 applied: tasks.excluded_agents column added")
+
+        # Migration 22: create failure_knowledge table for cross-task preventive patterns
+        row = await self.fetch_one(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='failure_knowledge'"
+        )
+        if row and row["cnt"] == 0:
+            await self.conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS failure_knowledge (
+                    id TEXT PRIMARY KEY,
+                    error_signature TEXT NOT NULL,
+                    error_category TEXT NOT NULL,
+                    diagnosis TEXT NOT NULL,
+                    prevention_hint TEXT NOT NULL,
+                    agent_id TEXT,
+                    task_type TEXT,
+                    project_id TEXT,
+                    source_task_id TEXT,
+                    occurrence_count INTEGER NOT NULL DEFAULT 1,
+                    resolved INTEGER NOT NULL DEFAULT 0,
+                    resolution_approach TEXT,
+                    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+                    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_failure_knowledge_sig ON failure_knowledge(error_signature);
+                CREATE INDEX IF NOT EXISTS idx_failure_knowledge_category ON failure_knowledge(error_category);
+                CREATE INDEX IF NOT EXISTS idx_failure_knowledge_task_type ON failure_knowledge(task_type);
+                CREATE INDEX IF NOT EXISTS idx_failure_knowledge_resolved ON failure_knowledge(resolved);
+                """
+            )
+            await self.conn.commit()
+            logger.info("Migration 22 applied: created failure_knowledge table")
+
     # ------------------------------------------------------------------
     # Write operations — wrapped with _retry_on_locked for contention
     # ------------------------------------------------------------------

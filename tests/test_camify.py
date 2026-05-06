@@ -372,6 +372,45 @@ class TestCamifyPlanner:
         cag_steps = [s for s in plan.steps if "cag" in s.command]
         assert len(cag_steps) >= 1
 
+    def test_guide_manifest_generates_assimilation_steps(
+        self, sample_match_report: MatchReport,
+    ) -> None:
+        profile = RepoProfile(
+            name="cam-target",
+            path="/tmp/cam-target",
+            has_readme=True,
+            has_tests=True,
+            languages=["Python"],
+            guide_files=["CAM_GUIDE.md"],
+            guide_content={
+                "CAM_GUIDE.md": (
+                    "Source sibling: /tmp/CAM-Pulse\n\n"
+                    "| ID | Capability to ingest | Source evidence | Target area | Why it matters | Acceptance checks |\n"
+                    "|---|---|---|---|---|---|\n"
+                    "| A1 | Deterministic auto-fix engine | /tmp/CAM-Pulse/src/claw/memory/auto_fix.py | src/claw/memory/auto_fix.py | Fix shallow bugs | python -m pytest tests/test_auto_fix.py -q |\n"
+                    "| A2 | Agent rotation using excluded agents | /tmp/CAM-Pulse/src/claw/dispatcher.py | src/claw/dispatcher.py | Avoid repeated failing agents | python -m pytest tests/test_dispatcher.py -q |\n"
+                )
+            },
+            domain_keywords=["defense", "auto-fix"],
+        )
+
+        planner = CamifyPlanner()
+        plan = planner.plan(profile, sample_match_report, ["assimilate defense chain"])
+
+        assert plan.source_repos == ["/tmp/CAM-Pulse"]
+        assert [t["id"] for t in plan.assimilation_targets] == ["A1", "A2"]
+        step_ids = [s.id for s in plan.steps]
+        assert "source-mine" in step_ids
+        assert "assimilation-dryrun" in step_ids
+        assert "assimilate-a1" in step_ids
+        assert "assimilate-a2" in step_ids
+        assert "cag-rebuild" not in step_ids
+
+        md = planner.render_markdown(plan)
+        assert "## Assimilation Targets" in md
+        assert "Deterministic auto-fix engine" in md
+        assert "/tmp/CAM-Pulse/src/claw/memory/auto_fix.py" in md
+
 
 # ---------------------------------------------------------------------------
 # Model tests

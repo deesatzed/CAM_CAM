@@ -28,6 +28,7 @@ htmlcov/
 
 # Runtime data
 data/
+instances/
 # But allow seed knowledge packs shipped with the package
 !src/claw/data/
 !src/claw/data/**

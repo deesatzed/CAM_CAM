@@ -230,11 +230,11 @@ class Verifier:
             all_violations.extend(deep_violations)
             all_recommendations.extend(deep_recommendations)
 
-        # Run tests if workspace_dir is provided and no violations so far
+        # Run tests whenever workspace_dir is available so correction gets real test signals.
         tests_before: Optional[int] = None
         tests_after: Optional[int] = None
         full_test_output = ""
-        if workspace_dir and len(all_violations) == 0:
+        if workspace_dir:
             try:
                 test_passed, test_output, test_count = await self.run_tests(workspace_dir)
                 tests_after = test_count
@@ -286,23 +286,18 @@ class Verifier:
             all_violations.extend(metric_violations)
             all_recommendations.extend(metric_recs)
 
-        # Run explicit acceptance checks (if provided) after tests pass.
+        # Run explicit acceptance checks when a workspace exists.
         acceptance_checks = list(task_context.task.acceptance_checks)
         if not acceptance_checks and task_context.action_template is not None:
             acceptance_checks = list(task_context.action_template.acceptance_checks)
 
-        if acceptance_checks and len(all_violations) == 0:
-            if not workspace_dir:
-                all_recommendations.append(
-                    "Acceptance checks were provided but workspace_dir was not set; skipped."
-                )
-            else:
-                acc_violations, acc_recommendations = await self._run_acceptance_checks(
-                    workspace_dir=workspace_dir,
-                    acceptance_checks=acceptance_checks,
-                )
-                all_violations.extend(acc_violations)
-                all_recommendations.extend(acc_recommendations)
+        if acceptance_checks and workspace_dir:
+            acc_violations, acc_recommendations = await self._run_acceptance_checks(
+                workspace_dir=workspace_dir,
+                acceptance_checks=acceptance_checks,
+            )
+            all_violations.extend(acc_violations)
+            all_recommendations.extend(acc_recommendations)
 
         expectation_checks_ok = len([v for v in all_violations if v.get("check") in {"test_execution", "acceptance_checks"}]) == 0
         expectation_score, expectation_findings, expectation_violations, expectation_recommendations = (
@@ -552,6 +547,22 @@ class Verifier:
                     "detail": "Possible hardcoded credential detected. Use environment variables.",
                 })
                 break
+
+        fim_pattern = re.compile(
+            r"</?(?:fim-(?:prefix|middle|suffix)|fim_(?:prefix|middle|suffix)|"
+            r"\|fim_(?:prefix|middle|suffix)\|"
+            r"|endoftext|pad|unk|mask|sep|cls|bos|eos)>",
+            re.IGNORECASE,
+        )
+        fim_matches = fim_pattern.findall(code_block)
+        if fim_matches:
+            violations.append({
+                "check": "chaos_check",
+                "detail": (
+                    f"Leaked LLM special tokens detected: {', '.join(set(fim_matches[:5]))}. "
+                    "These are model artifacts and must be removed."
+                ),
+            })
 
         # Check for no None/empty checks before operations
         # (Heuristic: functions that access .attribute without None check)
@@ -1344,6 +1355,11 @@ class Verifier:
         if (workspace / "Cargo.toml").exists():
             return "cargo", ["test"]
 
+        for test_dir_name in ["tests", "test"]:
+            test_dir = workspace / test_dir_name
+            if test_dir.is_dir() and list(test_dir.glob("test_*.py")):
+                return "pytest", ["--tb=short"]
+
         # No recognized project type
         return None, []
 
@@ -1538,7 +1554,10 @@ class Verifier:
         # D1: Functional correctness
         if verification.tests_after is not None and verification.tests_after > 0:
             # Tests exist and ran
-            test_violations = [v for v in verification.violations if v.get("check") == "test_execution"]
+            test_violations = [
+                v for v in verification.violations
+                if v.get("check") in {"test_execution", "environment_setup"}
+            ]
             d1 = 1.0 if not test_violations else 0.0
         elif verification.approved:
             d1 = 0.5  # Approved but no tests ran

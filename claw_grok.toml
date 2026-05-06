@@ -1,0 +1,596 @@
+[database]
+db_path = "data/claw.db"
+
+[llm]
+base_url = "https://openrouter.ai/api/v1"
+timeout = 120
+max_retries = 3
+backoff_base = 2.0
+backoff_cap = 60.0
+model_failure_threshold = 2
+model_cooldown_seconds = 90
+# SDK fallback model chain: when an agent's primary model fails (404, 5xx,
+# timeout), these models are tried in order before returning a failure.
+# This is model-level fallback (within one agent), separate from the
+# DegradationManager's agent-level fallback (which routes to a different agent).
+# Leave empty to disable model-level fallback.
+fallback_models = [
+    "qwen/qwen3.6-flash",
+    "deepseek/deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro",
+    "openai/gpt-mini-latest",
+]
+
+[embeddings]
+model = "hash-embedding-384"
+dimension = 384
+api_key_env = ""
+task_type = "RETRIEVAL_DOCUMENT"
+required_model = "hash-embedding-384"
+
+[memory]
+mmr_enabled = true
+mmr_lambda = 0.7
+vector_weight = 0.6
+text_weight = 0.4
+attribution_embedding_enabled = false
+attribution_embedding_weight = 0.6
+attribution_embedding_threshold = 0.35
+
+[orchestrator]
+max_retries = 5
+council_trigger = 2
+max_council = 3
+max_tokens_per_task = 100000
+exploration_rate = 0.10
+loop_guard_max_repeats = 2
+max_correction_attempts = 3
+
+[sentinel]
+llm_deep_check = true
+drift_threshold = 0.15
+quality_score_threshold = 0.60
+min_test_count = 0
+auto_install_deps = true
+auto_recovery_timeout = 120
+
+[security]
+autonomy_level = "SUPERVISED"
+rate_limit_per_hour = 200
+allowed_commands = [
+    "git", "pytest", "python3", "pip", "npm", "npx",
+    "cargo", "rustc", "go", "make", "ls", "find", "grep",
+    "cat", "head", "tail", "wc", "diff", "ruff", "mypy",
+]
+forbidden_paths = [
+    "/etc", "/root", "/var", "/tmp",
+    "/System", "/Library", "/Applications",
+    "/usr/bin", "/usr/sbin",
+]
+safe_env_vars = [
+    "PATH", "HOME", "USER", "SHELL", "LANG", "LC_ALL",
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY",
+    "GOOGLE_API_KEY", "XAI_API_KEY",
+    "OPENROUTER_API_KEY",
+]
+# Pre-assimilation secret scanning (TruffleHog + regex fallback)
+secret_scan_enabled = true
+secret_scan_fail_on_critical = true
+secret_scan_timeout_seconds = 60
+secret_scan_no_verification = true
+secret_scan_filter_in_serializer = true
+
+[token_tracking]
+enabled = true
+jsonl_path = "data/token_costs.jsonl"
+cost_per_1k_input = 0.003
+cost_per_1k_output = 0.015
+
+[routing]
+exploration_rate = 0.10
+score_decay_factor = 0.95
+min_samples_for_routing = 5
+
+[routing.static_priors]
+analysis = "claude"
+documentation = "claude"
+refactoring = "codex"
+bulk_tests = "codex"
+dependency_analysis = "gemini"
+full_repo_comprehension = "gemini"
+quick_fixes = "grok"
+web_lookup = "grok"
+
+[kelly]
+enabled = true
+kappa = 10.0
+f_max = 0.40
+min_exploration_floor = 0.02
+payoff_default = 2.0
+prior_alpha = 1.0
+prior_beta = 1.0
+local_quality_multiplier = 2.0
+
+[evolution]
+ab_test_sample_size = 20
+mutation_rate = 0.1
+promotion_threshold = 0.6
+ab_test_kappa = 10.0
+
+[fleet]
+max_concurrent_repos = 4
+enhancement_branch_prefix = "claw/enhancement"
+max_cost_per_repo_usd = 5.0
+max_cost_per_day_usd = 50.0
+
+[governance]
+max_methodologies = 5000  # 0 = unlimited; raise as needed (see docs/GOVERNANCE_TUNING.md)
+quota_warning_pct = 0.80
+gc_dead_on_sweep = true
+dedup_similarity_threshold = 0.88
+dedup_enabled = true
+episodic_retention_days = 90
+sweep_interval_cycles = 10
+sweep_on_startup = true
+self_consume_enabled = true
+self_consume_min_tasks = 10
+self_consume_max_generation = 3
+self_consume_lookback = 20
+max_db_size_mb = 500
+mining_min_description_length = 20
+
+[mining]
+extra_code_extensions = [".cpp", ".c", ".h", ".rb", ".swift", ".kt", ".scala", ".lua", ".r", ".jl"]
+extra_skip_dirs = ["migrations", "vendor", "third_party", "generated", ".terraform", "Pods"]
+
+[mining.recovery]
+enabled = true
+max_escalation_attempts = 3
+content_reduction_factor = 0.50
+max_chunks = 4
+escalation_order = ["codex", "gemini", "claude"]
+token_estimate_chars_per_token = 4.0
+min_context_headroom_pct = 0.20
+max_prompt_tokens = 80000
+
+[assimilation]
+enabled = true
+capability_llm_enabled = false
+synergy_candidate_limit = 20
+synergy_score_threshold = 0.6
+auto_compose_threshold = 0.8
+max_compositions_per_cycle = 3
+io_compatibility_weight = 0.3
+domain_overlap_weight = 0.2
+embedding_similarity_weight = 0.3
+llm_analysis_weight = 0.0
+# Novelty scoring
+novelty_enabled = true
+novelty_nearest_neighbor_k = 5
+novelty_nn_weight = 0.35
+novelty_domain_uniqueness_weight = 0.25
+novelty_type_rarity_weight = 0.15
+novelty_centroid_distance_weight = 0.25
+# Potential scoring
+potential_io_generality_weight = 0.30
+potential_composability_weight = 0.25
+potential_domain_breadth_weight = 0.20
+potential_standalone_weight = 0.10
+potential_llm_weight = 0.0
+potential_llm_threshold = 0.4
+# Lifecycle + retrieval integration
+novelty_lifecycle_protection_days = 90
+novelty_protection_threshold = 0.7
+novelty_retrieval_boost = 0.15
+potential_retrieval_boost = 0.10
+
+[agents.claude]
+enabled = true
+mode = "openrouter"
+api_key_env = "OPENROUTER_API_KEY"
+model = "deepseek/deepseek-v4-flash"
+max_concurrent = 2
+timeout = 600
+max_budget_usd = 10.0
+context_window_tokens = 1000000
+
+[agents.codex]
+enabled = true
+mode = "openrouter"
+api_key_env = "OPENROUTER_API_KEY"
+model = "deepseek/deepseek-v4-flash"
+max_concurrent = 4
+timeout = 600
+max_budget_usd = 10.0
+context_window_tokens = 1000000
+
+[agents.gemini]
+enabled = true
+mode = "openrouter"
+api_key_env = "OPENROUTER_API_KEY"
+model = "qwen/qwen3.6-flash"
+max_concurrent = 2
+timeout = 600
+max_budget_usd = 10.0
+context_window_tokens = 1000000
+
+[agents.grok]
+enabled = true
+mode = "openrouter"
+api_key_env = "OPENROUTER_API_KEY"
+model = "deepseek/deepseek-v4-pro"
+max_concurrent = 2
+timeout = 600
+max_budget_usd = 10.0
+context_window_tokens = 1000000
+
+# ---------------------------------------------------------------------------
+# Local LLM Agent — local inference via Atomic-Chat, mlx-server, or Ollama
+# ---------------------------------------------------------------------------
+# Dedicated agent slot for local inference on Apple Silicon (MLX) or CPU.
+# Uses OpenAI-compatible /v1/chat/completions endpoint.
+# To activate: set enabled = true, configure model and local_base_url.
+#
+# Atomic-Chat: http://localhost:1337/v1
+# MLX-LM:     http://localhost:8080/v1
+# Ollama:     http://localhost:11434/v1
+
+[agents.local]
+enabled = false
+mode = "local"
+model = "qwen3.5:9b"
+local_base_url = "http://localhost:11434/v1"
+max_concurrent = 1
+timeout = 300
+max_budget_usd = 0.0
+max_tokens = 16384
+context_window_tokens = 32768
+
+# ---------------------------------------------------------------------------
+# CAM-PULSE: Perpetual Unified Learning Swarm Engine
+# ---------------------------------------------------------------------------
+# Autonomous X-powered discovery and assimilation of novel GitHub repos.
+# Requires XAI_API_KEY (set in environment or xai.env).
+# Enable and set xai_model to activate.
+
+[pulse]
+enabled = false
+poll_interval_minutes = 30
+max_scouts = 4
+novelty_threshold = 0.70
+max_cost_per_scan_usd = 0.50
+max_cost_per_day_usd = 10.0
+max_repos_per_scan = 20
+clone_workspace = "data/pulse_clones"
+auto_mine = true
+auto_queue_enhance = false
+enhance_novelty_threshold = 0.85
+self_improve_interval_hours = 24
+xai_model = ""  # Set your Grok model (e.g., "grok-4-1-fast-non-reasoning" — budget pick at $0.20/M tokens)
+xai_api_key_env = "XAI_API_KEY"
+keywords = [
+    "github.com new repo",
+    "github.com just released open source",
+    "github.com dropped today AI agent framework",
+    "github.com new tool CLI developer",
+]
+
+# Mission profile — focus your PULSE instance on a specific domain.
+# Domains enrich keywords, novelty_bias boosts scores for matching discoveries.
+[pulse.profile]
+name = "general"
+mission = "Discover novel GitHub repos across AI, developer tools, and open source"
+domains = ["AI", "agents", "developer-tools", "open-source"]
+# Domain-specific novelty biases (boost score for matching domains)
+# [pulse.profile.novelty_bias]
+# memory = 0.15
+# agents = 0.10
+
+# ── PROFILE PRESETS (uncomment one, or create your own) ──
+#
+# Agent Memory Specialist:
+# [pulse.profile]
+# name = "agent-memory"
+# mission = "Discover repos that enhance agent memory, RAG, and knowledge persistence"
+# domains = ["memory", "RAG", "vector-db", "embeddings", "knowledge-graph"]
+# [pulse.profile.novelty_bias]
+# memory = 0.15
+# RAG = 0.10
+#
+# Inter-Agent Communication:
+# [pulse.profile]
+# name = "agent-comms"
+# mission = "Discover repos for agent-to-agent communication, orchestration, and multi-agent systems"
+# domains = ["multi-agent", "orchestration", "message-passing", "pub-sub", "swarm"]
+# [pulse.profile.novelty_bias]
+# orchestration = 0.15
+# multi-agent = 0.10
+#
+# Code Quality & Testing:
+# [pulse.profile]
+# name = "code-quality"
+# mission = "Discover repos for testing frameworks, linting, static analysis, and code review"
+# domains = ["testing", "linting", "static-analysis", "code-review", "CI-CD"]
+# [pulse.profile.novelty_bias]
+# testing = 0.15
+# static-analysis = 0.10
+
+# ── hf-mount integration ──
+# Mount HF Hub repos as local filesystems for zero-cost mining.
+# Requires hf-mount binary (https://github.com/huggingface/hf-mount).
+# Falls back to huggingface_hub snapshot_download() if unavailable.
+[pulse.hf_mount]
+enabled = true
+mount_base = "data/hf_mounts"
+cache_size_bytes = 1073741824  # 1GB per mount
+hf_token_env = "HF_TOKEN"
+fallback_to_download = true
+
+# ── Repo Freshness Monitor ──
+# Detect when previously-mined repos have significant updates.
+# Uses GitHub conditional requests (ETag/304) for zero-cost unchanged checks.
+[pulse.freshness]
+check_interval_hours = 12
+significance_commit_threshold = 20
+significance_threshold = 0.4
+github_token_env = "GITHUB_TOKEN"
+max_repos_per_check = 50
+rate_limit_buffer = 10
+
+# ---------------------------------------------------------------------------
+# deepConf — 6-factor confidence scoring
+# ---------------------------------------------------------------------------
+[deep_conf]
+retrieval_weight = 0.25
+authority_weight = 0.20
+accuracy_weight = 0.20
+novelty_weight = 0.10
+provenance_weight = 0.10
+verification_weight = 0.15
+min_critical_threshold = 0.15    # Suppress results where critical factors below this
+
+# ---------------------------------------------------------------------------
+# MCP — Expose CLAW as an MCP server for external agents (e.g. DeepScientist)
+# ---------------------------------------------------------------------------
+[mcp]
+enabled = true
+host = "127.0.0.1"
+port = 3100
+transport = "stdio"            # "stdio" for subprocess, "http" for network
+auth_token_env = "CLAW_MCP_AUTH_TOKEN"  # optional auth; empty = no auth
+
+# ---------------------------------------------------------------------------
+# Gap Analyzer — category x brain coverage matrix and repo prioritization
+# ---------------------------------------------------------------------------
+[gap_analyzer]
+enabled = true
+sparse_cell_threshold = 3   # category x brain cells below this count = sparse
+
+# ---------------------------------------------------------------------------
+# Logging — structured JSON logging for observability
+# ---------------------------------------------------------------------------
+[logging]
+json_mode = false       # true → JSON lines instead of text logs
+log_file = ""           # path to write JSON log file (empty = stderr only)
+
+# ---------------------------------------------------------------------------
+# CAG — Cache-Augmented Generation (vectorless retrieval via KV cache)
+# ---------------------------------------------------------------------------
+# Local LLM backend configuration (Ollama 0.19+, MLX, Atomic-Chat, llama.cpp)
+# Controls KV cache settings for prefix caching.
+
+[local_llm]
+# Provider: "ollama" (native q8_0, 2x) or "turboq" (TurboQuant turbo3, ~4.9x).
+# TurboQuant is recommended for CAG workloads — same API, much better compression.
+# turboq requires llama-server-turboq (TheTom/llama-cpp-turboquant fork).
+provider = "ollama"
+base_url = "http://localhost:11434/v1"
+model = "qwen3.5:9b"
+timeout = 300
+ctx_size = 32768
+kv_cache_type = "q8_0"
+# keep_alive=-1 prevents model/KV cache eviction between requests.
+# Essential for prefix caching — the corpus system message stays cached.
+keep_alive = -1
+# KV cache quantization tiers:
+#   f16    = full precision (1x baseline)
+#   q8_0   = 8-bit (2x compression, Ollama default, safe quality)
+#   q4_0   = 4-bit (4x compression, measurable quality loss)
+#   turbo3 = TurboQuant 3.25-bit (~4.9x, near-zero quality loss) [RECOMMENDED]
+#   turbo4 = TurboQuant 4-bit (~6x, near-zero quality loss)
+# When provider="turboq", turbo3 is applied server-side via --cache-type-k turbo3.
+# When provider="ollama", q8_0 is applied via OLLAMA_KV_CACHE_TYPE env var.
+kv_cache_quantization = "q8_0"
+# Path to TurboQuant server binary (only used when provider="turboq")
+turboq_binary = "/Users/o2satz/.local/bin/llama-server-turboq"
+
+# ---------------------------------------------------------------------------
+# Precomputes methodology corpus into structured text for KV cache injection.
+# When enabled, the CAG retriever loads cached context for instant,
+# perfectly-grounded retrieval — no vector search, no embedding noise.
+# Ollama 0.19 automatically caches the corpus system message prefix.
+
+[cag]
+enabled = true
+cache_dir = "data/cag_caches"
+auto_rebuild_on_stale = false
+max_methodologies_per_cache = 2000
+serialization_format = "structured_text"
+max_solution_chars = 2000
+# Max chars of methodology corpus injected into CAG-eligible prompts.
+# 16K chars ≈ 4K tokens. Tuned via A/B testing on qwen3.5:9b (2026-03-31):
+#   8K  → marginal quality gain, 2.3x token cost (too small)
+#   16K → best quality/cost tradeoff for 9B model (selected)
+#   64K → 25% timeout rate, quality drop, 8.4x token cost (too large)
+# For larger models (32B+) or cloud, increase proportionally.
+knowledge_budget_chars = 16000
+
+# Token budget: max tokens for full prompt context assembly.
+# Should match the local model's context window. Default 100K for cloud models.
+token_budget_max = 100000
+
+# Context pointers: solutions > this threshold are replaced with compact
+# pointer blocks (problem + capability summary + reference ID).
+# Saves ~4x space per large methodology. Set to 0 to disable.
+context_pointer_threshold = 2000
+
+# Shorthand compression: compress long solution text via BART summarizer
+# at build time for 2-3x density. Requires `transformers` package.
+# Falls back to extractive compression if BART unavailable.
+shorthand_compression = false
+shorthand_max_solution_chars = 800
+
+# ---------------------------------------------------------------------------
+# Self-Enhancement Pipeline
+# ---------------------------------------------------------------------------
+# CAM's self-improvement pipeline: clone → enhance → validate → swap.
+# After mining or PULSE ingestion, CAM assesses whether the new knowledge
+# justifies rebuilding itself. When triggered, it creates an enhanced copy,
+# validates it through 7 gates, and swaps only if all gates pass.
+
+[self_enhance]
+enabled = true
+workspace_parent = ""  # Default: same volume as live install (for atomic rename)
+max_backup_count = 3
+validation_test_timeout_seconds = 600
+require_user_confirmation = true  # Set false for fully autonomous operation
+
+# Protected files — changes to these require human review even if gates pass
+protected_files = [
+    "src/claw/verifier.py",
+    "src/claw/core/factory.py",
+    "src/claw/db/engine.py",
+    "src/claw/db/schema.sql",
+    "src/claw/core/config.py",
+]
+
+# Trigger conditions — self-enhance fires when ANY threshold is met
+min_new_methodologies = 10      # After N new methodologies since last enhance
+min_avg_novelty_score = 0.75    # When avg novelty of new methodologies exceeds this
+trigger_after_mine = false      # Auto-assess trigger after cam mine
+trigger_after_pulse_ingest = false  # Auto-assess trigger after cam pulse ingest
+cooldown_hours = 24             # Minimum hours between runs
+max_enhance_tasks = 10          # Max tasks per self-enhance run
+
+# ---------------------------------------------------------------------------
+# Community Knowledge Sharing
+# ---------------------------------------------------------------------------
+# Share and import learned methodologies safely via HuggingFace datasets.
+# Records are packed with provenance metadata and validated through 7 gates.
+# Imported knowledge enters quarantine (unless auto_approve = true).
+
+[community]
+hf_repo = "cam-community/knowledge-hub"
+hf_token_env = "HF_TOKEN"
+novelty_threshold = 0.70
+min_lifecycle_to_publish = "viable"
+auto_approve = false
+max_import_per_session = 200
+max_publish_count = 500
+instance_id_file = "data/community_state.json"
+
+# ---------------------------------------------------------------------------
+# CAM Swarm — Ganglion Federation
+# ---------------------------------------------------------------------------
+# The CAM Brain is the full federated system. Each specialized CAM instance
+# is a Ganglion — a semi-autonomous node with its own claw.db and domain
+# focus. The CAM Swarm connects ganglia via read-only FTS5 queries.
+#
+# Terminology:
+#   CAM Brain    = all ganglia together (the whole)
+#   CAM Ganglion = one specialized instance (a part)
+#   CAM Swarm    = the runtime layer connecting them
+#
+# Each ganglion generates a manifest summarizing what it knows (categories,
+# languages, source repos). During task execution, if local knowledge is
+# sparse, the swarm queries relevant sibling ganglia for supplemental
+# methodologies.
+
+[instances]
+enabled = true
+manifest_path = "data/brain_manifest.json"
+instance_name = "general"                    # This ganglion's name
+instance_description = "General-purpose AI development patterns, code quality, testing, architecture"
+federation_confidence_threshold = 0.3        # Skip swarm query if local confidence >= this
+federation_relevance_threshold = 0.2         # Min manifest relevance to query a sibling ganglion
+federation_max_results = 3                   # Max results per sibling ganglion query
+
+# ── Sibling ganglia (uncomment and configure) ──
+#
+# Each ganglion needs: name, db_path (absolute), and a specialization.
+# The manifest_path is auto-generated if left empty.
+#
+# Example: three ganglia forming a CAM Brain
+#
+# [[instances.siblings]]
+# name = "quantum-physics"
+# db_path = "/path/to/quantum/data/claw.db"
+# description = "Quantum computing, qubits, gates, error correction, circuit optimization"
+#
+[[instances.siblings]]
+name = "drive-ops"
+db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/data/instances/drive-ops/claw.db"
+description = "Drive scanning, repo discovery, dedup, archival, code organization across /Volumes/WS4TB"
+#
+# [[instances.siblings]]
+# name = "agentic-memory"
+# db_path = "/path/to/memory/data/claw.db"
+# description = "Agent memory systems, RAG, embeddings, knowledge graphs, vector search"
+
+# ---------------------------------------------------------------------------
+# Local LLM providers (Ollama / MLX-LM)
+# ---------------------------------------------------------------------------
+# To use a local model, set mode = "local" on any agent above and configure
+# local_base_url to point to your local OpenAI-compatible endpoint.
+#
+# Ollama (default port 11434):
+#   Start:  ollama serve
+#   Pull:   ollama pull llama3.2
+#   URL:    http://localhost:11434/v1
+#
+# MLX-LM (recommended for Apple Silicon, default port 8080):
+#   Start:  mlx_lm.server --model mlx-community/Llama-3.2-3B-Instruct-4bit
+#   URL:    http://localhost:8080/v1
+#
+# Example: run the claude slot locally with Ollama
+# [agents.claude]
+# enabled = true
+# mode = "local"
+# model = "llama3.2"
+# local_base_url = "http://localhost:11434/v1"
+# max_concurrent = 1
+# timeout = 300
+#
+# Example: run the codex slot locally with MLX-LM on Apple Silicon
+# [agents.codex]
+# enabled = true
+# mode = "local"
+# model = "mlx-community/Llama-3.2-3B-Instruct-4bit"
+# local_base_url = "http://localhost:8080/v1"
+# max_concurrent = 1
+# timeout = 300
+
+[[instances.siblings]]
+name = "agentic-memory"
+db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/data/instances/agentic-memory/claw.db"
+description = "Specialist ganglion for agentic memory, RAG, knowledge retrieval, and multi-agent patterns"
+
+[[instances.siblings]]
+name = "typescript"
+db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/typescript/claw.db"
+description = "Typescript language patterns mined by CAM typescript brain"
+
+[[instances.siblings]]
+name = "rust"
+db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/rust/claw.db"
+description = "Rust language patterns: WASM, safety, CLI, systems programming"
+
+[[instances.siblings]]
+name = "go"
+db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/go/claw.db"
+description = "Go language patterns: concurrency, CLI, networking, cloud infrastructure"
+
+[[instances.siblings]]
+name = "misc"
+db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/misc/claw.db"
+description = "Misc language patterns mined by CAM misc brain"

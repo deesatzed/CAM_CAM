@@ -102,6 +102,8 @@ class CamifyPlan(BaseModel):
     target_repo: str
     goals: list[str] = Field(default_factory=list)
     guide_files_used: list[str] = Field(default_factory=list)
+    source_repos: list[str] = Field(default_factory=list)
+    assimilation_targets: list[dict[str, str]] = Field(default_factory=list)
     kb_matches_found: int = 0
     kb_gaps: list[str] = Field(default_factory=list)
     steps: list[CamifyStep] = Field(default_factory=list)
@@ -337,6 +339,70 @@ class CamifyMatcher:
 class CamifyPlanner:
     """Generates a step-by-step CAM-ification plan."""
 
+    @staticmethod
+    def _clean_guide_cell(value: str) -> str:
+        """Normalize a markdown table cell into compact plain text."""
+        cleaned = value.strip()
+        cleaned = cleaned.replace("`", "")
+        cleaned = re.sub(r"\*\*(.*?)\*\*", r"\1", cleaned)
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        return cleaned.strip()
+
+    def _extract_source_repos(self, profile: RepoProfile) -> list[str]:
+        """Extract absolute source repo paths mentioned in guide content."""
+        text = "\n".join(profile.guide_content.values())
+        candidates = re.findall(r"/[^\s`|]+CAM[-_][^\s`|]+", text)
+        repos: list[str] = []
+        for candidate in candidates:
+            # Strip punctuation that may be adjacent in prose.
+            path = candidate.rstrip(".,);]")
+            for marker in ("/src/", "/tests/", "/docs/", "/scripts/", "/packages/", "/apps/"):
+                if marker in path:
+                    path = path.split(marker, 1)[0]
+                    break
+            local_path = Path(path)
+            if path.startswith("/") and local_path.exists() and not local_path.is_dir():
+                continue
+            if path.startswith("/") and local_path.suffix and not local_path.is_dir():
+                continue
+            if path == profile.path or path.startswith(f"{profile.path}/"):
+                continue
+            if path.startswith("//"):
+                continue
+            if path not in repos:
+                repos.append(path)
+        return repos
+
+    def _extract_assimilation_targets(
+        self, profile: RepoProfile
+    ) -> list[dict[str, str]]:
+        """Extract explicit A1/A2/... assimilation targets from guide tables.
+
+        This lets domain guides act as constrained merge manifests instead of
+        only keyword sources. Rows are expected to look like:
+
+        | A1 | Capability | Source evidence | Target area | Why | Acceptance |
+        """
+        targets: list[dict[str, str]] = []
+        for guide_name, content in profile.guide_content.items():
+            for raw_line in content.splitlines():
+                line = raw_line.strip()
+                if not re.match(r"^\|\s*A\d+\s*\|", line):
+                    continue
+                cells = [self._clean_guide_cell(c) for c in line.strip("|").split("|")]
+                if len(cells) < 6:
+                    continue
+                targets.append({
+                    "id": cells[0],
+                    "capability": cells[1],
+                    "source": cells[2],
+                    "target": cells[3],
+                    "why": cells[4],
+                    "acceptance": cells[5],
+                    "guide": guide_name,
+                })
+        return targets
+
     def plan(
         self,
         profile: RepoProfile,
@@ -346,6 +412,8 @@ class CamifyPlanner:
         """Generate a CamifyPlan from profile, matches, and goals."""
         steps: list[CamifyStep] = []
         repo = profile.path
+        source_repos = self._extract_source_repos(profile)
+        assimilation_targets = self._extract_assimilation_targets(profile)
 
         # Step 1: Always start with pre-flight
         steps.append(CamifyStep(
@@ -363,6 +431,80 @@ class CamifyPlanner:
             purpose="Verify KB has methodologies to apply",
             verification=f"Shows {matches.kb_methodology_count}+ methodologies",
         ))
+
+        if assimilation_targets:
+            source_repo = source_repos[0] if source_repos else repo
+            steps.append(CamifyStep(
+                id="source-mine",
+                phase="mine",
+                command=(
+                    f"cam mine {source_repo}"
+                    f" --target {repo}"
+                    f" --max-repos 1 --depth 5 --max-minutes 30"
+                ),
+                purpose=(
+                    "Mine the source sibling named in the guide before enhancing "
+                    "the target champion"
+                ),
+                verification=(
+                    "cam govern stats increases, and CAM records methodologies "
+                    "related to the guide's assimilation targets"
+                ),
+            ))
+
+            steps.append(CamifyStep(
+                id="assimilation-dryrun",
+                phase="evaluate",
+                command=f"cam enhance {repo} --battery --dry-run --verbose",
+                purpose=(
+                    "Generate a target-specific task plan and verify it mentions "
+                    "the guide's assimilation targets before code changes"
+                ),
+                verification=(
+                    "Dry-run task list mentions auto-fix, failure knowledge, "
+                    "agent rotation, verifier hardening, or other A-targets"
+                ),
+            ))
+
+            for target in assimilation_targets:
+                acceptance = target.get("acceptance", "")
+                steps.append(CamifyStep(
+                    id=f"assimilate-{target['id'].lower()}",
+                    phase="enhance",
+                    command=f"cam enhance {repo} --mode attended --max-tasks 1 --verbose",
+                    purpose=(
+                        f"{target['id']}: {target['capability']}. "
+                        f"Source: {target['source']}. "
+                        f"Target: {target['target']}. "
+                        f"Reason: {target['why']}"
+                    ),
+                    verification=acceptance or "Target-specific tests pass",
+                ))
+
+            steps.append(CamifyStep(
+                id="assimilation-full-validation",
+                phase="post",
+                command="python -m pytest -q",
+                purpose="Run full target validation after all accepted assimilation patches",
+                verification=(
+                    "Full suite passes, or unrelated pre-existing failures are "
+                    "documented separately from assimilation failures"
+                ),
+            ))
+
+            guide_files_used = profile.guide_files
+            created_at = _time.strftime("%Y-%m-%dT%H:%M:%SZ", _time.gmtime())
+            return CamifyPlan(
+                target_repo=repo,
+                goals=goals,
+                guide_files_used=guide_files_used,
+                source_repos=source_repos,
+                assimilation_targets=assimilation_targets,
+                kb_matches_found=len(matches.matched_methodologies),
+                kb_gaps=matches.gap_areas,
+                steps=steps,
+                created_at=created_at,
+            )
 
         # Step 2: Mine if KB has gaps or goals include learning
         needs_mine = (
@@ -457,6 +599,8 @@ class CamifyPlanner:
             target_repo=repo,
             goals=goals,
             guide_files_used=guide_files_used,
+            source_repos=source_repos,
+            assimilation_targets=assimilation_targets,
             kb_matches_found=len(matches.matched_methodologies),
             kb_gaps=matches.gap_areas,
             steps=steps,
@@ -478,6 +622,14 @@ class CamifyPlanner:
             lines.append("guide_files:")
             for gf in plan.guide_files_used:
                 lines.append(f"  - {gf}")
+        if plan.source_repos:
+            lines.append("source_repos:")
+            for source in plan.source_repos:
+                lines.append(f"  - {source}")
+        if plan.assimilation_targets:
+            lines.append("assimilation_targets:")
+            for target in plan.assimilation_targets:
+                lines.append(f"  - {target.get('id', '')}: {target.get('capability', '')}")
         lines.append(f"kb_matches_found: {plan.kb_matches_found}")
         if plan.kb_gaps:
             lines.append("kb_gaps:")
@@ -505,6 +657,23 @@ class CamifyPlanner:
         if plan.kb_gaps:
             lines.append(f"- Gaps: {', '.join(plan.kb_gaps)}")
         lines.append("")
+
+        if plan.assimilation_targets:
+            lines.append("## Assimilation Targets")
+            lines.append("")
+            lines.append("| ID | Capability | Source | Target | Acceptance |")
+            lines.append("|---|---|---|---|---|")
+            for target in plan.assimilation_targets:
+                lines.append(
+                    "| {id} | {capability} | {source} | {target_area} | {acceptance} |".format(
+                        id=target.get("id", ""),
+                        capability=target.get("capability", ""),
+                        source=target.get("source", ""),
+                        target_area=target.get("target", ""),
+                        acceptance=target.get("acceptance", ""),
+                    )
+                )
+            lines.append("")
 
         # Steps
         for i, step in enumerate(plan.steps, 1):

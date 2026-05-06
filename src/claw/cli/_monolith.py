@@ -276,13 +276,18 @@ def _fail_if_missing_api_keys(config: Any, command_name: str) -> None:
 
 
 async def _run_live_key_checks(config: Any, command_name: str) -> list[dict[str, str]]:
+    import sys
+
     from claw.db.embeddings import EmbeddingEngine
     from claw.llm.client import LLMClient, LLMMessage
 
     command = command_name.strip().lower()
     results: list[dict[str, str]] = []
+    public_cli = sys.modules.get("claw.cli")
+    required_fn = getattr(public_cli, "_required_api_keys_for_command", _required_api_keys_for_command)
+    requirements = required_fn(config, command)
 
-    if any(key == "OPENROUTER_API_KEY" for key, _ in _required_api_keys_for_command(config, command)):
+    if any(key == "OPENROUTER_API_KEY" for key, _ in requirements):
         model = _select_live_llm_model(config, command)
         llm_client = LLMClient(config.llm)
         try:
@@ -307,7 +312,11 @@ async def _run_live_key_checks(config: Any, command_name: str) -> list[dict[str,
         finally:
             await llm_client.close()
 
-    if command in {"mine", "mine-workspace", "mine-self", "mine-all"} and _uses_remote_embeddings(config):
+    requires_embedding_probe = any("embedding" in reason.lower() for _, reason in requirements)
+    if (
+        command in {"mine", "mine-workspace", "mine-self", "mine-all"}
+        and (_uses_remote_embeddings(config) or requires_embedding_probe)
+    ):
         try:
             engine = EmbeddingEngine(config.embeddings)
             vector = engine.encode("cam keycheck live probe")

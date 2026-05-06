@@ -1,0 +1,290 @@
+{
+  "version": 1,
+  "target_repo": "/Volumes/WS4TB/CCam/CAM_CAM",
+  "goals": [
+    "assimilate CAM-Pulse defense-chain capabilities into CAM_CAM while preserving budget-bound serial evolution",
+    "identify missing auto-fix, failure-knowledge, verifier-hardening, and agent-rotation integration points"
+  ],
+  "guide_files_used": [
+    "docs/CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md",
+    "README.md"
+  ],
+  "source_repos": [
+    "/Volumes/WS4TB/CCam/CAM-Pulse"
+  ],
+  "assimilation_targets": [
+    {
+      "id": "A1",
+      "capability": "Deterministic auto-fix engine",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/memory/auto_fix.py; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_auto_fix.py",
+      "target": "Add src/claw/memory/auto_fix.py; add tests",
+      "why": "Fix shallow model bugs before spending LLM correction attempts",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_auto_fix.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A2",
+      "capability": "Auto-fix integration in MicroClaw",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py around build_default_engine, proactive auto-fix, re-verify",
+      "target": "src/claw/cycle.py",
+      "why": "Makes auto-fix part of act -> verify -> correction loop",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_cycle.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A3",
+      "capability": "Correction feedback hints",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/agents/interface.py known_fix_hint and auto_fixes_applied prompt sections",
+      "target": "src/claw/agents/interface.py; src/claw/core/models.py",
+      "why": "Lets agents use prior successful fixes and know which deterministic fixes already ran",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_failure_learning.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A4",
+      "capability": "Failure knowledge table and repository methods",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/db/repository.py; /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/db/schema.sql; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_failure_knowledge.py",
+      "target": "src/claw/db/repository.py; src/claw/db/schema.sql; src/claw/db/engine.py",
+      "why": "Stores unresolved recurring failures as preventive knowledge",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_failure_knowledge.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A5",
+      "capability": "Agent rotation using excluded agents",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/dispatcher.py; /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_dispatcher.py",
+      "target": "src/claw/dispatcher.py; src/claw/cycle.py; src/claw/core/models.py",
+      "why": "Prevents repeated failed attempts by the same agent/model",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_dispatcher.py tests/test_cycle.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A6",
+      "capability": "RL escalation retry loop",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/evolution/rl_escalation.py; cycle integration in src/claw/cycle.py",
+      "target": "src/claw/evolution/rl_escalation.py; src/claw/cycle.py",
+      "why": "Converts exhausted correction attempts into rotate/decompose/human-review decisions",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_failure_learning.py tests/test_cycle.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A7",
+      "capability": "Verifier hardening for model artifacts and test detection",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/verifier.py; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_verifier.py",
+      "target": "src/claw/verifier.py",
+      "why": "Rejects leaked FIM tokens, detects pytest tests even without pyproject, scores environment failures correctly",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_verifier.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A8",
+      "capability": "Structured file-operation token stripping",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py _strip_llm_tokens and _apply_structured_file_operations",
+      "target": "src/claw/cycle.py",
+      "why": "Prevents generated source files from containing model control tokens",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_cycle.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A9",
+      "capability": "Workspace resolution fallback chain",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py _resolve_workspace_dir; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_cycle.py",
+      "target": "src/claw/cycle.py",
+      "why": "Ensures verification runs against the task or project repo even if the agent lacks workspace_dir",
+      "acceptance": "PYTHONPATH=src python -m pytest tests/test_cycle.py -q",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A10",
+      "capability": "Auto-fix rule suggestion mining",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/src/claw/evolution/pattern_learner.py generate_auto_fix_rule_suggestions",
+      "target": "src/claw/evolution/pattern_learner.py",
+      "why": "Turns repeated correction successes into proposed deterministic fix rules",
+      "acceptance": "Add/port targeted test or verify through tests/test_failure_learning.py",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A11",
+      "capability": "Defense proof harness",
+      "source": "/Volumes/WS4TB/CCam/CAM-Pulse/scripts/retest_rotation.py",
+      "target": "scripts/retest_rotation.py",
+      "why": "Provides an executable proof that rotation/failure knowledge works",
+      "acceptance": "PYTHONPATH=src python scripts/retest_rotation.py --help or dry-run equivalent",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    },
+    {
+      "id": "A12",
+      "capability": "Defense-chain documentation",
+      "source": "CAM-Pulse README.md and docs/index.html defense-chain sections",
+      "target": "New or updated CAM_CAM docs only",
+      "why": "Documents the merged system without overwriting serial-evolution docs",
+      "acceptance": "Docs diff reviewed manually",
+      "guide": "CAM_CAM_PULSE_ASSIMILATION_GUIDE_2026-05-05.md"
+    }
+  ],
+  "kb_matches_found": 10,
+  "kb_gaps": [
+    "knowledge",
+    "claw",
+    "tests",
+    "patterns",
+    "cam-pulse"
+  ],
+  "steps": [
+    {
+      "id": "preflight",
+      "phase": "preflight",
+      "command": "cam doctor environment",
+      "purpose": "Verify CAM installation, API keys, and database health",
+      "verification": "Exit code 0, all checks green",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "govern-check",
+      "phase": "preflight",
+      "command": "cam govern stats",
+      "purpose": "Verify KB has methodologies to apply",
+      "verification": "Shows 95+ methodologies",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "source-mine",
+      "phase": "mine",
+      "command": "cam mine /Volumes/WS4TB/CCam/CAM-Pulse --target /Volumes/WS4TB/CCam/CAM_CAM --max-repos 1 --depth 5 --max-minutes 30",
+      "purpose": "Mine the source sibling named in the guide before enhancing the target champion",
+      "verification": "cam govern stats increases, and CAM records methodologies related to the guide's assimilation targets",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilation-dryrun",
+      "phase": "evaluate",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --battery --dry-run --verbose",
+      "purpose": "Generate a target-specific task plan and verify it mentions the guide's assimilation targets before code changes",
+      "verification": "Dry-run task list mentions auto-fix, failure knowledge, agent rotation, verifier hardening, or other A-targets",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a1",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A1: Deterministic auto-fix engine. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/memory/auto_fix.py; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_auto_fix.py. Target: Add src/claw/memory/auto_fix.py; add tests. Reason: Fix shallow model bugs before spending LLM correction attempts",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_auto_fix.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a2",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A2: Auto-fix integration in MicroClaw. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py around build_default_engine, proactive auto-fix, re-verify. Target: src/claw/cycle.py. Reason: Makes auto-fix part of act -> verify -> correction loop",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_cycle.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a3",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A3: Correction feedback hints. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/agents/interface.py known_fix_hint and auto_fixes_applied prompt sections. Target: src/claw/agents/interface.py; src/claw/core/models.py. Reason: Lets agents use prior successful fixes and know which deterministic fixes already ran",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_failure_learning.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a4",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A4: Failure knowledge table and repository methods. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/db/repository.py; /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/db/schema.sql; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_failure_knowledge.py. Target: src/claw/db/repository.py; src/claw/db/schema.sql; src/claw/db/engine.py. Reason: Stores unresolved recurring failures as preventive knowledge",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_failure_knowledge.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a5",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A5: Agent rotation using excluded agents. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/dispatcher.py; /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_dispatcher.py. Target: src/claw/dispatcher.py; src/claw/cycle.py; src/claw/core/models.py. Reason: Prevents repeated failed attempts by the same agent/model",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_dispatcher.py tests/test_cycle.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a6",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A6: RL escalation retry loop. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/evolution/rl_escalation.py; cycle integration in src/claw/cycle.py. Target: src/claw/evolution/rl_escalation.py; src/claw/cycle.py. Reason: Converts exhausted correction attempts into rotate/decompose/human-review decisions",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_failure_learning.py tests/test_cycle.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a7",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A7: Verifier hardening for model artifacts and test detection. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/verifier.py; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_verifier.py. Target: src/claw/verifier.py. Reason: Rejects leaked FIM tokens, detects pytest tests even without pyproject, scores environment failures correctly",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_verifier.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a8",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A8: Structured file-operation token stripping. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py _strip_llm_tokens and _apply_structured_file_operations. Target: src/claw/cycle.py. Reason: Prevents generated source files from containing model control tokens",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_cycle.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a9",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A9: Workspace resolution fallback chain. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/cycle.py _resolve_workspace_dir; /Volumes/WS4TB/CCam/CAM-Pulse/tests/test_cycle.py. Target: src/claw/cycle.py. Reason: Ensures verification runs against the task or project repo even if the agent lacks workspace_dir",
+      "verification": "PYTHONPATH=src python -m pytest tests/test_cycle.py -q",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a10",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A10: Auto-fix rule suggestion mining. Source: /Volumes/WS4TB/CCam/CAM-Pulse/src/claw/evolution/pattern_learner.py generate_auto_fix_rule_suggestions. Target: src/claw/evolution/pattern_learner.py. Reason: Turns repeated correction successes into proposed deterministic fix rules",
+      "verification": "Add/port targeted test or verify through tests/test_failure_learning.py",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a11",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A11: Defense proof harness. Source: /Volumes/WS4TB/CCam/CAM-Pulse/scripts/retest_rotation.py. Target: scripts/retest_rotation.py. Reason: Provides an executable proof that rotation/failure knowledge works",
+      "verification": "PYTHONPATH=src python scripts/retest_rotation.py --help or dry-run equivalent",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilate-a12",
+      "phase": "enhance",
+      "command": "cam enhance /Volumes/WS4TB/CCam/CAM_CAM --mode attended --max-tasks 1 --verbose",
+      "purpose": "A12: Defense-chain documentation. Source: CAM-Pulse README.md and docs/index.html defense-chain sections. Target: New or updated CAM_CAM docs only. Reason: Documents the merged system without overwriting serial-evolution docs",
+      "verification": "Docs diff reviewed manually",
+      "required": true,
+      "fallback": null
+    },
+    {
+      "id": "assimilation-full-validation",
+      "phase": "post",
+      "command": "python -m pytest -q",
+      "purpose": "Run full target validation after all accepted assimilation patches",
+      "verification": "Full suite passes, or unrelated pre-existing failures are documented separately from assimilation failures",
+      "required": true,
+      "fallback": null
+    }
+  ],
+  "created_at": "2026-05-05T22:08:55Z",
+  "status": "PENDING"
+}

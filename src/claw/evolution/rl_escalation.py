@@ -46,6 +46,8 @@ _AGENT_SPECIFIC_CATEGORIES = frozenset({
     "api_error",
     "async_error",
     "connection_error",
+    "test_failure",
+    "syntax_error",
 })
 
 # Error categories that suggest task complexity issues (Tier 2: decompose)

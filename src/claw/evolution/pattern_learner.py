@@ -545,3 +545,79 @@ class PatternLearner:
             "demotion_candidate_methodologies": audit_summary["demotion_candidate_total"],
             "flagged_methodologies": audit_summary["flagged_total"],
         }
+
+    async def generate_auto_fix_rule_suggestions(
+        self,
+        project_id: Optional[str] = None,
+        min_occurrences: int = 3,
+    ) -> list[dict[str, Any]]:
+        """Suggest deterministic auto-fix rules from repeated correction successes."""
+        if project_id:
+            rows = await self.repository.engine.fetch_all(
+                """SELECT h_fix.error_signature,
+                          COUNT(*) AS fix_count,
+                          GROUP_CONCAT(DISTINCT h_fix.approach_summary) AS approaches,
+                          GROUP_CONCAT(DISTINCT h_fix.task_id) AS task_ids
+                   FROM hypothesis_log h_fix
+                   JOIN tasks t ON h_fix.task_id = t.id
+                   WHERE t.project_id = ?
+                     AND h_fix.outcome = 'SUCCESS'
+                     AND h_fix.error_signature IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1 FROM hypothesis_log h_fail
+                         WHERE h_fail.task_id = h_fix.task_id
+                           AND h_fail.outcome = 'FAILURE'
+                           AND h_fail.error_signature = h_fix.error_signature
+                           AND h_fail.attempt_number < h_fix.attempt_number
+                     )
+                   GROUP BY h_fix.error_signature
+                   HAVING COUNT(*) >= ?
+                   ORDER BY fix_count DESC""",
+                [project_id, min_occurrences],
+            )
+        else:
+            rows = await self.repository.engine.fetch_all(
+                """SELECT h_fix.error_signature,
+                          COUNT(*) AS fix_count,
+                          GROUP_CONCAT(DISTINCT h_fix.approach_summary) AS approaches,
+                          GROUP_CONCAT(DISTINCT h_fix.task_id) AS task_ids
+                   FROM hypothesis_log h_fix
+                   WHERE h_fix.outcome = 'SUCCESS'
+                     AND h_fix.error_signature IS NOT NULL
+                     AND EXISTS (
+                         SELECT 1 FROM hypothesis_log h_fail
+                         WHERE h_fail.task_id = h_fix.task_id
+                           AND h_fail.outcome = 'FAILURE'
+                           AND h_fail.error_signature = h_fix.error_signature
+                           AND h_fail.attempt_number < h_fix.attempt_number
+                     )
+                   GROUP BY h_fix.error_signature
+                   HAVING COUNT(*) >= ?
+                   ORDER BY fix_count DESC""",
+                [min_occurrences],
+            )
+
+        suggestions: list[dict[str, Any]] = []
+        for row in rows:
+            error_sig = str(row["error_signature"])
+            fix_count = int(row["fix_count"])
+            approaches_raw = str(row["approaches"]) if row["approaches"] else ""
+            task_ids_raw = str(row["task_ids"]) if row["task_ids"] else ""
+
+            from claw.evolution.rl_escalation import classify_error
+
+            suggestions.append({
+                "error_signature": error_sig,
+                "correction_count": fix_count,
+                "fix_approaches": [a.strip() for a in approaches_raw.split(",") if a.strip()],
+                "category": classify_error(error_sig),
+                "task_ids": [t.strip() for t in task_ids_raw.split(",") if t.strip()],
+                "confidence": min(1.0, fix_count / 5.0),
+            })
+
+        if suggestions:
+            logger.info(
+                "Generated %d auto-fix rule suggestions (min_occurrences=%d)",
+                len(suggestions), min_occurrences,
+            )
+        return suggestions
