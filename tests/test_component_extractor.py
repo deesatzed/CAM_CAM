@@ -687,8 +687,37 @@ def _has_real_tree_sitter(language: str) -> bool:
     return component_extractor._build_parser(language) is not None
 
 
-def test_declared_typescript_tree_sitter_parser_loads():
-    assert component_extractor._build_parser("typescript") is not None
+def test_build_parser_supports_typescript_specific_language_factory(monkeypatch):
+    class FakeLanguage:
+        def __init__(self, capsule):
+            self.capsule = capsule
+
+    class FakeParser:
+        def __init__(self, *args):
+            if args:
+                raise TypeError
+            self.language = None
+
+    class FakeTypescriptModule:
+        @staticmethod
+        def language_typescript():
+            return "typescript-capsule"
+
+    monkeypatch.setattr(
+        component_extractor,
+        "_tree_sitter_modules",
+        lambda: {
+            "Language": FakeLanguage,
+            "Parser": FakeParser,
+            "typescript": FakeTypescriptModule,
+        },
+    )
+
+    parser = component_extractor._build_parser("typescript")
+
+    assert parser is not None
+    assert isinstance(parser.language, FakeLanguage)
+    assert parser.language.capsule == "typescript-capsule"
 
 
 @pytest.mark.skipif(not _has_real_tree_sitter("python"), reason="tree-sitter python parser not installed")
