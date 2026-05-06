@@ -25,9 +25,12 @@ from __future__ import annotations
 import logging
 import math
 from datetime import UTC, datetime
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from claw.core.models import Methodology
+
+if TYPE_CHECKING:
+    from claw.db.engine import DatabaseEngine
 
 logger = logging.getLogger("claw.memory.fitness")
 

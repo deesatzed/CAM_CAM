@@ -587,7 +587,6 @@ def _local_workspace_search_cards(
 
     candidates.sort(key=lambda item: (item[0], item[1].title.lower()), reverse=True)
     return [card for _score, card in candidates[:max_cards]]
-    return cards
 
 
 async def _active_governance_policies_for_plan(repo: Any, task_archetype: str) -> list[GovernancePolicy]:

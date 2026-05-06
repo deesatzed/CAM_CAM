@@ -14,12 +14,15 @@ import shutil
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from claw.core.config import ClawConfig
 from claw.db.engine import DatabaseEngine
 from claw.miner import RepoMiner, RepoMiningResult
 from claw.pulse.models import AssimilationResult, PulseDiscovery
+
+if TYPE_CHECKING:
+    from claw.security.scanner import ScanResult
 
 logger = logging.getLogger("claw.pulse.assimilator")
 

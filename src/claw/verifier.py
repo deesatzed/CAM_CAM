@@ -30,6 +30,7 @@ from typing import Any, Optional
 from claw.core.config import PromptLoader
 from claw.core.models import (
     MetricExpectation,
+    SWEQualityDimensions,
     TaskContext,
     TaskOutcome,
     VerificationResult,

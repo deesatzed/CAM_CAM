@@ -31,6 +31,7 @@ import re
 import shlex
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -49,6 +50,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 console = Console()
+logger = logging.getLogger("claw.cli")
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 _IDEA_DIR = ROOT_DIR / "data" / "ideation"
