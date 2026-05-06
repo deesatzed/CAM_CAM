@@ -118,6 +118,8 @@ def _build_parser(language: str) -> Optional[Any]:
     language_cls = modules["Language"]
 
     language_factory = getattr(language_module, "language", None)
+    if language_factory is None and language == "typescript":
+        language_factory = getattr(language_module, "language_typescript", None)
     if language_factory is None:
         return None
 

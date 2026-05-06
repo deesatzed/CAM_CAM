@@ -1,6 +1,6 @@
 # CAM-SEQ Live Status
 
-Last updated: 2026-04-13
+Last updated: 2026-05-06
 
 This file is the short answer to:
 - what is actively being worked
@@ -13,11 +13,16 @@ For the full ledger, use:
 ## Current Slice
 
 Active work:
+- resumed the pre-merger plan after the CAM_CAM/CAM-Pulse defense-chain merge
+- `M2`: close component parser precision gaps with focused real-parser coverage
 - app troubleshooting: verify frontend/backend runtime behavior and separate app defects from environment/tooling failures
 - `M6`: on hold pending decision to revisit the advanced CodeQL lane
 - milestone ledger remains available in the long-form tracker below
 
 Just finished:
+- fixed the TypeScript Tree-sitter parser loader so `tree_sitter_typescript.language_typescript` is used when the package does not expose a generic `language` factory
+- added regression coverage that the declared TypeScript Tree-sitter parser loads
+- verified `tests/test_component_extractor.py` with `26 passed`
 - installed `forge-ui` local dependencies
 - fixed frontend lint errors across Evolution, Forge Run, Knowledge, Playground, and Layout
 - verified production build with `next build --webpack`
@@ -35,6 +40,7 @@ Just finished:
 - fixed workspace search leakage so a file-content hit now yields one explicit file-level fallback result instead of every unrelated symbol in that file
 
 Latest validation:
+- backend: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed (`26 passed`)
 - frontend: `npm run lint` passed
 - frontend: `npx next build --webpack` passed
 - backend: focused `tests/test_dashboard_camseq.py` passes (`41 passed`)

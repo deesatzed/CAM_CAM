@@ -4,7 +4,7 @@
 
 - Repository: `/Volumes/WS4TB/CCam/CAM_CAM`
 - Branch: `main`
-- Latest pushed commit: `9db0e8b Enable strategy policy bootstrap evolution`
+- Latest pushed commit: `f5b2d96 Move ganglion timeout setup outside timed miner`
 - Current serial-evolution champion: `v4-candidate`
 - Champion pointer: `instances/evolution/current_champion.json`
 - Champion DB: `instances/evolution/challengers/v4-candidate/data/claw.db`
@@ -29,6 +29,8 @@ The merge added and verified:
 - serial evolution proof harness support
 
 Full verification after the merge passed before follow-on evolution work.
+Follow-on CI stabilization was also committed and pushed through `f5b2d96`.
+Both GitHub workflows, `CI` and `Test Suite`, passed on that commit.
 
 ## Post-Merge Evolution Runs
 
@@ -109,11 +111,21 @@ Verification:
 
 ## Recommended Next Actions
 
-1. Run a budget-bound live data-feature mining cycle only when API spend is acceptable.
-2. Generate real task outcomes so `agent_scores`, `prompt_variants`, `ab_quality_samples`, and failure knowledge become richer.
-3. Keep model-layer evolution disabled until token/cost traces exist.
-4. After new outcome evidence exists, rerun `strategy_policy` and `prompt_config` cycles to test whether CAM_CAM can promote based on real performance instead of bootstrap policy evidence.
-5. Run the full suite after every code-level evolution improvement before committing.
+1. Continue the pre-merger CAM-SEQ plan from `M2` parser precision and proof gaps.
+2. Run a budget-bound live data-feature mining cycle only when API spend is acceptable.
+3. Generate real task outcomes so `agent_scores`, `prompt_variants`, `ab_quality_samples`, and failure knowledge become richer.
+4. Keep model-layer evolution disabled until token/cost traces exist.
+5. After new outcome evidence exists, rerun `strategy_policy` and `prompt_config` cycles to test whether CAM_CAM can promote based on real performance instead of bootstrap policy evidence.
+6. Run the full suite after every code-level evolution improvement before committing.
+
+## Returned Pre-Merger Plan Work
+
+### M2 Parser Precision
+
+- Issue found: the installed `tree_sitter_typescript` package exposes `language_typescript`, but the parser loader only looked for `language`.
+- Fix: CAM_CAM now resolves the TypeScript grammar through `language_typescript` when needed.
+- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `26 passed`.
+- Result: real TypeScript Tree-sitter extraction now uses the precision path instead of silently falling back.
 
 ## Operator Summary
 

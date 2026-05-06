@@ -687,6 +687,10 @@ def _has_real_tree_sitter(language: str) -> bool:
     return component_extractor._build_parser(language) is not None
 
 
+def test_declared_typescript_tree_sitter_parser_loads():
+    assert component_extractor._build_parser("typescript") is not None
+
+
 @pytest.mark.skipif(not _has_real_tree_sitter("python"), reason="tree-sitter python parser not installed")
 def test_real_tree_sitter_extracts_python_decorated_async_shapes(tmp_path):
     repo = tmp_path
