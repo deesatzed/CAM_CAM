@@ -17,6 +17,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tomllib
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -1414,8 +1415,133 @@ class SerialEvolutionRunner:
             )
             mined.append(item)
         if not mined:
-            await self._record_no_mining_material(run_id, "prompt_variant")
+            mined = await self._mine_static_prompt_config(run_id)
+        if not mined:
+            await self._record_no_mining_material(run_id, "prompt_or_config")
         return mined
+
+    async def _mine_static_prompt_config(self, run_id: str) -> list[dict[str, Any]]:
+        """Bootstrap prompt/config evolution before A/B prompt history exists."""
+        mined: list[dict[str, Any]] = []
+        prompt_dir = self.repo_path / "prompts"
+        for path in sorted(prompt_dir.glob("*.md"))[:10]:
+            text = self._safe_read_text(path, max_chars=120_000)
+            if not text.strip():
+                continue
+            rel_path = path.relative_to(self.repo_path).as_posix()
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            item = await self.repository.record_evolution_mined_input(
+                {
+                    "run_id": run_id,
+                    "source_type": "prompt_template",
+                    "source_uri": rel_path,
+                    "source_ref": digest,
+                    "novelty_score": 0.5,
+                    "relevance_score": self._prompt_template_relevance(text),
+                    "accepted": True,
+                    "extracted_payload": {
+                        "path": rel_path,
+                        "content_hash": digest,
+                        "char_count": len(text),
+                        "line_count": text.count("\n") + 1,
+                        "signals": self._prompt_config_signals(text),
+                        "bootstrap_reason": "no_prompt_variant_history",
+                    },
+                }
+            )
+            mined.append(item)
+
+        for path in self._candidate_config_files():
+            text = self._safe_read_text(path, max_chars=120_000)
+            if not text.strip():
+                continue
+            rel_path = path.relative_to(self.repo_path).as_posix()
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+            item = await self.repository.record_evolution_mined_input(
+                {
+                    "run_id": run_id,
+                    "source_type": "config_file",
+                    "source_uri": rel_path,
+                    "source_ref": digest,
+                    "novelty_score": 0.45,
+                    "relevance_score": self._config_file_relevance(path, text),
+                    "accepted": True,
+                    "extracted_payload": {
+                        "path": rel_path,
+                        "content_hash": digest,
+                        "char_count": len(text),
+                        "line_count": text.count("\n") + 1,
+                        "signals": self._prompt_config_signals(text),
+                        "config_summary": self._summarize_config_file(path, text),
+                        "bootstrap_reason": "no_prompt_variant_history",
+                    },
+                }
+            )
+            mined.append(item)
+        return mined
+
+    def _candidate_config_files(self) -> list[Path]:
+        candidates: list[Path] = []
+        for pattern in ("claw*.toml", "config/*.toml", "config/*.yaml", "config/*.yml"):
+            candidates.extend(sorted(self.repo_path.glob(pattern)))
+        unique: dict[str, Path] = {}
+        for path in candidates:
+            if path.is_file():
+                unique[path.resolve().as_posix()] = path
+        return list(unique.values())[:10]
+
+    @staticmethod
+    def _safe_read_text(path: Path, max_chars: int) -> str:
+        try:
+            return path.read_text(encoding="utf-8")[:max_chars]
+        except UnicodeDecodeError:
+            return path.read_text(errors="ignore")[:max_chars]
+
+    @staticmethod
+    def _prompt_config_signals(text: str) -> list[str]:
+        lowered = text.lower()
+        signals = []
+        for key in (
+            "agent",
+            "model",
+            "prompt",
+            "constraint",
+            "verify",
+            "test",
+            "retry",
+            "fallback",
+            "budget",
+            "quality",
+        ):
+            if key in lowered:
+                signals.append(key)
+        return signals
+
+    def _prompt_template_relevance(self, text: str) -> float:
+        signals = self._prompt_config_signals(text)
+        return min(1.0, 0.45 + (0.05 * len(signals)))
+
+    def _config_file_relevance(self, path: Path, text: str) -> float:
+        signals = self._prompt_config_signals(text)
+        base = 0.55 if path.name.startswith("claw") else 0.4
+        return min(1.0, base + (0.04 * len(signals)))
+
+    @staticmethod
+    def _summarize_config_file(path: Path, text: str) -> dict[str, Any]:
+        if path.suffix != ".toml":
+            return {"format": path.suffix.lstrip(".") or "text"}
+        try:
+            data = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            return {"format": "toml", "parse_error": str(exc)}
+        agents = data.get("agents", {})
+        brains = data.get("mining", {}).get("brains", {})
+        return {
+            "format": "toml",
+            "top_level_sections": sorted(str(key) for key in data.keys()),
+            "agents": sorted(str(key) for key in agents.keys()) if isinstance(agents, dict) else [],
+            "brain_profiles": sorted(str(key) for key in brains.keys()) if isinstance(brains, dict) else [],
+        }
 
     async def _mine_strategy_policy(self, run_id: str) -> list[dict[str, Any]]:
         rows = await self.repository.engine.fetch_all(
@@ -2284,13 +2410,7 @@ class SerialEvolutionRunner:
             evaluations=evaluations,
             mined=mined,
         )
-        primary = next(
-            (e for e in evaluations if e["eval_slice"] == "paired_task_readiness"),
-            next(
-                (e for e in evaluations if e["eval_slice"] == "paired_retrieval"),
-                next((e for e in evaluations if e["eval_slice"] == "layer_specific"), evaluations[-1]),
-            ),
-        )
+        primary = self._primary_evaluation_for_decision(run, evaluations)
         champion_score = float(primary["champion_score"])
         challenger_score = float(primary["challenger_score"])
         relative_lift = (
@@ -2348,6 +2468,22 @@ class SerialEvolutionRunner:
                 "rollback_instance_id": run["champion_instance_id"],
             }
         )
+
+    @staticmethod
+    def _primary_evaluation_for_decision(
+        run: dict[str, Any],
+        evaluations: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        layer = str(run.get("layer") or "")
+        if layer == "prompt_config":
+            preferred = ("layer_specific", "holdout_proxy", "paired_task_readiness", "paired_retrieval")
+        else:
+            preferred = ("paired_task_readiness", "paired_retrieval", "layer_specific", "holdout_proxy")
+        for eval_slice in preferred:
+            match = next((e for e in evaluations if e["eval_slice"] == eval_slice), None)
+            if match is not None:
+                return match
+        return evaluations[-1]
 
     async def _validate_challenger_for_promotion(
         self,

@@ -305,6 +305,65 @@ class TestSerialEvolutionRunner:
         assert run["status"] == "rejected"
         assert "No accepted mined inputs" in run["failure_reason"]
 
+    async def test_prompt_config_cycle_bootstraps_from_static_prompt_and_config_files(
+        self,
+        evolution_engine: DatabaseEngine,
+        mini_repo: Path,
+    ):
+        (mini_repo / "prompts" / "verify.md").write_text("verify tests and fallback behavior\n")
+        (mini_repo / "prompts" / "budget.md").write_text("model budget quality prompt\n")
+        runner = SerialEvolutionRunner(
+            Repository(evolution_engine),
+            repo_path=mini_repo,
+            instances_root=mini_repo / "instances" / "evolution",
+        )
+
+        result = await runner.run_minimal_cycle(layer_override="prompt_config")
+
+        assert result.decision == "promote"
+        mined = await evolution_engine.fetch_all(
+            "SELECT source_type, source_uri, accepted, extracted_payload "
+            "FROM evolution_mined_inputs WHERE run_id = ? ORDER BY source_uri",
+            [result.run_id],
+        )
+        assert {row["source_type"] for row in mined} == {
+            "config_file",
+            "prompt_template",
+        }
+        assert all(row["accepted"] == 1 for row in mined)
+        payloads = [json.loads(row["extracted_payload"]) for row in mined]
+        assert all(payload["bootstrap_reason"] == "no_prompt_variant_history" for payload in payloads)
+        assert any(payload["path"] == "prompts/demo.md" for payload in payloads)
+        assert any(payload["path"] == "claw.toml" for payload in payloads)
+
+    async def test_prompt_config_cycle_does_not_bootstrap_over_insufficient_ab_history(
+        self,
+        evolution_engine: DatabaseEngine,
+        mini_repo: Path,
+    ):
+        await evolution_engine.execute(
+            """INSERT INTO prompt_variants
+               (id, prompt_name, variant_label, content, sample_count, success_count, avg_quality_score)
+               VALUES ('pv-low', 'demo', 'variant', 'demo variant', 3, 2, 0.7)"""
+        )
+        runner = SerialEvolutionRunner(
+            Repository(evolution_engine),
+            repo_path=mini_repo,
+            instances_root=mini_repo / "instances" / "evolution",
+        )
+
+        result = await runner.run_minimal_cycle(layer_override="prompt_config")
+
+        assert result.decision == "reject"
+        mined = await evolution_engine.fetch_all(
+            "SELECT source_type, accepted, rejection_reason FROM evolution_mined_inputs WHERE run_id = ?",
+            [result.run_id],
+        )
+        assert len(mined) == 1
+        assert mined[0]["source_type"] == "prompt_variant"
+        assert mined[0]["accepted"] == 0
+        assert mined[0]["rejection_reason"] == "insufficient_samples"
+
     async def test_decision_rejects_partial_mined_batch_even_with_score_lift(
         self,
         evolution_engine: DatabaseEngine,
@@ -382,6 +441,78 @@ class TestSerialEvolutionRunner:
         assert gate_report["accepted_inputs"] == 2
         assert gate_report["rejected_inputs"] == 1
         assert gate_report["total_inputs"] == 3
+
+    async def test_prompt_config_decision_uses_layer_specific_primary_slice(
+        self,
+        evolution_engine: DatabaseEngine,
+        mini_repo: Path,
+    ):
+        repository = Repository(evolution_engine)
+        champion = await repository.create_evolution_instance(
+            {
+                "role": "champion",
+                "version_label": "v0",
+                "repo_path": str(mini_repo),
+            }
+        )
+        challenger = await repository.create_evolution_instance(
+            {
+                "role": "challenger",
+                "version_label": "v1-candidate",
+                "repo_path": str(mini_repo / "challenger"),
+            }
+        )
+        run = await repository.create_evolution_run(
+            {
+                "champion_instance_id": champion["id"],
+                "challenger_instance_id": challenger["id"],
+                "cycle_number": 1,
+                "layer": "prompt_config",
+                "objective": "prompt config primary slice",
+            }
+        )
+        runner = SerialEvolutionRunner(
+            repository,
+            repo_path=mini_repo,
+            instances_root=mini_repo / "instances" / "evolution",
+        )
+
+        decision = await runner._decide(
+            run,
+            challenger,
+            evaluations=[
+                {
+                    "eval_slice": "paired_task_readiness",
+                    "champion_score": 0.768333,
+                    "challenger_score": 0.768333,
+                    "delta_score": 0.0,
+                    "passed": 0,
+                },
+                {
+                    "eval_slice": "layer_specific",
+                    "champion_score": 0.685,
+                    "challenger_score": 0.710,
+                    "delta_score": 0.025,
+                    "passed": 1,
+                },
+                {
+                    "eval_slice": "holdout_proxy",
+                    "champion_score": 0.685,
+                    "challenger_score": 0.704,
+                    "delta_score": 0.019,
+                    "passed": 1,
+                },
+            ],
+            mined=[
+                {"accepted": 1, "extracted_payload": "{}"},
+                {"accepted": 1, "extracted_payload": "{}"},
+            ],
+        )
+
+        gate_report = json.loads(decision["gate_report"])
+        assert decision["decision"] == "promote"
+        assert gate_report["primary_champion_score"] == 0.685
+        assert gate_report["primary_challenger_score"] == 0.71
 
     async def test_active_mutating_run_blocks_a_second_cycle(
         self,
