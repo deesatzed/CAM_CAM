@@ -129,9 +129,13 @@ def _build_parser(language: str) -> Optional[Any]:
     except TypeError:
         parser = parser_cls()
         set_language = getattr(parser, "set_language", None)
-        if set_language is None:
-            return None
-        set_language(tree_language)
+        if set_language is not None:
+            set_language(tree_language)
+        else:
+            try:
+                parser.language = tree_language
+            except Exception:
+                return None
         return parser
 
 
