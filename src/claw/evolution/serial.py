@@ -507,7 +507,9 @@ class SerialEvolutionRunner:
         if layer == "model" and not allow_model_layer:
             layer = "data_feature"
             selected_by = "safety_override_model_disabled"
-        if layer not in self.gate_config.allowed_layers:
+        if layer not in self.gate_config.allowed_layers and not (
+            layer == "model" and allow_model_layer
+        ):
             layer = "data_feature"
             selected_by = "safety_override_layer_not_allowed"
 

@@ -736,6 +736,36 @@ class TestSerialEvolutionRunner:
         )
         assert [row["source_uri"] for row in mined] == [APPROVED_MODEL_IDS[0]]
 
+    async def test_allow_model_layer_bypasses_conservative_allowed_layer_default(
+        self,
+        evolution_engine: DatabaseEngine,
+        mini_repo: Path,
+    ):
+        await evolution_engine.execute(
+            """INSERT INTO token_costs
+               (id, model_used, input_tokens, output_tokens, total_tokens, cost_usd)
+               VALUES ('tc-allowed', ?, 100, 50, 150, 0.01)""",
+            [APPROVED_MODEL_IDS[0]],
+        )
+        runner = SerialEvolutionRunner(
+            Repository(evolution_engine),
+            repo_path=mini_repo,
+            instances_root=mini_repo / "instances" / "evolution",
+        )
+
+        result = await runner.run_minimal_cycle(
+            layer_override="model",
+            allow_model_layer=True,
+        )
+
+        assert result.layer == "model"
+        run = await evolution_engine.fetch_one(
+            "SELECT layer, selected_by FROM evolution_runs WHERE id = ?",
+            [result.run_id],
+        )
+        assert run["layer"] == "model"
+        assert run["selected_by"] == "operator_override"
+
     async def test_autonomous_loop_mines_three_folder_repos_per_round(
         self,
         evolution_engine: DatabaseEngine,
