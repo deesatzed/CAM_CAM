@@ -1133,48 +1133,42 @@ class TestSerialEvolutionRunner:
             (repo_path / "README.md").write_text("# typescript repo\n")
 
             class SlowGanglionSideEffectMiner:
-                def __init__(self, challenger_db_path: Path):
-                    self.challenger_db_path = challenger_db_path
+                def __init__(self, repository: Repository):
+                    self.repository = repository
 
                 async def mine_repo(self, repo_path, repo_name, target_project_id):
-                    ganglion_db = (
-                        self.challenger_db_path.parent.parent
-                        / "instances"
-                        / "typescript"
-                        / "claw.db"
-                    )
-                    ganglion_engine = DatabaseEngine(
-                        DatabaseConfig(db_path=str(ganglion_db))
-                    )
-                    await ganglion_engine.connect()
-                    await ganglion_engine.apply_migrations()
-                    await ganglion_engine.initialize_schema()
-                    try:
-                        ganglion_repo = Repository(ganglion_engine)
-                        await ganglion_repo.save_methodology(
-                            Methodology(
-                                problem_description=(
-                                    f"[Mined from {repo_name}] recovered ganglion pattern"
-                                ),
-                                solution_code="Use the recovered TypeScript pattern.",
-                                tags=["mined", f"source:{repo_name}"],
-                                scope="global",
-                                methodology_type="PATTERN",
-                            )
+                    await self.repository.save_methodology(
+                        Methodology(
+                            problem_description=(
+                                f"[Mined from {repo_name}] recovered ganglion pattern"
+                            ),
+                            solution_code="Use the recovered TypeScript pattern.",
+                            tags=["mined", f"source:{repo_name}"],
+                            scope="global",
+                            methodology_type="PATTERN",
                         )
-                    finally:
-                        await ganglion_engine.close()
+                    )
                     await asyncio.sleep(2.0)
                     return _FakeMiningResult(findings=[repo_name])
 
             async def live_factory(challenger: dict[str, str]) -> LiveMiningBinding:
                 challenger_db = Path(challenger["db_path"])
+                ganglion_db = (
+                    challenger_db.parent.parent / "instances" / "typescript" / "claw.db"
+                )
+                ganglion_engine = DatabaseEngine(DatabaseConfig(db_path=str(ganglion_db)))
+                await ganglion_engine.connect()
+                await ganglion_engine.apply_migrations()
+                await ganglion_engine.initialize_schema()
+
+                async def close() -> None:
+                    await ganglion_engine.close()
 
                 return LiveMiningBinding(
-                    repo_miner=SlowGanglionSideEffectMiner(challenger_db),
+                    repo_miner=SlowGanglionSideEffectMiner(Repository(ganglion_engine)),
                     target_project_id="challenger-project",
                     db_path=challenger_db,
-                    close=None,
+                    close=close,
                 )
 
             runner = SerialEvolutionRunner(
