@@ -131,11 +131,19 @@ Verification:
 - Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `42 passed`.
 - Result: real TypeScript, TSX, and JSX Tree-sitter extraction now use precision parser paths and preserve common default-exported, contract-symbol, and React-wrapper component shapes instead of silently falling back or degrading to module-level cards.
 
+### M5 Negative Memory Persistence
+
+- Issue found: CAM-SEQ distill returned negative-memory updates to the UI/API, but did not persist them into CAM's durable `failure_knowledge` table.
+- Fix: failed reviewed-run negative-memory updates now become deterministic `camseq_negative_memory:*` failure-knowledge records.
+- Effect: later CAM task evaluation can reuse those records as preventive context, and serial evolution can mine them as failure-policy signals.
+- Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py -q` passed with `46 passed`.
+
 ## Operator Summary
 
-The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in two layers:
+The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:
 
 - prompt/config behavior
 - strategy/self-mitigation policy behavior
+- CAM-SEQ negative-memory persistence into durable failure knowledge
 
 The latest champion is `v4-candidate`. The next meaningful autonomous improvement requires either live budgeted mining or real task executions to create stronger learning evidence.

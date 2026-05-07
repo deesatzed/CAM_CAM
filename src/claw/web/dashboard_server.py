@@ -97,6 +97,63 @@ def _packet_to_json(packet: Any) -> dict[str, Any]:
     return packet.model_dump(mode="json") if hasattr(packet, "model_dump") else dict(packet)
 
 
+def _slug_failure_part(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return "unknown"
+    slug = re.sub(r"[^a-z0-9]+", "-", value.strip().lower()).strip("-")
+    return (slug or "unknown")[:48]
+
+
+def _build_negative_memory_failure_knowledge(
+    *,
+    run_id: str,
+    update: str,
+    connectome: Optional[RunConnectome],
+    outcome: Any,
+    packet: Any,
+) -> dict[str, Any]:
+    task_archetype = connectome.task_archetype if connectome else None
+    outcome_slot_id = getattr(outcome, "slot_id", None)
+    packet_slot_id = getattr(getattr(packet, "slot", None), "slot_id", None)
+    slot_id = outcome_slot_id if isinstance(outcome_slot_id, str) else packet_slot_id
+    selected_component = getattr(getattr(packet, "selected", None), "component_id", None)
+    update_text = re.sub(r"\s+", " ", str(update)).strip()
+    signature_basis = "|".join(
+        [
+            task_archetype or "",
+            slot_id or "",
+            selected_component or "",
+            update_text,
+        ]
+    )
+    digest = hashlib.sha256(signature_basis.encode("utf-8")).hexdigest()[:16]
+    error_signature = (
+        "camseq_negative_memory:"
+        f"{_slug_failure_part(task_archetype)}:"
+        f"{_slug_failure_part(slot_id)}:"
+        f"{_slug_failure_part(selected_component)}:"
+        f"{digest}"
+    )
+    slot_label = slot_id or "unknown slot"
+    component_label = selected_component or "unknown component"
+    return {
+        "error_signature": error_signature,
+        "error_category": "camseq_negative_memory",
+        "diagnosis": (
+            f"CAM-SEQ run {run_id} produced negative memory for "
+            f"{component_label} in {slot_label}: {update_text}"
+        )[:500],
+        "prevention_hint": (
+            f"[camseq_negative_memory] Before reusing {component_label} for "
+            f"{slot_label}, check or mitigate: {update_text}"
+        )[:500],
+        "agent_id": None,
+        "task_type": task_archetype,
+        "project_id": None,
+        "source_task_id": run_id,
+    }
+
+
 async def _candidate_cards_for_slot(
     repo: Any,
     *,
@@ -5714,6 +5771,7 @@ async def api_v2_run_distill(run_id: str) -> JSONResponse:
     promotions = []
     downgrades = []
     negative_memory_updates = []
+    persisted_negative_memory = []
     packet_transfer_summary = {"direct_fit": 0, "pattern_transfer": 0, "heuristic_fallback": 0}
     federation_recommendations = []
     for outcome in outcome_events:
@@ -5734,7 +5792,31 @@ async def api_v2_run_distill(run_id: str) -> JSONResponse:
                     "reason": "failed packet application",
                 }
             )
-            negative_memory_updates.extend(outcome.negative_memory_updates)
+            outcome_negative_memory = list(getattr(outcome, "negative_memory_updates", []) or [])
+            negative_memory_updates.extend(outcome_negative_memory)
+            for update in outcome_negative_memory:
+                if not str(update).strip():
+                    continue
+                failure_knowledge = _build_negative_memory_failure_knowledge(
+                    run_id=run_id,
+                    update=str(update),
+                    connectome=connectome,
+                    outcome=outcome,
+                    packet=packet,
+                )
+                try:
+                    await repo.record_failure_knowledge(**failure_knowledge)
+                except Exception as exc:
+                    logger.debug("Failed to persist CAM-SEQ negative memory: %s", exc)
+                else:
+                    persisted_negative_memory.append(
+                        {
+                            "error_signature": failure_knowledge["error_signature"],
+                            "error_category": failure_knowledge["error_category"],
+                            "task_type": failure_knowledge["task_type"],
+                            "prevention_hint": failure_knowledge["prevention_hint"],
+                        }
+                    )
         if packet:
             transfer_mode = getattr(packet.selected.transfer_mode, "value", str(packet.selected.transfer_mode))
             packet_transfer_summary[transfer_mode] = packet_transfer_summary.get(transfer_mode, 0) + 1
@@ -5813,6 +5895,7 @@ async def api_v2_run_distill(run_id: str) -> JSONResponse:
             "promotions": promotions,
             "downgrades": downgrades,
             "negative_memory_updates": negative_memory_updates,
+            "persisted_negative_memory": persisted_negative_memory,
             "governance_recommendations": governance_recommendations,
             "federation_recommendations": federation_recommendations,
             "packet_transfer_summary": packet_transfer_summary,

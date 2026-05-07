@@ -1545,6 +1545,41 @@ def test_distill_returns_governance_recommendations():
     assert "proof_policy" in kinds
 
 
+def test_distill_persists_negative_memory_as_failure_knowledge():
+    repo = AsyncMock()
+    packet = _application_packet("plan_negmem_distill", packet_id="pkt_negmem_distill")
+    repo.get_run_connectome = AsyncMock(return_value=MagicMock(task_archetype="oauth_session_management"))
+    repo.list_run_pair_events = AsyncMock(return_value=[MagicMock(packet_id="pkt_negmem_distill")])
+    repo.list_run_outcome_events = AsyncMock(
+        return_value=[
+            MagicMock(
+                success=False,
+                packet_id="pkt_negmem_distill",
+                slot_id="slot_refresh",
+                negative_memory_updates=["sync wrapper fails under concurrent refresh"],
+            )
+        ]
+    )
+    repo.list_run_slot_executions = AsyncMock(return_value=[])
+    repo.list_run_action_audits = AsyncMock(return_value=[])
+    repo.get_application_packet = AsyncMock(return_value=packet)
+    repo.record_failure_knowledge = AsyncMock()
+
+    client = _setup_client(repo)
+    resp = client.get("/api/v2/runs/run_negmem_distill/distill")
+    assert resp.status_code == 200
+    data = resp.json()
+
+    repo.record_failure_knowledge.assert_awaited_once()
+    kwargs = repo.record_failure_knowledge.await_args.kwargs
+    assert kwargs["error_signature"].startswith("camseq_negative_memory:")
+    assert kwargs["error_category"] == "camseq_negative_memory"
+    assert kwargs["task_type"] == "oauth_session_management"
+    assert kwargs["source_task_id"] == "run_negmem_distill"
+    assert "sync wrapper fails" in kwargs["prevention_hint"]
+    assert data["persisted_negative_memory"][0]["error_signature"] == kwargs["error_signature"]
+
+
 def test_distill_returns_federation_recommendations_for_pattern_transfer():
     repo = AsyncMock()
     packet = _application_packet("plan_fed_distill", packet_id="pkt_fed_distill")
