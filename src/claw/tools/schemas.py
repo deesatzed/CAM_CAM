@@ -17,7 +17,6 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Input models — one per MCP tool
 # ---------------------------------------------------------------------------
@@ -113,6 +112,35 @@ class RequestSpecialistPacketInput(BaseModel):
     limit: int = Field(default=5, ge=1, le=20, description="Maximum packet candidates to return")
 
 
+class ExportSpecialistExchangeInput(BaseModel):
+    """Input for claw_export_specialist_exchange."""
+    task_text: str = Field(..., description="Task request to hand off for external specialist review")
+    slot_name: Optional[str] = Field(default=None, description="Optional target slot name")
+    preferred_agent: Optional[Literal["claude", "codex", "gemini", "grok"]] = Field(
+        default=None, description="Preferred specialist agent"
+    )
+    target_language: Optional[str] = Field(default=None, description="Optional language hint")
+    deadline_seconds: Optional[int] = Field(default=None, ge=1, description="Optional reply deadline")
+    workspace_dir: Optional[str] = Field(default=None, description="Workspace root for the exchange spool")
+    plan_id: Optional[str] = Field(default=None, description="Optional CAM-SEQ plan identifier")
+    slot_id: Optional[str] = Field(default=None, description="Optional CAM-SEQ slot identifier")
+    packet_id: Optional[str] = Field(default=None, description="Optional application packet identifier")
+    allowed_context: dict[str, Any] = Field(default_factory=dict, description="Bounded context allowed in the handoff")
+    redaction_summary: str = Field(default="", description="Summary of redactions applied before export")
+
+
+class ImportSpecialistExchangeInput(BaseModel):
+    """Input for claw_import_specialist_exchange."""
+    reply_path: Optional[str] = Field(default=None, description="Optional inbox reply filename or path")
+    workspace_dir: Optional[str] = Field(default=None, description="Workspace root for the exchange spool")
+
+
+class ListSpecialistExchangesInput(BaseModel):
+    """Input for claw_list_specialist_exchanges."""
+    status: Optional[str] = Field(default=None, description="Optional exchange status filter")
+    limit: int = Field(default=25, ge=1, le=100, description="Maximum exchanges to return")
+
+
 # ---------------------------------------------------------------------------
 # Tool metadata registry
 # ---------------------------------------------------------------------------
@@ -165,6 +193,18 @@ TOOL_METADATA: dict[str, tuple[type[BaseModel], str]] = {
     "claw_request_specialist_packet": (
         RequestSpecialistPacketInput,
         "Request a structured specialist packet recommendation with packet candidates and routing guidance.",
+    ),
+    "claw_export_specialist_exchange": (
+        ExportSpecialistExchangeInput,
+        "Export a schema-versioned external specialist handoff envelope to the file spool.",
+    ),
+    "claw_import_specialist_exchange": (
+        ImportSpecialistExchangeInput,
+        "Import schema-versioned external specialist replies from the file spool inbox.",
+    ),
+    "claw_list_specialist_exchanges": (
+        ListSpecialistExchangesInput,
+        "List durable external specialist exchange lifecycle records.",
     ),
 }
 

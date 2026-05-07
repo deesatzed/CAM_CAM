@@ -22,39 +22,27 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Optional
 
 import pytest
 
 from claw.core.models import (
     HypothesisEntry,
     HypothesisOutcome,
-    LifecycleState,
     Methodology,
     MethodologyUsageEntry,
     Task,
-    TaskStatus,
     TokenCostRecord,
 )
-from claw.memory.fitness import compute_fitness, get_fitness_score
+from claw.dashboard import Dashboard
+from claw.mcp_server import TOOL_SCHEMAS, ClawMCPServer
+from claw.memory.hybrid_search import HybridSearch, HybridSearchResult
 from claw.memory.lifecycle import (
-    DEAD_DAYS,
-    DECLINING_FITNESS_THRESHOLD,
-    DORMANT_DAYS,
-    NICHE_COLLISION_SIMILARITY,
     REHABILITATION_FITNESS_THRESHOLD,
-    THRIVING_FITNESS_THRESHOLD,
-    THRIVING_SUCCESS_MINIMUM,
     apply_transition,
     check_niche_collision,
-    evaluate_transition,
     run_periodic_sweep,
 )
-from claw.memory.hybrid_search import HybridSearch, HybridSearchResult
 from claw.memory.semantic import SemanticMemory, get_fitness_score_safe
-from claw.mcp_server import TOOL_SCHEMAS, ClawMCPServer
-from claw.dashboard import Dashboard
-
 
 # ---------------------------------------------------------------------------
 # Helper: Fixed embedding engine (real computation, deterministic vectors)
@@ -1190,12 +1178,12 @@ class TestHybridSearchSignalsExtended:
 class TestMCPServerToolSchemas:
     """Tests for TOOL_SCHEMAS structure."""
 
-    def test_tool_schemas_has_twelve_tools(self):
-        """TOOL_SCHEMAS defines exactly 12 tools."""
-        assert len(TOOL_SCHEMAS) == 12
+    def test_tool_schemas_has_fifteen_tools(self):
+        """TOOL_SCHEMAS defines exactly 15 tools."""
+        assert len(TOOL_SCHEMAS) == 15
 
     def test_tool_schemas_names(self):
-        """All 12 expected tool names are present."""
+        """All 15 expected tool names are present."""
         names = {s["name"] for s in TOOL_SCHEMAS}
         expected = {
             "claw_query_memory",
@@ -1210,6 +1198,9 @@ class TestMCPServerToolSchemas:
             "claw_promote_recipe",
             "claw_queue_mining_mission",
             "claw_request_specialist_packet",
+            "claw_export_specialist_exchange",
+            "claw_import_specialist_exchange",
+            "claw_list_specialist_exchanges",
         }
         assert names == expected
 

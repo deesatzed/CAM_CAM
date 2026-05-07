@@ -17,6 +17,9 @@ Original tools are exposed, plus CAM-SEQ packet/connectome tools:
     10. claw_promote_recipe -- persist a compiled recipe
     11. claw_queue_mining_mission -- persist a mining mission
     12. claw_request_specialist_packet -- request a structured specialist packet exchange
+    13. claw_export_specialist_exchange -- export an external handoff envelope
+    14. claw_import_specialist_exchange -- import external specialist replies
+    15. claw_list_specialist_exchanges -- list external specialist exchanges
 
 Design:
     The ClawMCPServer class contains tool handler methods and schema definitions.
@@ -39,7 +42,19 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
-from claw.core.models import CompiledRecipe, MiningMission
+from claw.community.specialist_exchange import (
+    archive_reply,
+    build_request_envelope,
+    candidate_reply_paths,
+    deadline_from_seconds,
+    load_reply_envelope,
+    new_exchange_id,
+    new_request_id,
+    specialist_exchange_spool_dir,
+    validate_reply_envelope,
+    write_request_envelope,
+)
+from claw.core.models import CompiledRecipe, ExternalSpecialistExchange, MiningMission
 from claw.db.repository import Repository
 from claw.memory.component_ranker import rank_components_for_slot
 from claw.planning.application_packet import build_application_packet
@@ -116,6 +131,9 @@ class ClawMCPServer:
             "claw_promote_recipe": self.handle_promote_recipe,
             "claw_queue_mining_mission": self.handle_queue_mining_mission,
             "claw_request_specialist_packet": self.handle_request_specialist_packet,
+            "claw_export_specialist_exchange": self.handle_export_specialist_exchange,
+            "claw_import_specialist_exchange": self.handle_import_specialist_exchange,
+            "claw_list_specialist_exchanges": self.handle_list_specialist_exchanges,
         }
 
         logger.info(
@@ -912,7 +930,6 @@ class ClawMCPServer:
             List of violation dicts with check name and detail.
         """
         import os
-        from pathlib import Path
 
         violations: list[dict[str, str]] = []
         workspace = Path(workspace_dir)
@@ -1052,7 +1069,7 @@ class ClawMCPServer:
                 )
 
         # Fallback: static routing recommendation
-        from claw.dispatcher import STATIC_ROUTING, DEFAULT_AGENT
+        from claw.dispatcher import DEFAULT_AGENT, STATIC_ROUTING
 
         static_agent = STATIC_ROUTING.get(inferred_type, DEFAULT_AGENT)
         selected = preferred_agent if preferred_agent else static_agent
@@ -1202,6 +1219,150 @@ class ClawMCPServer:
             "slot": slot.model_dump(mode="json") if slot else None,
             "review_required": review_required,
             "packet_candidates": merged,
+        }
+
+    def _exchange_payload(self, exchange: ExternalSpecialistExchange) -> dict[str, Any]:
+        payload = exchange.model_dump(mode="json")
+        request_json = payload.get("request_json") if isinstance(payload.get("request_json"), dict) else {}
+        payload["exchange_id"] = exchange.id
+        payload["selected_agent"] = exchange.specialist_identity
+        payload["preferred_agent"] = request_json.get("selected_agent")
+        payload["request_envelope"] = request_json
+        if exchange.reconciliation_outcome:
+            payload["outcome"] = (
+                "reconciled"
+                if exchange.reconciliation_outcome.startswith(("accepted_", "stored_"))
+                else exchange.reconciliation_outcome
+            )
+        return payload
+
+    async def handle_export_specialist_exchange(
+        self,
+        task_text: str,
+        slot_name: Optional[str] = None,
+        preferred_agent: Optional[str] = None,
+        target_language: Optional[str] = None,
+        deadline_seconds: Optional[int] = None,
+        workspace_dir: Optional[str] = None,
+        plan_id: Optional[str] = None,
+        slot_id: Optional[str] = None,
+        packet_id: Optional[str] = None,
+        allowed_context: Optional[dict[str, Any]] = None,
+        redaction_summary: str = "",
+    ) -> dict[str, Any]:
+        if not task_text or not task_text.strip():
+            return {"status": "error", "error": "task_text must not be empty."}
+
+        packet_result = await self.handle_request_specialist_packet(
+            task_text=task_text,
+            slot_name=slot_name,
+            preferred_agent=preferred_agent,
+            target_language=target_language,
+            limit=5,
+        )
+        if packet_result.get("status") != "ok":
+            return packet_result
+
+        exchange = ExternalSpecialistExchange(
+            id=new_exchange_id(),
+            request_id=new_request_id(),
+            plan_id=plan_id,
+            slot_id=slot_id,
+            packet_id=packet_id,
+            task_text=task_text.strip(),
+            specialty=str(packet_result.get("inferred_task_type") or "analysis"),
+            specialist_identity=str(packet_result.get("selected_agent") or ""),
+            status="awaiting_reply",
+            deadline_at=deadline_from_seconds(deadline_seconds),
+        )
+        envelope = build_request_envelope(
+            exchange,
+            selected_agent=str(packet_result.get("selected_agent") or ""),
+            task_archetype=packet_result.get("task_archetype"),
+            archetype_confidence=packet_result.get("archetype_confidence"),
+            slot=packet_result.get("slot"),
+            packet_candidates=packet_result.get("packet_candidates", []),
+            allowed_context=allowed_context or {},
+            redaction_summary=redaction_summary,
+        )
+        spool_dir = specialist_exchange_spool_dir(workspace_dir)
+        request_path = write_request_envelope(spool_dir, envelope)
+        exchange.request_path = str(request_path)
+        exchange.request_json = envelope
+        saved = await self.repository.save_external_specialist_exchange(exchange)
+        return {
+            "status": "ok",
+            "exchange": self._exchange_payload(saved),
+            "request_envelope": envelope,
+            "request_path": str(request_path),
+        }
+
+    async def handle_import_specialist_exchange(
+        self,
+        reply_path: Optional[str] = None,
+        workspace_dir: Optional[str] = None,
+    ) -> dict[str, Any]:
+        await self.repository.expire_external_specialist_exchanges()
+        spool_dir = specialist_exchange_spool_dir(workspace_dir)
+        imported: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
+        try:
+            paths = candidate_reply_paths(spool_dir, reply_path)
+        except ValueError as exc:
+            return {"status": "error", "imported": [], "rejected": [{"reason": str(exc)}]}
+
+        for path in paths:
+            try:
+                reply = load_reply_envelope(path)
+                validate_reply_envelope(reply)
+                exchange = await self.repository.get_external_specialist_exchange_by_request(
+                    reply["request_id"]
+                )
+                if exchange is None:
+                    raise ValueError("no matching specialist exchange request")
+                if exchange.status == "expired":
+                    raise ValueError("matching specialist exchange is expired")
+                if exchange.reply_id and exchange.reply_id == reply["reply_id"]:
+                    imported.append(self._exchange_payload(exchange))
+                    continue
+                if exchange.reply_id and exchange.reply_id != reply["reply_id"]:
+                    raise ValueError("matching specialist exchange already has a different reply")
+                outcome = str(reply.get("recommendation_kind") or "reply_received")
+                archive_path = archive_reply(spool_dir, path, exchange.request_id, reply["reply_id"])
+                exchange.reply_id = str(reply["reply_id"])
+                exchange.reply_path = str(archive_path)
+                exchange.reply_json = reply
+                exchange.specialist_identity = str(
+                    reply.get("specialist_identity") or exchange.specialist_identity or ""
+                )
+                exchange.reconciliation_outcome = outcome
+                exchange.status = (
+                    "reconciled"
+                    if outcome.startswith(("accepted_", "stored_"))
+                    else "reply_received"
+                )
+                exchange.failure_reason = ""
+                exchange.updated_at = datetime.now(UTC)
+                saved = await self.repository.save_external_specialist_exchange(exchange)
+                imported.append(self._exchange_payload(saved))
+            except Exception as exc:
+                rejected.append({"reply_path": str(path), "reason": str(exc)})
+
+        return {"status": "ok", "imported": imported, "rejected": rejected}
+
+    async def handle_list_specialist_exchanges(
+        self,
+        status: Optional[str] = None,
+        limit: int = 25,
+    ) -> dict[str, Any]:
+        await self.repository.expire_external_specialist_exchanges()
+        exchanges = await self.repository.list_external_specialist_exchanges(
+            status=status,
+            limit=limit,
+        )
+        return {
+            "status": "ok",
+            "exchanges": [self._exchange_payload(exchange) for exchange in exchanges],
         }
 
     # ===================================================================
@@ -1415,10 +1576,9 @@ def main() -> int:
     auth_token = os.environ.get("CLAW_MCP_AUTH_TOKEN")
 
     async def _run() -> int:
-        from pathlib import Path
         from claw.core.config import load_config
-        from claw.db.engine import DatabaseEngine
         from claw.db.embeddings import EmbeddingEngine
+        from claw.db.engine import DatabaseEngine
         from claw.db.repository import Repository
 
         # Load config

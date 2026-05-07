@@ -56,9 +56,9 @@ Implementation candidates:
   - `POST /api/v2/federation/specialist-exchanges/export`
   - `GET /api/v2/federation/specialist-exchanges`
   - `POST /api/v2/federation/specialist-exchanges/import`
-- future MCP tools:
-  - `claw_export_specialist_packet`
-  - `claw_import_specialist_reply`
+- MCP tools:
+  - `claw_export_specialist_exchange`
+  - `claw_import_specialist_exchange`
   - `claw_list_specialist_exchanges`
 
 ### Candidate 2: MCP-to-MCP Bridge
@@ -147,7 +147,7 @@ Reconciliation outcomes:
 
 1. Freeze envelope schemas and lifecycle names in docs. Done for the file-spool slice.
 2. Add file-spool export/import behind `a2a_packets`. Done.
-3. Add MCP listing/export/import tools over the same repository methods.
+3. Add MCP listing/export/import tools over the same repository methods. Done.
 4. Surface status in Federation Hub or plan review without creating a new app section. Done in Federation Hub.
 5. Add MCP-to-MCP bridge only after file-spool behavior is validated.
 6. Defer signed HTTP webhooks until the trust, audit, and replay model has real use.

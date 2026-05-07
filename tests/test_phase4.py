@@ -14,24 +14,20 @@ SQLite in-memory databases via the ``db_engine`` / ``repository`` fixtures from 
 
 from __future__ import annotations
 
-import random
 import uuid
-from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from claw.db.repository import Repository
 from claw.evolution.capability_disc import CapabilityDiscovery
 from claw.evolution.prompt_evolver import (
+    _PRIOR_ALPHA,
+    _PRIOR_BETA,
     MIN_SAMPLES,
     PromptEvolver,
     _bayesian_score,
-    _PRIOR_ALPHA,
-    _PRIOR_BETA,
-    _BASE_WIN_MARGIN,
 )
 from claw.mcp_server import ClawMCPServer
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -882,6 +878,9 @@ class TestClawMCPServerSchemas:
             "claw_promote_recipe",
             "claw_queue_mining_mission",
             "claw_request_specialist_packet",
+            "claw_export_specialist_exchange",
+            "claw_import_specialist_exchange",
+            "claw_list_specialist_exchanges",
         }
         assert names == expected
 

@@ -223,6 +223,12 @@ Verification:
 - Effect: CAM-CAM can now export bounded specialist handoff envelopes, import inbox replies idempotently, reject invalid or expired replies, and keep external advice non-mutating until reviewed.
 - Verification: `PYTHONPATH=src pytest tests/test_specialist_exchange.py -q`, `npm run lint`, and `npm run build` passed.
 
+### M7 External Specialist MCP Tools
+
+- Fix: added `claw_export_specialist_exchange`, `claw_import_specialist_exchange`, and `claw_list_specialist_exchanges` MCP tools over the same file-spool exchange ledger.
+- Effect: agents can now export handoff envelopes, import replies, and inspect exchange status through MCP without using the browser dashboard.
+- Verification: `PYTHONPATH=src pytest tests/test_mcp_camseq_tools.py -q` and MCP schema tests passed.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

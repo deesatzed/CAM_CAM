@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
-from claw.core.models import ComponentCard, Receipt, CoverageState
+from claw.core.models import ComponentCard, CoverageState, ExternalSpecialistExchange, Receipt
 from claw.mcp_server import ClawMCPServer
 
 
@@ -166,3 +169,89 @@ async def test_claw_request_specialist_packet_tool():
     assert result["status"] == "ok"
     assert result["selected_agent"] == "codex"
     assert result["packet_candidates"]
+
+
+async def test_claw_external_specialist_exchange_tools(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("CLAW_SPECIALIST_EXCHANGE_SPOOL_DIR", str(tmp_path / "spool"))
+    repo = AsyncMock()
+    repo.search_component_cards_text = AsyncMock(return_value=[MagicMock(id="comp_1")])
+    repo.list_component_cards = AsyncMock(return_value=[])
+    repo.get_component_card = AsyncMock(return_value=_component_card("comp_1", "refresh_access_token"))
+
+    store: dict[str, ExternalSpecialistExchange] = {}
+
+    async def save_exchange(exchange: ExternalSpecialistExchange) -> ExternalSpecialistExchange:
+        store[exchange.id] = exchange
+        return exchange
+
+    async def get_exchange_by_request(request_id: str) -> ExternalSpecialistExchange | None:
+        return next(
+            (exchange for exchange in store.values() if exchange.request_id == request_id),
+            None,
+        )
+
+    async def list_exchanges(
+        status: str | None = None,
+        limit: int = 25,
+    ) -> list[ExternalSpecialistExchange]:
+        items = list(store.values())
+        if status:
+            items = [exchange for exchange in items if exchange.status == status]
+        return items[:limit]
+
+    repo.save_external_specialist_exchange = AsyncMock(side_effect=save_exchange)
+    repo.get_external_specialist_exchange_by_request = AsyncMock(side_effect=get_exchange_by_request)
+    repo.list_external_specialist_exchanges = AsyncMock(side_effect=list_exchanges)
+    repo.expire_external_specialist_exchanges = AsyncMock(return_value=0)
+
+    server = ClawMCPServer(repository=repo)
+    exported = await server.dispatch_tool(
+        "claw_export_specialist_exchange",
+        {
+            "task_text": "Fix token refresh races in the OAuth client",
+            "preferred_agent": "codex",
+            "target_language": "python",
+            "workspace_dir": str(tmp_path),
+            "allowed_context": {"file_path": "app/auth.py"},
+            "redaction_summary": "No secrets included",
+        },
+    )
+    assert exported["status"] == "ok"
+    assert Path(exported["request_path"]).exists()
+    assert exported["exchange"]["status"] == "awaiting_reply"
+
+    listed = await server.dispatch_tool(
+        "claw_list_specialist_exchanges",
+        {"workspace_dir": str(tmp_path), "limit": 5},
+    )
+    assert listed["status"] == "ok"
+    assert listed["exchanges"][0]["exchange_id"] == exported["exchange"]["exchange_id"]
+
+    request_id = exported["request_envelope"]["request_id"]
+    inbox = tmp_path / "spool" / "inbox"
+    inbox.mkdir(parents=True, exist_ok=True)
+    reply_path = inbox / "reply.json"
+    reply_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "cam.specialist.exchange.v1",
+                "kind": "external_specialist_reply",
+                "request_id": request_id,
+                "reply_id": "reply_1",
+                "specialist_identity": "codex",
+                "recommendation_kind": "accepted_as_runner_up",
+                "confidence": 0.85,
+                "evidence": [{"kind": "analysis", "summary": "Use a per-account lock."}],
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    imported = await server.dispatch_tool(
+        "claw_import_specialist_exchange",
+        {"workspace_dir": str(tmp_path), "reply_path": "reply.json"},
+    )
+    assert imported["status"] == "ok"
+    assert imported["imported"][0]["status"] == "reconciled"
+    assert imported["imported"][0]["outcome"] == "reconciled"
