@@ -47,7 +47,9 @@ def _detect_language(path: Path) -> Optional[str]:
     suffix = path.suffix.lower()
     if suffix == ".py":
         return "python"
-    if suffix in {".ts", ".tsx"}:
+    if suffix == ".tsx":
+        return "tsx"
+    if suffix == ".ts":
         return "typescript"
     if suffix in {".js", ".jsx", ".mjs", ".cjs"}:
         return "javascript"
@@ -102,9 +104,12 @@ def _tree_sitter_modules() -> Optional[dict[str, Any]]:
         ("tree_sitter_typescript", "typescript"),
     ):
         try:
-            modules[key] = __import__(module_name)
+            module = __import__(module_name)
         except Exception:
             continue
+        modules[key] = module
+        if key == "typescript":
+            modules["tsx"] = module
     return modules
 
 
@@ -120,6 +125,8 @@ def _build_parser(language: str) -> Optional[Any]:
     language_factory = getattr(language_module, "language", None)
     if language_factory is None and language == "typescript":
         language_factory = getattr(language_module, "language_typescript", None)
+    if language_factory is None and language == "tsx":
+        language_factory = getattr(language_module, "language_tsx", None)
     if language_factory is None:
         return None
 
@@ -612,7 +619,7 @@ def _extract_tree_sitter_components(text: str, relative_path: str, language: str
         return []
     if language == "python":
         return _extract_python_ts_components(text, relative_path, parser) + _extract_python_method_components(text, relative_path, parser)
-    if language in {"javascript", "typescript"}:
+    if language in {"javascript", "typescript", "tsx"}:
         return _extract_js_like_ts_components(text, relative_path, language, parser)
     return []
 
@@ -779,7 +786,7 @@ def extract_components_from_file(repo_path: Path, relative_path: str, max_compon
     if not components:
         if language == "python":
             components = _extract_python_components(text, relative_path)
-        elif language in {"javascript", "typescript"}:
+        elif language in {"javascript", "typescript", "tsx"}:
             components = _extract_js_like_components(text, relative_path, language)
         else:
             components = []

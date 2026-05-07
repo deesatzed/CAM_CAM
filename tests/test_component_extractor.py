@@ -683,6 +683,37 @@ def test_extract_typescript_components_uses_tree_sitter_when_available(tmp_path,
     assert by_name["validateToken"].component_type == "validator"
 
 
+def test_extract_tsx_components_uses_tsx_tree_sitter_parser(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "LoginButton.tsx").write_text(
+        "export function LoginButton() { return <button>Log in</button> }\n",
+        encoding="utf-8",
+    )
+
+    name_node = _FakeNode("identifier", "LoginButton", start_line=0, end_line=0)
+    func_node = _FakeNode(
+        "function_declaration",
+        "function LoginButton() { return <button>Log in</button> }",
+        fields={"name": name_node},
+        start_line=0,
+        end_line=1,
+    )
+    export_node = _FakeNode("export_statement", children=[_FakeNode("export", "export"), func_node])
+    root = _FakeNode("program", children=[export_node])
+
+    monkeypatch.setattr(
+        component_extractor,
+        "_build_parser",
+        lambda language: _FakeParser(root) if language == "tsx" else None,
+    )
+
+    comps = extract_components_from_file(repo, "LoginButton.tsx")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["LoginButton"].language == "tsx"
+    assert by_name["LoginButton"].note == "tsx function via tree-sitter"
+
+
 def _has_real_tree_sitter(language: str) -> bool:
     return component_extractor._build_parser(language) is not None
 
@@ -718,6 +749,37 @@ def test_build_parser_supports_typescript_specific_language_factory(monkeypatch)
     assert parser is not None
     assert isinstance(parser.language, FakeLanguage)
     assert parser.language.capsule == "typescript-capsule"
+
+
+def test_build_parser_supports_tsx_specific_language_factory(monkeypatch):
+    class FakeLanguage:
+        def __init__(self, capsule):
+            self.capsule = capsule
+
+    class FakeParser:
+        def __init__(self, tree_language):
+            self.language = tree_language
+
+    class FakeTypescriptModule:
+        @staticmethod
+        def language_tsx():
+            return "tsx-capsule"
+
+    monkeypatch.setattr(
+        component_extractor,
+        "_tree_sitter_modules",
+        lambda: {
+            "Language": FakeLanguage,
+            "Parser": FakeParser,
+            "tsx": FakeTypescriptModule,
+        },
+    )
+
+    parser = component_extractor._build_parser("tsx")
+
+    assert parser is not None
+    assert isinstance(parser.language, FakeLanguage)
+    assert parser.language.capsule == "tsx-capsule"
 
 
 @pytest.mark.skipif(not _has_real_tree_sitter("python"), reason="tree-sitter python parser not installed")
@@ -876,3 +938,22 @@ def test_real_tree_sitter_extracts_typescript_class_field_methods(tmp_path):
     assert "AuthClient.refreshSession" in by_name
     assert by_name["AuthClient.refreshSession"].symbol_kind == "method"
     assert "tree-sitter" in by_name["AuthClient.refreshSession"].note
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("tsx"), reason="tree-sitter tsx parser not installed")
+def test_real_tree_sitter_extracts_tsx_function_component(tmp_path):
+    repo = tmp_path
+    (repo / "LoginButton.tsx").write_text(
+        "import React from 'react'\n"
+        "export function LoginButton() {\n"
+        "  return <button>Log in</button>\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "LoginButton.tsx")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert "LoginButton" in by_name
+    assert by_name["LoginButton"].language == "tsx"
+    assert "tree-sitter" in by_name["LoginButton"].note

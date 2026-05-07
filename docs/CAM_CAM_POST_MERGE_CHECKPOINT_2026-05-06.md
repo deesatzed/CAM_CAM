@@ -124,8 +124,9 @@ Verification:
 
 - Issue found: the installed `tree_sitter_typescript` package exposes `language_typescript`, but the parser loader only looked for `language`.
 - Fix: CAM_CAM now resolves the TypeScript grammar through `language_typescript` when needed.
-- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `26 passed`.
-- Result: real TypeScript Tree-sitter extraction now uses the precision path instead of silently falling back.
+- Follow-on fix: `.tsx` files now use the dedicated `language_tsx` grammar instead of plain TypeScript parsing.
+- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `29 passed`.
+- Result: real TypeScript and TSX Tree-sitter extraction now use precision parser paths instead of silently falling back.
 
 ## Operator Summary
 
