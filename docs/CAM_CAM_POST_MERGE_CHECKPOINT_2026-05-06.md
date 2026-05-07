@@ -156,6 +156,12 @@ Verification:
 - Effect: repeated negative-memory signatures can now be reviewed as clusters with open/resolved counts, occurrence totals, representative diagnoses, and prevention hints.
 - Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed with `61 passed`; `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
 
+### M5 Durable Failure Detail Signals
+
+- Fix: added `root_cause_key` and `detail_signals_json` to `failure_knowledge`, plus idempotent migration/backfill behavior and repository write defaults.
+- Effect: related-failure grouping is now durable memory metadata instead of only a review-time API calculation.
+- Verification: `PYTHONPATH=src pytest tests/test_failure_knowledge.py tests/test_dashboard_camseq.py -q` passed with `63 passed`; `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

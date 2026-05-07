@@ -5,6 +5,8 @@ Uses a real in-memory SQLite database — no mocks.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from claw.core.config import DatabaseConfig
@@ -43,6 +45,8 @@ class TestRecordFailureKnowledge:
         assert len(entries) == 1
         assert entries[0]["error_signature"] == "ImportError: No module named 'foo'"
         assert entries[0]["occurrence_count"] == 1
+        assert entries[0]["root_cause_key"] == "import_error:bug_fix:ImportError: No module named 'foo'"
+        assert entries[0]["detail_signals_json"] == "{}"
 
     async def test_upsert_increments_count(self, repo):
         """Same error_signature should increment occurrence_count."""
@@ -63,6 +67,28 @@ class TestRecordFailureKnowledge:
         assert len(entries) == 1
         assert entries[0]["occurrence_count"] == 2
         assert entries[0]["diagnosis"] == "Updated diagnosis"
+
+    async def test_records_explicit_root_cause_and_detail_signals(self, repo):
+        await repo.record_failure_knowledge(
+            error_signature="camseq_negative_memory:auth:slot:component:abc",
+            error_category="camseq_negative_memory",
+            diagnosis="negative memory diagnosis",
+            prevention_hint="negative memory hint",
+            root_cause_key="camseq_negative_memory:auth:slot",
+            detail_signals_json={
+                "run_id": "run_1",
+                "slot_id": "slot",
+                "component_id": "component",
+            },
+        )
+
+        entries = await repo.list_failure_knowledge()
+        assert entries[0]["root_cause_key"] == "camseq_negative_memory:auth:slot"
+        assert json.loads(entries[0]["detail_signals_json"]) == {
+            "component_id": "component",
+            "run_id": "run_1",
+            "slot_id": "slot",
+        }
 
     async def test_different_signatures_separate_entries(self, repo):
         await repo.record_failure_knowledge(
@@ -230,6 +256,63 @@ class TestMarkFailureKnowledgeResolved:
         await repo.mark_failure_knowledge_resolved("err_double", "first fix")
         await repo.mark_failure_knowledge_resolved("err_double", "second fix")
         # Still resolved; the WHERE resolved=0 prevents the second update
+
+
+class TestFailureKnowledgeMigrations:
+    """failure_knowledge schema migration coverage."""
+
+    async def test_apply_migrations_adds_grouping_columns_to_legacy_table(self):
+        config = DatabaseConfig(db_path=":memory:")
+        engine = DatabaseEngine(config)
+        await engine.connect()
+        try:
+            await engine.conn.executescript(
+                """
+                CREATE TABLE failure_knowledge (
+                    id TEXT PRIMARY KEY,
+                    error_signature TEXT NOT NULL,
+                    error_category TEXT NOT NULL,
+                    diagnosis TEXT NOT NULL,
+                    prevention_hint TEXT NOT NULL,
+                    agent_id TEXT,
+                    task_type TEXT,
+                    project_id TEXT,
+                    source_task_id TEXT,
+                    occurrence_count INTEGER NOT NULL DEFAULT 1,
+                    resolved INTEGER NOT NULL DEFAULT 0,
+                    resolution_approach TEXT,
+                    created_at TEXT,
+                    updated_at TEXT
+                );
+                INSERT INTO failure_knowledge (
+                    id, error_signature, error_category, diagnosis, prevention_hint,
+                    task_type
+                )
+                VALUES (
+                    'fk_legacy', 'legacy_sig', 'legacy_category',
+                    'legacy diagnosis', 'legacy hint', 'legacy_task'
+                );
+                """
+            )
+            await engine.conn.commit()
+
+            await engine.apply_migrations()
+            await engine.apply_migrations()
+
+            columns = await engine.fetch_all("PRAGMA table_info(failure_knowledge)")
+            names = {column["name"] for column in columns}
+            assert "root_cause_key" in names
+            assert "detail_signals_json" in names
+
+            row = await engine.fetch_one(
+                "SELECT root_cause_key, detail_signals_json FROM failure_knowledge WHERE id = ?",
+                ["fk_legacy"],
+            )
+            assert row is not None
+            assert row["root_cause_key"] == "legacy_category:legacy_task"
+            assert row["detail_signals_json"] == "{}"
+        finally:
+            await engine.close()
 
 
 class TestUpdateTaskExcludedAgents:

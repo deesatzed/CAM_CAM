@@ -79,6 +79,34 @@ def _json_loads(value: Any, default: Any) -> Any:
     return value
 
 
+def _failure_root_cause_key(
+    error_signature: str,
+    error_category: str,
+    task_type: str | None = None,
+) -> str:
+    """Build a stable, compact grouping key for related failure records."""
+    category = (error_category or "unknown").strip() or "unknown"
+    task = (task_type or "global").strip() or "global"
+    signature = (error_signature or "").strip()
+    if not signature:
+        return f"{category}:{task}"
+
+    parts = [part for part in signature.split(":") if part]
+    if category == "camseq_negative_memory" and len(parts) >= 3:
+        return ":".join(parts[:3])
+    if len(parts) >= 2:
+        return f"{category}:{task}:{parts[0]}:{parts[1]}"
+    return f"{category}:{task}:{signature[:80]}"
+
+
+def _json_object(value: dict[str, Any] | str | None) -> str:
+    if value is None:
+        return "{}"
+    if isinstance(value, str):
+        return value.strip() or "{}"
+    return json.dumps(value, sort_keys=True)
+
+
 def _model_dump(value: Any) -> Any:
     if hasattr(value, "model_dump"):
         return value.model_dump(mode="json")
@@ -564,6 +592,8 @@ class Repository:
         task_type: str | None = None,
         project_id: str | None = None,
         source_task_id: str | None = None,
+        root_cause_key: str | None = None,
+        detail_signals_json: dict[str, Any] | str | None = None,
     ) -> None:
         """Upsert a failure knowledge entry.
 
@@ -571,17 +601,37 @@ class Repository:
         occurrence_count and update diagnosis/prevention_hint. Otherwise insert.
         """
         existing = await self.engine.fetch_one(
-            "SELECT id, occurrence_count FROM failure_knowledge WHERE error_signature = ?",
+            """SELECT id, occurrence_count, root_cause_key, detail_signals_json
+               FROM failure_knowledge WHERE error_signature = ?""",
             [error_signature],
         )
+        root_key = root_cause_key or _failure_root_cause_key(
+            error_signature, error_category, task_type,
+        )
+        detail_signals = _json_object(detail_signals_json)
         now = datetime.now(UTC).isoformat()
         if existing:
+            if not root_cause_key and existing["root_cause_key"]:
+                root_key = existing["root_cause_key"]
+            if detail_signals_json is None and existing["detail_signals_json"]:
+                detail_signals = existing["detail_signals_json"]
             await self.engine.execute(
                 """UPDATE failure_knowledge
                    SET occurrence_count = occurrence_count + 1,
-                       diagnosis = ?, prevention_hint = ?, updated_at = ?
+                       diagnosis = ?,
+                       prevention_hint = ?,
+                       root_cause_key = ?,
+                       detail_signals_json = ?,
+                       updated_at = ?
                    WHERE id = ?""",
-                [diagnosis, prevention_hint, now, existing["id"]],
+                [
+                    diagnosis,
+                    prevention_hint,
+                    root_key,
+                    detail_signals,
+                    now,
+                    existing["id"],
+                ],
             )
         else:
             import uuid as _uuid
@@ -589,10 +639,22 @@ class Repository:
             await self.engine.execute(
                 """INSERT INTO failure_knowledge
                    (id, error_signature, error_category, diagnosis, prevention_hint,
-                    agent_id, task_type, project_id, source_task_id)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                [fk_id, error_signature, error_category, diagnosis, prevention_hint,
-                 agent_id, task_type, project_id, source_task_id],
+                    agent_id, task_type, project_id, source_task_id, root_cause_key,
+                    detail_signals_json)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    fk_id,
+                    error_signature,
+                    error_category,
+                    diagnosis,
+                    prevention_hint,
+                    agent_id,
+                    task_type,
+                    project_id,
+                    source_task_id,
+                    root_key,
+                    detail_signals,
+                ],
             )
 
     async def get_failure_knowledge_for_context(

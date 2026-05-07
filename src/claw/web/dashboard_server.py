@@ -6009,6 +6009,10 @@ async def api_v2_governance_policy_status(policy_id: str, request: Request) -> J
 
 
 def _failure_knowledge_causal_key(item: dict) -> str:
+    root_cause_key = str(item.get("root_cause_key") or "").strip()
+    if root_cause_key:
+        return root_cause_key
+
     category = str(item.get("error_category") or "unknown").strip() or "unknown"
     task_type = str(item.get("task_type") or "global").strip() or "global"
     signature = str(item.get("error_signature") or "").strip()

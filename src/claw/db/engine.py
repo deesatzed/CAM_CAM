@@ -716,6 +716,8 @@ class DatabaseEngine:
                     task_type TEXT,
                     project_id TEXT,
                     source_task_id TEXT,
+                    root_cause_key TEXT,
+                    detail_signals_json TEXT NOT NULL DEFAULT '{}',
                     occurrence_count INTEGER NOT NULL DEFAULT 1,
                     resolved INTEGER NOT NULL DEFAULT 0,
                     resolution_approach TEXT,
@@ -725,11 +727,51 @@ class DatabaseEngine:
                 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_sig ON failure_knowledge(error_signature);
                 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_category ON failure_knowledge(error_category);
                 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_task_type ON failure_knowledge(task_type);
+                CREATE INDEX IF NOT EXISTS idx_failure_knowledge_root_cause ON failure_knowledge(root_cause_key);
                 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_resolved ON failure_knowledge(resolved);
                 """
             )
             await self.conn.commit()
             logger.info("Migration 22 applied: created failure_knowledge table")
+
+        # Migration 23: add durable grouping/detail fields to failure_knowledge
+        row = await self.fetch_one(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='failure_knowledge'"
+        )
+        if row and row["cnt"] > 0:
+            root_col = await self.fetch_one(
+                "SELECT COUNT(*) as cnt FROM pragma_table_info('failure_knowledge') WHERE name = 'root_cause_key'"
+            )
+            if root_col and root_col["cnt"] == 0:
+                await self.conn.execute(
+                    "ALTER TABLE failure_knowledge ADD COLUMN root_cause_key TEXT"
+                )
+                await self.conn.execute(
+                    """UPDATE failure_knowledge
+                       SET root_cause_key = error_category || ':' || COALESCE(task_type, 'global')
+                       WHERE root_cause_key IS NULL"""
+                )
+                await self.conn.commit()
+                logger.info(
+                    "Migration 23 applied: failure_knowledge.root_cause_key column added"
+                )
+
+            detail_col = await self.fetch_one(
+                "SELECT COUNT(*) as cnt FROM pragma_table_info('failure_knowledge') WHERE name = 'detail_signals_json'"
+            )
+            if detail_col and detail_col["cnt"] == 0:
+                await self.conn.execute(
+                    "ALTER TABLE failure_knowledge ADD COLUMN detail_signals_json TEXT NOT NULL DEFAULT '{}'"
+                )
+                await self.conn.commit()
+                logger.info(
+                    "Migration 23 applied: failure_knowledge.detail_signals_json column added"
+                )
+
+            await self.conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_failure_knowledge_root_cause ON failure_knowledge(root_cause_key)"
+            )
+            await self.conn.commit()
 
     # ------------------------------------------------------------------
     # Write operations — wrapped with _retry_on_locked for contention

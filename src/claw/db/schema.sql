@@ -949,6 +949,8 @@ CREATE TABLE IF NOT EXISTS failure_knowledge (
     task_type TEXT,
     project_id TEXT,
     source_task_id TEXT,
+    root_cause_key TEXT,
+    detail_signals_json TEXT NOT NULL DEFAULT '{}',
     occurrence_count INTEGER NOT NULL DEFAULT 1,
     resolved INTEGER NOT NULL DEFAULT 0,
     resolution_approach TEXT,
@@ -958,4 +960,5 @@ CREATE TABLE IF NOT EXISTS failure_knowledge (
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_sig ON failure_knowledge(error_signature);
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_category ON failure_knowledge(error_category);
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_task_type ON failure_knowledge(task_type);
+CREATE INDEX IF NOT EXISTS idx_failure_knowledge_root_cause ON failure_knowledge(root_cause_key);
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_resolved ON failure_knowledge(resolved);

@@ -538,6 +538,8 @@ export interface FailureKnowledgeEntry {
   task_type?: string | null;
   project_id?: string | null;
   source_task_id?: string | null;
+  root_cause_key?: string | null;
+  detail_signals_json?: string | null;
   occurrence_count: number;
   resolved: number;
   resolution_approach?: string | null;
