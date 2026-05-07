@@ -29,6 +29,7 @@ Just finished:
 - verified `tests/test_component_extractor.py` with `42 passed`
 - wired CAM-SEQ distill negative-memory updates into durable `failure_knowledge` records so failed reviewed runs become preventive context for later CAM tasks
 - added `/api/v2/failure-knowledge` list and resolve endpoints plus frontend API client bindings so durable negative memory is inspectable and resolvable
+- added the `/knowledge/failure` UI page and sidebar entry for reviewing, filtering, and resolving durable failure-knowledge records
 - verified the focused dashboard CAM-SEQ tests with `46 passed`
 - installed `forge-ui` local dependencies
 - fixed frontend lint errors across Evolution, Forge Run, Knowledge, Playground, and Layout
@@ -103,7 +104,7 @@ Current proof artifacts:
 - app: Turbopack build still crashes in this sandbox with a port-binding permission error; webpack build is clean
 - app: component search now uses merged scoring and explicit file-level fallback for content matches; the live backend needs a restart before the latest fix can be re-smoke-tested outside the test client
 - `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, and React wrapper components
-- `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution now exists, but UI review workflow can still be polished
+- `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution now exists, with UI polishing still possible
 - `M6`: CodeQL remains optional advanced/managed mode, not default local mode
 - `M7`: no true external/A2A specialist transport yet
 - `M8`: broader real-repo mutation benchmark coverage and more polished demo artifacts

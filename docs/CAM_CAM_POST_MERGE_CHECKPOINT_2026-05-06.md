@@ -145,6 +145,11 @@ Verification:
 - Effect: operators and future UI workflow can inspect persisted negative memory, filter it by task/category/project, and mark resolved patterns without deleting history.
 - Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed with `61 passed`; `npm run lint` passed in `forge-ui`.
 
+### M5 Failure Knowledge UI
+
+- Fix: added `/knowledge/failure` and sidebar navigation for reviewing, filtering, and resolving persisted failure-knowledge records.
+- Verification: `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:
