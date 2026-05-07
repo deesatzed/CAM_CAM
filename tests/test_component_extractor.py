@@ -714,6 +714,60 @@ def test_extract_tsx_components_uses_tsx_tree_sitter_parser(tmp_path, monkeypatc
     assert by_name["LoginButton"].note == "tsx function via tree-sitter"
 
 
+def test_extract_tsx_default_export_components_with_tree_sitter_stub(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "LoginButton.tsx").write_text(
+        "export default function LoginButton() { return <button>Log in</button> }\n",
+        encoding="utf-8",
+    )
+
+    name_node = _FakeNode("identifier", "LoginButton", start_line=0, end_line=0)
+    func_node = _FakeNode(
+        "function_declaration",
+        "function LoginButton() { return <button>Log in</button> }",
+        fields={"name": name_node},
+        start_line=0,
+        end_line=1,
+    )
+    export_node = _FakeNode(
+        "export_statement",
+        children=[_FakeNode("export", "export"), _FakeNode("default", "default"), func_node],
+    )
+    root = _FakeNode("program", children=[export_node])
+
+    monkeypatch.setattr(
+        component_extractor,
+        "_build_parser",
+        lambda language: _FakeParser(root) if language == "tsx" else None,
+    )
+
+    comps = extract_components_from_file(repo, "LoginButton.tsx")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert "LoginButton" in by_name
+    assert by_name["LoginButton"].language == "tsx"
+    assert by_name["LoginButton"].note == "tsx function via tree-sitter"
+
+
+def test_extract_javascript_default_export_fallback_when_tree_sitter_unavailable(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "api.js").write_text(
+        "export default async function tokenRefreshWorker() { return true }\n"
+        "export default class AuthClient {}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(component_extractor, "_build_parser", lambda language: None)
+
+    comps = extract_components_from_file(repo, "api.js")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["tokenRefreshWorker"].component_type == "worker"
+    assert by_name["tokenRefreshWorker"].note == "javascript top-level function heuristic"
+    assert by_name["AuthClient"].symbol_kind == "class"
+    assert by_name["AuthClient"].note == "javascript top-level class heuristic"
+
+
 def _has_real_tree_sitter(language: str) -> bool:
     return component_extractor._build_parser(language) is not None
 
@@ -957,3 +1011,41 @@ def test_real_tree_sitter_extracts_tsx_function_component(tmp_path):
     assert "LoginButton" in by_name
     assert by_name["LoginButton"].language == "tsx"
     assert "tree-sitter" in by_name["LoginButton"].note
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("tsx"), reason="tree-sitter tsx parser not installed")
+def test_real_tree_sitter_extracts_tsx_default_export_component(tmp_path):
+    repo = tmp_path
+    (repo / "LoginButton.tsx").write_text(
+        "import React from 'react'\n"
+        "export default function LoginButton() {\n"
+        "  return <button>Log in</button>\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "LoginButton.tsx")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert "LoginButton" in by_name
+    assert by_name["LoginButton"].language == "tsx"
+    assert "tree-sitter" in by_name["LoginButton"].note
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")
+def test_real_tree_sitter_extracts_typescript_default_export_class(tmp_path):
+    repo = tmp_path
+    (repo / "api.ts").write_text(
+        "export default class AuthClient {\n"
+        "  refreshSession(token: string) { return token }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "api.ts")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert "AuthClient" in by_name
+    assert by_name["AuthClient"].symbol_kind == "class"
+    assert "AuthClient.refreshSession" in by_name
+    assert "tree-sitter" in by_name["AuthClient.refreshSession"].note

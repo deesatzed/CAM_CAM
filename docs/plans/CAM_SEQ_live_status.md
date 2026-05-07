@@ -1,6 +1,6 @@
 # CAM-SEQ Live Status
 
-Last updated: 2026-05-06
+Last updated: 2026-05-07
 
 This file is the short answer to:
 - what is actively being worked
@@ -23,7 +23,8 @@ Just finished:
 - fixed the TypeScript Tree-sitter parser loader so `tree_sitter_typescript.language_typescript` is used when the package does not expose a generic `language` factory
 - added regression coverage that the declared TypeScript Tree-sitter parser loads
 - added dedicated TSX parser selection through `tree_sitter_typescript.language_tsx` for `.tsx` component extraction
-- verified `tests/test_component_extractor.py` with `29 passed`
+- added Tree-sitter and fallback coverage for named default-exported JavaScript/TypeScript/TSX components
+- verified `tests/test_component_extractor.py` with `33 passed`
 - installed `forge-ui` local dependencies
 - fixed frontend lint errors across Evolution, Forge Run, Knowledge, Playground, and Layout
 - verified production build with `next build --webpack`
@@ -41,7 +42,7 @@ Just finished:
 - fixed workspace search leakage so a file-content hit now yields one explicit file-level fallback result instead of every unrelated symbol in that file
 
 Latest validation:
-- backend: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed (`29 passed`)
+- backend: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed (`33 passed`)
 - frontend: `npm run lint` passed
 - frontend: `npx next build --webpack` passed
 - backend: focused `tests/test_dashboard_camseq.py` passes (`41 passed`)
@@ -60,7 +61,7 @@ Latest validation:
 Milestones:
 - `M0`: `100%`
 - `M1`: `100%`
-- `M2`: `96%`
+- `M2`: `97%`
 - `M3`: `100%`
 - `M4`: `100%`
 - `M5`: `93%`
@@ -93,7 +94,7 @@ Current proof artifacts:
 
 - app: Turbopack build still crashes in this sandbox with a port-binding permission error; webpack build is clean
 - app: component search now uses merged scoring and explicit file-level fallback for content matches; the live backend needs a restart before the latest fix can be re-smoke-tested outside the test client
-- `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX families
+- `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX families and named default-export shapes
 - `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination
 - `M6`: CodeQL remains optional advanced/managed mode, not default local mode
 - `M7`: no true external/A2A specialist transport yet

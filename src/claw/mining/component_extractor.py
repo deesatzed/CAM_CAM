@@ -337,7 +337,11 @@ def _walk_ts_nodes(root: Any) -> list[Any]:
 def _unwrap_js_statement(node: Any) -> Any:
     current = node
     while current is not None and current.type in {"export_statement", "statement_block"}:
-        children = [child for child in getattr(current, "children", []) if child.type not in {"export", "{", "}"}]
+        children = [
+            child
+            for child in getattr(current, "children", [])
+            if child.type not in {"export", "default", "{", "}"}
+        ]
         current = children[0] if children else None
     return current
 
@@ -723,8 +727,8 @@ def _extract_python_components(text: str, relative_path: str) -> list[ExtractedC
 
 
 _JS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"^(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "function"),
-    (re.compile(r"^(?:export\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "class"),
+    (re.compile(r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "function"),
+    (re.compile(r"^(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "class"),
     (re.compile(r"^(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\([^\)]*\)\s*=>", re.MULTILINE), "function"),
 ]
 

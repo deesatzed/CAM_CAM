@@ -125,8 +125,9 @@ Verification:
 - Issue found: the installed `tree_sitter_typescript` package exposes `language_typescript`, but the parser loader only looked for `language`.
 - Fix: CAM_CAM now resolves the TypeScript grammar through `language_typescript` when needed.
 - Follow-on fix: `.tsx` files now use the dedicated `language_tsx` grammar instead of plain TypeScript parsing.
-- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `29 passed`.
-- Result: real TypeScript and TSX Tree-sitter extraction now use precision parser paths instead of silently falling back.
+- Follow-on fix: named `export default function` and `export default class` components are now unwrapped correctly in Tree-sitter extraction, with JavaScript fallback coverage for named default exports when Tree-sitter is unavailable.
+- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `33 passed`.
+- Result: real TypeScript and TSX Tree-sitter extraction now use precision parser paths and preserve common default-exported component shapes instead of silently falling back or degrading to module-level cards.
 
 ## Operator Summary
 
