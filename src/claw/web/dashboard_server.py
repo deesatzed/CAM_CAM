@@ -104,6 +104,13 @@ def _slug_failure_part(value: Any) -> str:
     return (slug or "unknown")[:48]
 
 
+def _jsonable_value(value: Any) -> Any:
+    value = getattr(value, "value", value)
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return None
+
+
 def _build_negative_memory_failure_knowledge(
     *,
     run_id: str,
@@ -116,7 +123,10 @@ def _build_negative_memory_failure_knowledge(
     outcome_slot_id = getattr(outcome, "slot_id", None)
     packet_slot_id = getattr(getattr(packet, "slot", None), "slot_id", None)
     slot_id = outcome_slot_id if isinstance(outcome_slot_id, str) else packet_slot_id
-    selected_component = getattr(getattr(packet, "selected", None), "component_id", None)
+    slot = getattr(packet, "slot", None)
+    selected = getattr(packet, "selected", None)
+    selected_component = _jsonable_value(getattr(selected, "component_id", None))
+    receipt = getattr(selected, "receipt", None)
     update_text = re.sub(r"\s+", " ", str(update)).strip()
     signature_basis = "|".join(
         [
@@ -136,6 +146,11 @@ def _build_negative_memory_failure_knowledge(
     )
     slot_label = slot_id or "unknown slot"
     component_label = selected_component or "unknown component"
+    root_cause_key = (
+        "camseq_negative_memory:"
+        f"{_slug_failure_part(task_archetype)}:"
+        f"{_slug_failure_part(slot_id)}"
+    )
     return {
         "error_signature": error_signature,
         "error_category": "camseq_negative_memory",
@@ -151,6 +166,37 @@ def _build_negative_memory_failure_knowledge(
         "task_type": task_archetype,
         "project_id": None,
         "source_task_id": run_id,
+        "root_cause_key": root_cause_key,
+        "detail_signals_json": {
+            "schema_version": "cam.failure_detail.v1",
+            "run_id": run_id,
+            "task_archetype": task_archetype,
+            "slot_id": slot_id,
+            "slot_name": _jsonable_value(getattr(slot, "name", None)),
+            "slot_risk": _jsonable_value(getattr(slot, "risk", None)),
+            "component_id": selected_component,
+            "component_title": _jsonable_value(getattr(selected, "title", None)),
+            "component_family_barcode": _jsonable_value(getattr(receipt, "family_barcode", None)),
+            "component_source_barcode": _jsonable_value(getattr(receipt, "source_barcode", None)),
+            "component_file_path": _jsonable_value(getattr(receipt, "file_path", None)),
+            "component_symbol": _jsonable_value(getattr(receipt, "symbol", None)),
+            "transfer_mode": _jsonable_value(getattr(selected, "transfer_mode", None)),
+            "fit_bucket": _jsonable_value(getattr(selected, "fit_bucket", None)),
+            "confidence": _jsonable_value(getattr(selected, "confidence", None)),
+            "update_text": update_text,
+            "proof_gate_ids": [
+                _jsonable_value(getattr(gate, "gate_id", None))
+                for gate in getattr(packet, "proof_plan", []) or []
+                if _jsonable_value(getattr(gate, "gate_id", None))
+            ],
+            "landing_sites": [
+                {
+                    "file_path": _jsonable_value(getattr(site, "file_path", None)),
+                    "symbol": _jsonable_value(getattr(site, "symbol", None)),
+                }
+                for site in getattr(packet, "expected_landing_sites", []) or []
+            ],
+        },
     }
 
 
@@ -5814,6 +5860,8 @@ async def api_v2_run_distill(run_id: str) -> JSONResponse:
                             "error_signature": failure_knowledge["error_signature"],
                             "error_category": failure_knowledge["error_category"],
                             "task_type": failure_knowledge["task_type"],
+                            "root_cause_key": failure_knowledge["root_cause_key"],
+                            "detail_signals_json": failure_knowledge["detail_signals_json"],
                             "prevention_hint": failure_knowledge["prevention_hint"],
                         }
                     )

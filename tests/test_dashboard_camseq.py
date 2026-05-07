@@ -1580,8 +1580,25 @@ def test_distill_persists_negative_memory_as_failure_knowledge():
     assert kwargs["error_category"] == "camseq_negative_memory"
     assert kwargs["task_type"] == "oauth_session_management"
     assert kwargs["source_task_id"] == "run_negmem_distill"
+    assert kwargs["root_cause_key"] == "camseq_negative_memory:oauth-session-management:slot-refresh"
+    assert kwargs["detail_signals_json"]["schema_version"] == "cam.failure_detail.v1"
+    assert kwargs["detail_signals_json"]["run_id"] == "run_negmem_distill"
+    assert kwargs["detail_signals_json"]["slot_id"] == "slot_refresh"
+    assert kwargs["detail_signals_json"]["slot_name"] == "token_refresh"
+    assert kwargs["detail_signals_json"]["slot_risk"] == "critical"
+    assert kwargs["detail_signals_json"]["component_id"] == packet.selected.component_id
+    assert kwargs["detail_signals_json"]["component_family_barcode"] == "fam_auth"
+    assert kwargs["detail_signals_json"]["component_file_path"] == "app/auth.py"
+    assert kwargs["detail_signals_json"]["transfer_mode"] == "direct_fit"
+    assert kwargs["detail_signals_json"]["proof_gate_ids"] == ["tests", "verifier"]
+    assert kwargs["detail_signals_json"]["landing_sites"] == [
+        {"file_path": "app/auth/session.py", "symbol": "refresh_session"}
+    ]
+    assert "sync wrapper fails" in kwargs["detail_signals_json"]["update_text"]
     assert "sync wrapper fails" in kwargs["prevention_hint"]
     assert data["persisted_negative_memory"][0]["error_signature"] == kwargs["error_signature"]
+    assert data["persisted_negative_memory"][0]["root_cause_key"] == kwargs["root_cause_key"]
+    assert data["persisted_negative_memory"][0]["detail_signals_json"] == kwargs["detail_signals_json"]
 
 
 def test_distill_returns_federation_recommendations_for_pattern_transfer():

@@ -510,6 +510,8 @@ export interface DistillResponse {
     error_signature: string;
     error_category: string;
     task_type?: string | null;
+    root_cause_key?: string | null;
+    detail_signals_json?: Record<string, unknown>;
     prevention_hint: string;
   }>;
   governance_recommendations: Array<{

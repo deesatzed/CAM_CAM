@@ -162,6 +162,12 @@ Verification:
 - Effect: related-failure grouping is now durable memory metadata instead of only a review-time API calculation.
 - Verification: `PYTHONPATH=src pytest tests/test_failure_knowledge.py tests/test_dashboard_camseq.py -q` passed with `63 passed`; `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
 
+### M5 Negative-Memory Producer Signals
+
+- Fix: CAM-SEQ distill now stores explicit root-cause keys and packet detail signals when failed reviewed-run negative memory becomes failure knowledge.
+- Effect: each persisted negative-memory record carries slot, selected component, source barcode, proof gates, expected landing sites, transfer mode, fit bucket, confidence, and update text.
+- Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed with `63 passed`; `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:
