@@ -150,6 +150,12 @@ Verification:
 - Fix: added `/knowledge/failure` and sidebar navigation for reviewing, filtering, and resolving persisted failure-knowledge records.
 - Verification: `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
 
+### M5 Failure Knowledge Grouping
+
+- Fix: added related-failure grouping to `/api/v2/failure-knowledge` and surfaced causal group cards in `/knowledge/failure`.
+- Effect: repeated negative-memory signatures can now be reviewed as clusters with open/resolved counts, occurrence totals, representative diagnoses, and prevention hints.
+- Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed with `61 passed`; `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

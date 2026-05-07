@@ -6008,6 +6008,78 @@ async def api_v2_governance_policy_status(policy_id: str, request: Request) -> J
     return JSONResponse({"policy": saved.model_dump(mode="json")})
 
 
+def _failure_knowledge_causal_key(item: dict) -> str:
+    category = str(item.get("error_category") or "unknown").strip() or "unknown"
+    task_type = str(item.get("task_type") or "global").strip() or "global"
+    signature = str(item.get("error_signature") or "").strip()
+    diagnosis = str(item.get("diagnosis") or "").strip()
+
+    if signature:
+        parts = [part for part in signature.split(":") if part]
+        if category == "camseq_negative_memory" and len(parts) >= 3:
+            return ":".join(parts[:3])
+        if len(parts) >= 2:
+            return f"{category}:{task_type}:{parts[0]}:{parts[1]}"
+        return f"{category}:{task_type}:{signature[:80]}"
+    return f"{category}:{task_type}:{diagnosis[:80] or 'unknown'}"
+
+
+def _append_unique(values: list[str], value: object, *, limit: int = 5) -> None:
+    text = str(value or "").strip()
+    if text and text not in values and len(values) < limit:
+        values.append(text)
+
+
+def _summarize_failure_knowledge_groups(items: list[dict]) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for item in items:
+        key = _failure_knowledge_causal_key(item)
+        group = groups.setdefault(
+            key,
+            {
+                "causal_key": key,
+                "error_category": str(item.get("error_category") or "unknown"),
+                "task_type": item.get("task_type") or "global",
+                "entry_count": 0,
+                "occurrence_total": 0,
+                "unresolved_count": 0,
+                "resolved_count": 0,
+                "latest_updated_at": item.get("updated_at"),
+                "agent_ids": [],
+                "source_task_ids": [],
+                "sample_signatures": [],
+                "diagnosis_samples": [],
+                "prevention_hints": [],
+            },
+        )
+        group["entry_count"] += 1
+        group["occurrence_total"] += int(item.get("occurrence_count") or 0)
+        if int(item.get("resolved") or 0):
+            group["resolved_count"] += 1
+        else:
+            group["unresolved_count"] += 1
+        updated_at = item.get("updated_at")
+        if updated_at and (
+            not group["latest_updated_at"]
+            or str(updated_at) > str(group["latest_updated_at"])
+        ):
+            group["latest_updated_at"] = updated_at
+        _append_unique(group["agent_ids"], item.get("agent_id"))
+        _append_unique(group["source_task_ids"], item.get("source_task_id"))
+        _append_unique(group["sample_signatures"], item.get("error_signature"), limit=3)
+        _append_unique(group["diagnosis_samples"], item.get("diagnosis"), limit=3)
+        _append_unique(group["prevention_hints"], item.get("prevention_hint"), limit=3)
+
+    return sorted(
+        groups.values(),
+        key=lambda group: (
+            int(group["unresolved_count"]) == 0,
+            -int(group["occurrence_total"]),
+            str(group.get("latest_updated_at") or ""),
+        ),
+    )
+
+
 @app.get("/api/v2/failure-knowledge")
 async def api_v2_failure_knowledge(
     task_type: Optional[str] = None,
@@ -6035,10 +6107,12 @@ async def api_v2_failure_knowledge(
             resolved_count += 1
         else:
             unresolved_count += 1
+    groups = _summarize_failure_knowledge_groups(items)
     return JSONResponse(
         {
             "items": items,
             "count": len(items),
+            "groups": groups,
             "filters": {
                 "task_type": task_type,
                 "project_id": project_id,
@@ -6049,6 +6123,7 @@ async def api_v2_failure_knowledge(
                 "unresolved_count": unresolved_count,
                 "resolved_count": resolved_count,
                 "category_counts": category_counts,
+                "group_count": len(groups),
             },
         }
     )

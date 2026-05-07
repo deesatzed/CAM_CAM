@@ -30,6 +30,7 @@ Just finished:
 - wired CAM-SEQ distill negative-memory updates into durable `failure_knowledge` records so failed reviewed runs become preventive context for later CAM tasks
 - added `/api/v2/failure-knowledge` list and resolve endpoints plus frontend API client bindings so durable negative memory is inspectable and resolvable
 - added the `/knowledge/failure` UI page and sidebar entry for reviewing, filtering, and resolving durable failure-knowledge records
+- added related-failure grouping to `/api/v2/failure-knowledge` and surfaced those causal groups in `/knowledge/failure`
 - verified the focused dashboard CAM-SEQ tests with `46 passed`
 - installed `forge-ui` local dependencies
 - fixed frontend lint errors across Evolution, Forge Run, Knowledge, Playground, and Layout

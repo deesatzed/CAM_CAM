@@ -545,9 +545,26 @@ export interface FailureKnowledgeEntry {
   updated_at?: string;
 }
 
+export interface FailureKnowledgeGroup {
+  causal_key: string;
+  error_category: string;
+  task_type: string;
+  entry_count: number;
+  occurrence_total: number;
+  unresolved_count: number;
+  resolved_count: number;
+  latest_updated_at?: string | null;
+  agent_ids: string[];
+  source_task_ids: string[];
+  sample_signatures: string[];
+  diagnosis_samples: string[];
+  prevention_hints: string[];
+}
+
 export interface FailureKnowledgeResponse {
   items: FailureKnowledgeEntry[];
   count: number;
+  groups: FailureKnowledgeGroup[];
   filters: {
     task_type?: string | null;
     project_id?: string | null;
@@ -558,6 +575,7 @@ export interface FailureKnowledgeResponse {
     unresolved_count: number;
     resolved_count: number;
     category_counts: Record<string, number>;
+    group_count?: number;
   };
 }
 

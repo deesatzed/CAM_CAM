@@ -95,6 +95,7 @@ export default function FailureKnowledgePage() {
   }
 
   const items = data?.items ?? [];
+  const groups = data?.groups ?? [];
   const summary = data?.summary;
 
   return (
@@ -115,7 +116,7 @@ export default function FailureKnowledgePage() {
       <div className="grid gap-4 md:grid-cols-3 mb-6">
         <StatCard label="Unresolved" value={summary?.unresolved_count ?? 0} />
         <StatCard label="Resolved" value={summary?.resolved_count ?? 0} />
-        <StatCard label="Categories" value={Object.keys(summary?.category_counts ?? {}).length} />
+        <StatCard label="Groups" value={summary?.group_count ?? groups.length} />
       </div>
 
       <Card className="mb-6">
@@ -166,6 +167,55 @@ export default function FailureKnowledgePage() {
           </button>
         </div>
       </Card>
+
+      {!loading && groups.length > 0 && (
+        <section className="mb-6">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+              Related Failure Groups
+            </h2>
+            <span className="text-xs text-muted-dark">
+              {Object.keys(summary?.category_counts ?? {}).length} categories
+            </span>
+          </div>
+          <div className="grid gap-3 lg:grid-cols-2">
+            {groups.slice(0, 6).map((group) => (
+              <Card key={group.causal_key}>
+                <div className="flex flex-wrap items-start gap-2 mb-3">
+                  <span
+                    className={`rounded border px-2 py-1 text-[11px] font-medium ${categoryTone(group.error_category)}`}
+                  >
+                    {group.error_category}
+                  </span>
+                  <span className="rounded border border-card-border bg-background px-2 py-1 text-[11px] text-muted">
+                    {group.task_type || "global"}
+                  </span>
+                  <span className="text-xs text-muted font-mono ml-auto">
+                    {group.occurrence_total} hits
+                  </span>
+                </div>
+                <p className="mb-2 break-all font-mono text-xs text-muted-dark">
+                  {group.causal_key}
+                </p>
+                <p className="mb-3 text-sm leading-relaxed text-foreground">
+                  {group.diagnosis_samples[0] || "No diagnosis recorded."}
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+                  <span>{group.entry_count} records</span>
+                  <span>{group.unresolved_count} open</span>
+                  <span>{group.resolved_count} resolved</span>
+                  <span>updated: {formatDate(group.latest_updated_at || undefined)}</span>
+                </div>
+                {group.prevention_hints[0] && (
+                  <div className="mt-3 rounded-lg border border-card-border bg-background p-3 text-xs leading-relaxed text-amber-100">
+                    {group.prevention_hints[0]}
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {loading ? (
         <SkeletonGrid count={6} />

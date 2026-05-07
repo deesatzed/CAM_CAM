@@ -1781,7 +1781,12 @@ def test_failure_knowledge_list_and_resolve_endpoints():
     data = list_resp.json()
     assert data["count"] == 1
     assert data["summary"]["unresolved_count"] == 1
+    assert data["summary"]["group_count"] == 1
     assert data["summary"]["category_counts"]["camseq_negative_memory"] == 1
+    assert data["groups"][0]["causal_key"] == "camseq_negative_memory:auth:slot"
+    assert data["groups"][0]["occurrence_total"] == 2
+    assert data["groups"][0]["unresolved_count"] == 1
+    assert data["groups"][0]["prevention_hints"] == ["avoid sync wrapper"]
     repo.list_failure_knowledge.assert_awaited_once()
 
     resolve_resp = client.post(
