@@ -175,6 +175,12 @@ Verification:
 - Serial evolution: failure-policy mining now keeps `root_cause_key` and `detail_signals_json` in the mined payload and uses the root cause as `source_ref`.
 - Verification: `PYTHONPATH=src pytest tests/test_cycle_evolution.py::TestMicroClawEvaluateEnrichment tests/test_serial_evolution.py::TestSerialEvolutionRunner::test_strategy_policy_cycle_bootstraps_routing_policy_and_skips_weak_rows -q` passed with `6 passed`.
 
+### M5 Failure Group Priority Scoring
+
+- Fix: failure-knowledge causal groups now receive a priority score, band, and ranking reasons based on unresolved state, recurrence, slot risk, proof-gate evidence, source trace, and detail-signal richness.
+- Effect: repeated high-risk CAM-SEQ negative-memory clusters rank above generic lower-evidence runtime failures in the review API.
+- Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py::test_failure_knowledge_list_and_resolve_endpoints -q` passed.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

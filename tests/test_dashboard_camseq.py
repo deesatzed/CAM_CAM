@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1778,6 +1779,29 @@ def test_failure_knowledge_list_and_resolve_endpoints():
                 "occurrence_count": 2,
                 "resolved": 0,
                 "resolution_approach": None,
+                "detail_signals_json": json.dumps(
+                    {
+                        "slot_risk": "critical",
+                        "component_file_path": "app/auth.py",
+                        "proof_gate_ids": ["tests", "verifier"],
+                    }
+                ),
+                "created_at": "2026-05-07T00:00:00Z",
+                "updated_at": "2026-05-07T00:00:00Z",
+            },
+            {
+                "id": "fk_2",
+                "error_signature": "runtime:timeout:agent",
+                "error_category": "runtime",
+                "diagnosis": "agent timed out",
+                "prevention_hint": "rotate model",
+                "task_type": "oauth_session_management",
+                "project_id": None,
+                "source_task_id": None,
+                "occurrence_count": 1,
+                "resolved": 0,
+                "resolution_approach": None,
+                "detail_signals_json": "{}",
                 "created_at": "2026-05-07T00:00:00Z",
                 "updated_at": "2026-05-07T00:00:00Z",
             }
@@ -1796,14 +1820,27 @@ def test_failure_knowledge_list_and_resolve_endpoints():
     )
     assert list_resp.status_code == 200
     data = list_resp.json()
-    assert data["count"] == 1
-    assert data["summary"]["unresolved_count"] == 1
-    assert data["summary"]["group_count"] == 1
+    assert data["count"] == 2
+    assert data["summary"]["unresolved_count"] == 2
+    assert data["summary"]["group_count"] == 2
     assert data["summary"]["category_counts"]["camseq_negative_memory"] == 1
     assert data["groups"][0]["causal_key"] == "camseq_negative_memory:auth:slot"
     assert data["groups"][0]["occurrence_total"] == 2
     assert data["groups"][0]["unresolved_count"] == 1
     assert data["groups"][0]["prevention_hints"] == ["avoid sync wrapper"]
+    assert data["groups"][0]["priority_band"] == "high"
+    assert data["groups"][0]["priority_score"] > data["groups"][1]["priority_score"]
+    assert data["groups"][0]["priority_reasons"] == [
+        "unresolved",
+        "repeated",
+        "critical_slot",
+        "proof_gate_evidence",
+        "rich_detail_signals",
+        "source_trace",
+    ]
+    assert data["groups"][0]["slot_risks"] == ["critical"]
+    assert data["groups"][0]["component_files"] == ["app/auth.py"]
+    assert data["groups"][0]["proof_gate_ids"] == ["tests", "verifier"]
     repo.list_failure_knowledge.assert_awaited_once()
 
     resolve_resp = client.post(

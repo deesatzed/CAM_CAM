@@ -563,6 +563,13 @@ export interface FailureKnowledgeGroup {
   sample_signatures: string[];
   diagnosis_samples: string[];
   prevention_hints: string[];
+  slot_risks?: string[];
+  component_files?: string[];
+  proof_gate_ids?: string[];
+  detail_signal_count?: number;
+  priority_score?: number;
+  priority_band?: "low" | "medium" | "high" | string;
+  priority_reasons?: string[];
 }
 
 export interface FailureKnowledgeResponse {

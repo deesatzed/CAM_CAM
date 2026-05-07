@@ -6082,6 +6082,67 @@ def _append_unique(values: list[str], value: object, *, limit: int = 5) -> None:
         values.append(text)
 
 
+def _failure_knowledge_detail_signals(item: dict) -> dict:
+    raw = item.get("detail_signals_json")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _score_failure_knowledge_group(group: dict) -> None:
+    risk_weights = {
+        "critical": 0.2,
+        "high": 0.16,
+        "medium": 0.1,
+        "low": 0.04,
+    }
+    slot_risks = [str(item).lower() for item in group.get("slot_risks", [])]
+    risk_score = max((risk_weights.get(item, 0.0) for item in slot_risks), default=0.0)
+    occurrence_score = min(0.25, int(group["occurrence_total"]) * 0.06)
+    unresolved_score = 0.25 if int(group["unresolved_count"]) else 0.0
+    breadth_score = min(0.12, max(0, int(group["entry_count"]) - 1) * 0.04)
+    detail_score = min(0.12, int(group.get("detail_signal_count") or 0) * 0.02)
+    proof_score = 0.06 if group.get("proof_gate_ids") else 0.0
+    source_score = 0.04 if group.get("source_task_ids") else 0.0
+    score = min(
+        1.0,
+        unresolved_score
+        + occurrence_score
+        + breadth_score
+        + risk_score
+        + detail_score
+        + proof_score
+        + source_score,
+    )
+    reasons: list[str] = []
+    if int(group["unresolved_count"]):
+        reasons.append("unresolved")
+    if int(group["occurrence_total"]) >= 3:
+        reasons.append("recurrent")
+    elif int(group["occurrence_total"]) > 1:
+        reasons.append("repeated")
+    if "critical" in slot_risks:
+        reasons.append("critical_slot")
+    elif "high" in slot_risks:
+        reasons.append("high_risk_slot")
+    if group.get("proof_gate_ids"):
+        reasons.append("proof_gate_evidence")
+    if int(group.get("detail_signal_count") or 0) >= 3:
+        reasons.append("rich_detail_signals")
+    if group.get("source_task_ids"):
+        reasons.append("source_trace")
+
+    group["priority_score"] = round(score, 3)
+    group["priority_band"] = "high" if score >= 0.7 else "medium" if score >= 0.4 else "low"
+    group["priority_reasons"] = reasons
+
+
 def _summarize_failure_knowledge_groups(items: list[dict]) -> list[dict]:
     groups: dict[str, dict] = {}
     for item in items:
@@ -6102,6 +6163,13 @@ def _summarize_failure_knowledge_groups(items: list[dict]) -> list[dict]:
                 "sample_signatures": [],
                 "diagnosis_samples": [],
                 "prevention_hints": [],
+                "slot_risks": [],
+                "component_files": [],
+                "proof_gate_ids": [],
+                "detail_signal_count": 0,
+                "priority_score": 0.0,
+                "priority_band": "low",
+                "priority_reasons": [],
             },
         )
         group["entry_count"] += 1
@@ -6121,10 +6189,26 @@ def _summarize_failure_knowledge_groups(items: list[dict]) -> list[dict]:
         _append_unique(group["sample_signatures"], item.get("error_signature"), limit=3)
         _append_unique(group["diagnosis_samples"], item.get("diagnosis"), limit=3)
         _append_unique(group["prevention_hints"], item.get("prevention_hint"), limit=3)
+        detail = _failure_knowledge_detail_signals(item)
+        if detail:
+            group["detail_signal_count"] += sum(
+                1 for value in detail.values()
+                if value not in (None, "", [], {})
+            )
+            _append_unique(group["slot_risks"], detail.get("slot_risk"), limit=4)
+            _append_unique(group["component_files"], detail.get("component_file_path"), limit=4)
+            proof_gate_ids = detail.get("proof_gate_ids")
+            if isinstance(proof_gate_ids, list):
+                for proof_gate_id in proof_gate_ids:
+                    _append_unique(group["proof_gate_ids"], proof_gate_id, limit=6)
+
+    for group in groups.values():
+        _score_failure_knowledge_group(group)
 
     return sorted(
         groups.values(),
         key=lambda group: (
+            -float(group.get("priority_score") or 0.0),
             int(group["unresolved_count"]) == 0,
             -int(group["occurrence_total"]),
             str(group.get("latest_updated_at") or ""),
