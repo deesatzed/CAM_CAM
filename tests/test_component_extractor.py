@@ -277,6 +277,42 @@ def test_extract_typescript_components(tmp_path):
     assert by_name["validateToken"].component_type == "validator"
 
 
+def test_extract_typescript_contract_components(tmp_path):
+    repo = tmp_path
+    (repo / "contracts.ts").write_text(
+        "export interface AuthSession { token: string }\n"
+        "export type TokenPayload = { sub: string }\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "contracts.ts")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["AuthSession"].symbol_kind == "interface"
+    assert by_name["AuthSession"].component_type == "type_contract"
+    assert by_name["TokenPayload"].symbol_kind == "type_alias"
+    assert by_name["TokenPayload"].component_type == "type_contract"
+
+
+def test_extract_tsx_contract_components(tmp_path):
+    repo = tmp_path
+    (repo / "LoginButton.tsx").write_text(
+        "export interface LoginButtonProps { label: string }\n"
+        "type ClickHandler = () => void\n"
+        "export function LoginButton(props: LoginButtonProps) { return <button>{props.label}</button> }\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "LoginButton.tsx")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["LoginButtonProps"].symbol_kind == "interface"
+    assert by_name["LoginButtonProps"].component_type == "type_contract"
+    assert by_name["ClickHandler"].symbol_kind == "type_alias"
+    assert by_name["ClickHandler"].component_type == "type_contract"
+    assert by_name["LoginButton"].language == "tsx"
+
+
 def test_extract_typescript_class_methods_with_tree_sitter_stub(tmp_path, monkeypatch):
     repo = tmp_path
     (repo / "api.ts").write_text("export class AuthClient { refreshSession() { return true } }\n", encoding="utf-8")
@@ -768,6 +804,27 @@ def test_extract_javascript_default_export_fallback_when_tree_sitter_unavailable
     assert by_name["AuthClient"].note == "javascript top-level class heuristic"
 
 
+def test_extract_typescript_contract_fallback_when_tree_sitter_unavailable(tmp_path, monkeypatch):
+    repo = tmp_path
+    (repo / "contracts.ts").write_text(
+        "export interface AuthSession { token: string }\n"
+        "export type TokenPayload = { sub: string }\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(component_extractor, "_build_parser", lambda language: None)
+
+    comps = extract_components_from_file(repo, "contracts.ts")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["AuthSession"].symbol_kind == "interface"
+    assert by_name["AuthSession"].component_type == "type_contract"
+    assert by_name["AuthSession"].note == "typescript top-level interface heuristic"
+    assert by_name["TokenPayload"].symbol_kind == "type_alias"
+    assert by_name["TokenPayload"].component_type == "type_contract"
+    assert by_name["TokenPayload"].note == "typescript top-level type_alias heuristic"
+
+
 def _has_real_tree_sitter(language: str) -> bool:
     return component_extractor._build_parser(language) is not None
 
@@ -918,6 +975,47 @@ def test_real_tree_sitter_extracts_typescript_function_class_and_arrow_shapes(tm
     assert "tree-sitter" in by_name["AuthClient"].note
     assert by_name["validateToken"].component_type == "validator"
     assert by_name["validateToken"].imports
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")
+def test_real_tree_sitter_extracts_typescript_contract_shapes(tmp_path):
+    repo = tmp_path
+    (repo / "contracts.ts").write_text(
+        "export interface AuthSession { token: string }\n"
+        "export type TokenPayload = { sub: string }\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "contracts.ts")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["AuthSession"].symbol_kind == "interface"
+    assert by_name["AuthSession"].component_type == "type_contract"
+    assert "tree-sitter" in by_name["AuthSession"].note
+    assert by_name["TokenPayload"].symbol_kind == "type_alias"
+    assert by_name["TokenPayload"].component_type == "type_contract"
+    assert "tree-sitter" in by_name["TokenPayload"].note
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("tsx"), reason="tree-sitter tsx parser not installed")
+def test_real_tree_sitter_extracts_tsx_contract_shapes(tmp_path):
+    repo = tmp_path
+    (repo / "LoginButton.tsx").write_text(
+        "export interface LoginButtonProps { label: string }\n"
+        "type ClickHandler = () => void\n"
+        "export function LoginButton(props: LoginButtonProps) { return <button>{props.label}</button> }\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "LoginButton.tsx")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["LoginButtonProps"].symbol_kind == "interface"
+    assert by_name["LoginButtonProps"].component_type == "type_contract"
+    assert "tree-sitter" in by_name["LoginButtonProps"].note
+    assert by_name["ClickHandler"].symbol_kind == "type_alias"
+    assert by_name["ClickHandler"].component_type == "type_contract"
+    assert "tree-sitter" in by_name["ClickHandler"].note
 
 
 @pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")

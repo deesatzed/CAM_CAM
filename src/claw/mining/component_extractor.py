@@ -41,6 +41,7 @@ _PY_ROUTE_DECORATOR_HINTS = {"get", "post", "put", "patch", "delete", "route"}
 _JS_FUNC_COMPONENT_TYPES = {"function_declaration", "generator_function_declaration"}
 _JS_CLASS_COMPONENT_TYPES = {"class_declaration"}
 _TS_VAR_COMPONENT_TYPES = {"lexical_declaration", "variable_statement"}
+_TS_CONTRACT_COMPONENT_TYPES = {"interface_declaration", "type_alias_declaration"}
 
 
 def _detect_language(path: Path) -> Optional[str]:
@@ -72,6 +73,8 @@ def _classify_component(
         return "test_fixture"
     if any(any(hint in deco for hint in _PY_ROUTE_DECORATOR_HINTS) for deco in decos):
         return "route_handler"
+    if symbol_kind in {"interface", "type_alias"}:
+        return "type_contract"
     if any(tok in name for tok in ("validate", "validator", "schema", "clean_")):
         return "validator"
     if any(tok in name for tok in ("worker", "job", "queue", "consumer", "processor", "handler")):
@@ -508,6 +511,36 @@ def _extract_class_field_components(node: Any, text_bytes: bytes, relative_path:
     return components
 
 
+def _extract_contract_component(node: Any, text_bytes: bytes, relative_path: str, language: str, imports: list[str]) -> Optional[ExtractedComponent]:
+    name_node = node.child_by_field_name("name")
+    if name_node is None:
+        return None
+    symbol_name = _ts_node_text(name_node, text_bytes).strip()
+    if not symbol_name:
+        return None
+    symbol_kind = "interface" if node.type == "interface_declaration" else "type_alias"
+    component_type = _classify_component(
+        symbol_name,
+        symbol_kind=symbol_kind,
+        relative_path=relative_path,
+        decorators=[],
+    )
+    return ExtractedComponent(
+        title=symbol_name,
+        component_type=component_type,
+        file_path=relative_path,
+        symbol_name=symbol_name,
+        symbol_kind=symbol_kind,
+        line_start=_ts_line(node, "start_point"),
+        line_end=_ts_line(node, "end_point"),
+        language=language,
+        imports=imports,
+        keywords=_keyword_tokens(symbol_name),
+        ast_fingerprint=_fingerprint([relative_path, symbol_kind, symbol_name, node.type, "tree_sitter"]),
+        note=f"{language} {symbol_kind} via tree-sitter",
+    )
+
+
 def _extract_js_like_ts_components(text: str, relative_path: str, language: str, parser: Any) -> list[ExtractedComponent]:
     text_bytes = text.encode("utf-8")
     tree = parser.parse(text_bytes)
@@ -604,6 +637,11 @@ def _extract_js_like_ts_components(text: str, relative_path: str, language: str,
             components.extend(
                 _extract_object_literal_components(node, text_bytes, relative_path, language, imports)
             )
+            continue
+        if node.type in _TS_CONTRACT_COMPONENT_TYPES:
+            component = _extract_contract_component(node, text_bytes, relative_path, language, imports)
+            if component is not None:
+                components.append(component)
             continue
 
     deduped: list[ExtractedComponent] = []
@@ -730,6 +768,8 @@ _JS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "function"),
     (re.compile(r"^(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "class"),
     (re.compile(r"^(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\([^\)]*\)\s*=>", re.MULTILINE), "function"),
+    (re.compile(r"^(?:export\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "interface"),
+    (re.compile(r"^(?:export\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", re.MULTILINE), "type_alias"),
 ]
 
 
