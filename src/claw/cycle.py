@@ -61,6 +61,111 @@ def _strip_llm_tokens(content: str) -> str:
     return _LLM_SPECIAL_TOKENS.sub("", content)
 
 
+def _failure_knowledge_root_key(entry: dict[str, Any]) -> str:
+    root_key = str(entry.get("root_cause_key") or "").strip()
+    if root_key:
+        return root_key
+    category = str(entry.get("error_category") or "unknown").strip() or "unknown"
+    task_type = str(entry.get("task_type") or "global").strip() or "global"
+    signature = str(entry.get("error_signature") or "").strip()
+    if not signature:
+        return f"{category}:{task_type}"
+    parts = [part for part in signature.split(":") if part]
+    if category == "camseq_negative_memory" and len(parts) >= 3:
+        return ":".join(parts[:3])
+    if len(parts) >= 2:
+        return f"{category}:{task_type}:{parts[0]}:{parts[1]}"
+    return f"{category}:{task_type}:{signature[:80]}"
+
+
+def _failure_detail_signals(entry: dict[str, Any]) -> dict[str, Any]:
+    raw = entry.get("detail_signals_json")
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _representative_failure_knowledge(
+    entries: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Keep one high-signal preventive memory per durable root cause."""
+    grouped: dict[str, dict[str, Any]] = {}
+    for entry in entries:
+        root_key = _failure_knowledge_root_key(entry)
+        current = grouped.get(root_key)
+        if current is None:
+            grouped[root_key] = dict(entry)
+            continue
+        current_count = int(current.get("occurrence_count") or 0)
+        entry_count = int(entry.get("occurrence_count") or 0)
+        if entry_count > current_count:
+            grouped[root_key] = dict(entry)
+    return sorted(
+        grouped.values(),
+        key=lambda item: (
+            int(item.get("occurrence_count") or 0),
+            str(item.get("updated_at") or ""),
+        ),
+        reverse=True,
+    )[:limit]
+
+
+def _format_preventive_failure_knowledge(entry: dict[str, Any]) -> str:
+    root_key = _failure_knowledge_root_key(entry)
+    hint = str(entry.get("prevention_hint") or "").strip()
+    signature = str(entry.get("error_signature") or "unknown").strip() or "unknown"
+    occurrences = int(entry.get("occurrence_count") or 0)
+    detail = _failure_detail_signals(entry)
+    signals: list[str] = []
+    slot = detail.get("slot_name") or detail.get("slot_id")
+    component = detail.get("component_title") or detail.get("component_id")
+    file_path = detail.get("component_file_path")
+    transfer_mode = detail.get("transfer_mode")
+    fit_bucket = detail.get("fit_bucket")
+    proof_gates = detail.get("proof_gate_ids")
+    landing_sites = detail.get("landing_sites")
+
+    if slot:
+        signals.append(f"slot={slot}")
+    if component:
+        component_text = str(component)
+        if file_path:
+            component_text = f"{component_text} ({file_path})"
+        signals.append(f"component={component_text}")
+    if transfer_mode or fit_bucket:
+        signals.append(
+            "fit="
+            + "/".join(str(value) for value in (transfer_mode, fit_bucket) if value)
+        )
+    if isinstance(proof_gates, list) and proof_gates:
+        signals.append(f"proof_gates={','.join(str(item) for item in proof_gates[:3])}")
+    if isinstance(landing_sites, list) and landing_sites:
+        sites = []
+        for site in landing_sites[:2]:
+            if isinstance(site, dict):
+                site_text = site.get("file_path") or site.get("operation")
+                if site_text:
+                    sites.append(str(site_text))
+            elif site:
+                sites.append(str(site))
+        if sites:
+            signals.append(f"landing_sites={','.join(sites)}")
+
+    detail_text = f" | signals: {'; '.join(signals)}" if signals else ""
+    return (
+        f"[PREVENTIVE root-cause={root_key} occurrences={occurrences}] "
+        f"Avoid: {signature} - {hint[:200]}{detail_text}"
+    )
+
+
 def _resolve_workspace_dir(
     agents: dict[str, Any],
     agent_id: str,
@@ -1067,11 +1172,8 @@ class MicroClaw(ClawCycle):
                 project_id=self.project_id,
                 limit=5,
             )
-            for fk in fk_entries:
-                forbidden.append(
-                    f"[PREVENTIVE] Avoid: {fk.get('error_signature', 'unknown')} - "
-                    f"{fk.get('prevention_hint', '')[:200]}"
-                )
+            for fk in _representative_failure_knowledge(fk_entries, limit=5):
+                forbidden.append(_format_preventive_failure_knowledge(fk))
         except Exception as e:
             logger.debug("Failure knowledge lookup failed: %s", e)
 

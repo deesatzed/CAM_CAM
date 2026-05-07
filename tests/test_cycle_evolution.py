@@ -249,6 +249,91 @@ class TestMicroClawEvaluateEnrichment:
         # which is acceptable -- the important thing is the code path works)
         assert isinstance(task_ctx.hints, list)
 
+    async def test_evaluate_formats_preventive_memory_with_root_cause_details(
+        self,
+        evolution_context,
+        evo_project,
+        evo_task,
+    ):
+        ctx = evolution_context
+        await ctx.repository.create_project(evo_project)
+        await ctx.repository.create_task(evo_task)
+        await ctx.repository.record_failure_knowledge(
+            error_signature="camseq_negative_memory:auth-refresh:slot-refresh:comp-old",
+            error_category="camseq_negative_memory",
+            diagnosis="sync wrapper failed under concurrent token refresh",
+            prevention_hint="prefer async-safe refresh path with explicit race tests",
+            task_type=evo_task.task_type,
+            project_id=evo_project.id,
+            root_cause_key="camseq_negative_memory:auth-refresh:slot-refresh",
+            detail_signals_json={
+                "slot_name": "token_refresh",
+                "component_title": "Legacy refresh adapter",
+                "component_file_path": "app/auth.py",
+                "transfer_mode": "direct_fit",
+                "fit_bucket": "strong",
+                "proof_gate_ids": ["tests", "verifier"],
+                "landing_sites": [{"file_path": "app/auth.py"}],
+            },
+        )
+
+        micro = MicroClaw(ctx, evo_project.id)
+        grabbed = await micro.grab()
+        task_ctx = await micro.evaluate(grabbed)
+
+        preventive = [
+            item for item in task_ctx.forbidden_approaches
+            if "root-cause=camseq_negative_memory:auth-refresh:slot-refresh" in item
+        ]
+        assert len(preventive) == 1
+        assert "slot=token_refresh" in preventive[0]
+        assert "component=Legacy refresh adapter (app/auth.py)" in preventive[0]
+        assert "fit=direct_fit/strong" in preventive[0]
+        assert "proof_gates=tests,verifier" in preventive[0]
+
+    async def test_evaluate_keeps_one_preventive_memory_per_root_cause(
+        self,
+        evolution_context,
+        evo_project,
+        evo_task,
+    ):
+        ctx = evolution_context
+        await ctx.repository.create_project(evo_project)
+        await ctx.repository.create_task(evo_task)
+        root_key = "camseq_negative_memory:auth-refresh:slot-refresh"
+        await ctx.repository.record_failure_knowledge(
+            error_signature="camseq_negative_memory:auth-refresh:slot-refresh:comp-low",
+            error_category="camseq_negative_memory",
+            diagnosis="first component failed",
+            prevention_hint="low-signal hint",
+            task_type=evo_task.task_type,
+            project_id=evo_project.id,
+            root_cause_key=root_key,
+        )
+        high_signature = "camseq_negative_memory:auth-refresh:slot-refresh:comp-high"
+        for _ in range(2):
+            await ctx.repository.record_failure_knowledge(
+                error_signature=high_signature,
+                error_category="camseq_negative_memory",
+                diagnosis="repeated representative failure",
+                prevention_hint="higher-signal hint",
+                task_type=evo_task.task_type,
+                project_id=evo_project.id,
+                root_cause_key=root_key,
+            )
+
+        micro = MicroClaw(ctx, evo_project.id)
+        grabbed = await micro.grab()
+        task_ctx = await micro.evaluate(grabbed)
+
+        preventive = [
+            item for item in task_ctx.forbidden_approaches
+            if f"root-cause={root_key}" in item
+        ]
+        assert len(preventive) == 1
+        assert high_signature in preventive[0]
+        assert "higher-signal hint" in preventive[0]
+
     async def test_evaluate_still_works_without_evolution_components(self):
         """Without error_kb/semantic_memory, evaluate still works (backward compat)."""
         config = load_config()

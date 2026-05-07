@@ -168,6 +168,13 @@ Verification:
 - Effect: each persisted negative-memory record carries slot, selected component, source barcode, proof gates, expected landing sites, transfer mode, fit bucket, confidence, and update text.
 - Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed with `63 passed`; `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
 
+### M5 Preventive-Memory Retrieval
+
+- Fix: CAM task evaluation now groups retrieved failure knowledge by root cause and injects one representative preventive memory with persisted slot/component/proof detail signals.
+- Effect: repeated CAM-SEQ negative-memory signatures no longer crowd the prompt as separate warnings; future CAM task attempts get the clearest root-cause warning with the concrete signals needed to avoid repeating it.
+- Serial evolution: failure-policy mining now keeps `root_cause_key` and `detail_signals_json` in the mined payload and uses the root cause as `source_ref`.
+- Verification: `PYTHONPATH=src pytest tests/test_cycle_evolution.py::TestMicroClawEvaluateEnrichment tests/test_serial_evolution.py::TestSerialEvolutionRunner::test_strategy_policy_cycle_bootstraps_routing_policy_and_skips_weak_rows -q` passed with `6 passed`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

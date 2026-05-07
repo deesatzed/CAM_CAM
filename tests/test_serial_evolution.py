@@ -554,8 +554,17 @@ class TestSerialEvolutionRunner:
         await evolution_engine.execute(
             """INSERT INTO failure_knowledge
                (id, error_signature, error_category, diagnosis, prevention_hint,
-                occurrence_count)
-               VALUES ('fk-1', 'timeout', 'runtime', 'agent timed out', 'rotate agent', 2)"""
+                occurrence_count, root_cause_key, detail_signals_json)
+               VALUES (
+                'fk-1',
+                'camseq_negative_memory:auth-refresh:slot-refresh:comp-high',
+                'camseq_negative_memory',
+                'agent timed out',
+                'rotate agent',
+                2,
+                'camseq_negative_memory:auth-refresh:slot-refresh',
+                '{"slot_name": "token_refresh", "component_file_path": "app/auth.py"}'
+               )"""
         )
         runner = SerialEvolutionRunner(
             Repository(evolution_engine),
@@ -568,7 +577,8 @@ class TestSerialEvolutionRunner:
         assert result.layer == "strategy_policy"
         assert result.decision == "promote"
         mined = await evolution_engine.fetch_all(
-            "SELECT source_type, source_uri, accepted FROM evolution_mined_inputs WHERE run_id = ?",
+            "SELECT source_type, source_uri, source_ref, accepted, extracted_payload "
+            "FROM evolution_mined_inputs WHERE run_id = ?",
             [result.run_id],
         )
         assert all(row["accepted"] == 1 for row in mined)
@@ -578,6 +588,20 @@ class TestSerialEvolutionRunner:
         assert "routing_static_prior" in source_types
         assert "kelly_policy_config" in source_types
         assert "failure_policy_signal" in source_types
+        failure_signal = next(
+            row for row in mined if row["source_type"] == "failure_policy_signal"
+        )
+        assert failure_signal["source_ref"] == (
+            "camseq_negative_memory:auth-refresh:slot-refresh"
+        )
+        payload = json.loads(failure_signal["extracted_payload"])
+        assert payload["root_cause_key"] == (
+            "camseq_negative_memory:auth-refresh:slot-refresh"
+        )
+        assert (
+            json.loads(payload["detail_signals_json"])["component_file_path"]
+            == "app/auth.py"
+        )
         assert all(row["source_uri"] != "grok:mining" for row in mined)
         event = await evolution_engine.fetch_one(
             "SELECT * FROM evolution_monitor_events WHERE run_id = ? AND event_type = ?",

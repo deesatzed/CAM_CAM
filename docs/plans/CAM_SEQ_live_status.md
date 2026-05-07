@@ -33,6 +33,7 @@ Just finished:
 - added related-failure grouping to `/api/v2/failure-knowledge` and surfaced those causal groups in `/knowledge/failure`
 - added durable `root_cause_key` and `detail_signals_json` columns to `failure_knowledge`, with migration/backfill coverage and repository defaults for existing callers
 - wired CAM-SEQ negative-memory distill to persist explicit root-cause keys and packet detail signals for failed reviewed-run memories
+- wired CAM task evaluation and serial evolution mining to use root-cause grouped failure knowledge with persisted detail signals as preventive memory
 - verified the focused dashboard CAM-SEQ tests with `46 passed`
 - installed `forge-ui` local dependencies
 - fixed frontend lint errors across Evolution, Forge Run, Knowledge, Playground, and Layout

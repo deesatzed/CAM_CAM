@@ -1663,19 +1663,20 @@ class SerialEvolutionRunner:
 
         failure_rows = await self.repository.engine.fetch_all(
             """SELECT id, error_signature, error_category, diagnosis, prevention_hint,
-                      occurrence_count, resolved
+                      occurrence_count, resolved, root_cause_key, detail_signals_json
                FROM failure_knowledge
                ORDER BY occurrence_count DESC, updated_at DESC
                LIMIT 10"""
         )
         for row in failure_rows:
             occurrences = int(row.get("occurrence_count") or 0)
+            source_ref = row.get("root_cause_key") or row["error_signature"]
             item = await self.repository.record_evolution_mined_input(
                 {
                     "run_id": run_id,
                     "source_type": "failure_policy_signal",
                     "source_uri": f"failure_knowledge:{row['id']}",
-                    "source_ref": row["error_signature"],
+                    "source_ref": source_ref,
                     "novelty_score": 0.5,
                     "relevance_score": min(1.0, 0.55 + (0.05 * max(1, occurrences))),
                     "accepted": True,
