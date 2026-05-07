@@ -199,6 +199,24 @@ Verification:
 - Effect: operators can now see CodeQL mode/readiness, Semgrep config/tool availability, reviewed-run proof-gate enforcement, and pre-write blocking state without inspecting environment variables.
 - Verification: `PYTHONPATH=src pytest tests/test_policy_tools.py tests/test_dashboard_camseq.py::test_security_lane_endpoint_reports_flags_and_codeql_status -q`, `npm run lint`, and `npx next build --webpack` passed.
 
+### M6 CodeQL Required-Mode Smoke
+
+- Fix: added a mocked required-mode CodeQL SARIF smoke test for the configured analyzer path.
+- Effect: the critical-slot policy lane now proves the `codeql database analyze` command shape, SARIF output handling, severity mapping, and finding parsing without requiring a local CodeQL install.
+- Verification: `PYTHONPATH=src pytest tests/test_policy_tools.py -q` passed.
+
+### M2 Parser Precision Coverage
+
+- Fix: added real Tree-sitter regression coverage for Python property/classmethod methods, TypeScript function-expression variables, and JavaScript object literal methods.
+- Effect: CAM-CAM has stronger evidence that component memory extraction handles more practical code shapes without falling back silently.
+- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed.
+
+### M7 External Specialist Exchange Planning
+
+- Fix: added a minimal external specialist exchange plan centered on schema-versioned request/reply envelopes.
+- Effect: the next M7 implementation can start with a deterministic file-spool handoff before MCP-to-MCP or HTTP transport, while keeping external replies non-mutating until reviewed.
+- Verification: docs-only change; no runtime validation required.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

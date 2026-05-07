@@ -993,6 +993,33 @@ def test_real_tree_sitter_extracts_python_staticmethod_methods(tmp_path):
     assert "tree-sitter" in by_name["AuthClient.normalize"].note
 
 
+@pytest.mark.skipif(not _has_real_tree_sitter("python"), reason="tree-sitter python parser not installed")
+def test_real_tree_sitter_extracts_python_property_and_classmethod_methods(tmp_path):
+    repo = tmp_path
+    (repo / "service.py").write_text(
+        "class AuthClient:\n"
+        "    @property\n"
+        "    def token(self):\n"
+        "        return self._token\n\n"
+        "    @classmethod\n"
+        "    def build(cls):\n"
+        "        return cls()\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "service.py")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert "AuthClient.token" in by_name
+    assert by_name["AuthClient.token"].symbol_kind == "method"
+    assert "@property" in by_name["AuthClient.token"].decorators
+    assert "tree-sitter" in by_name["AuthClient.token"].note
+    assert "AuthClient.build" in by_name
+    assert by_name["AuthClient.build"].symbol_kind == "method"
+    assert "@classmethod" in by_name["AuthClient.build"].decorators
+    assert "tree-sitter" in by_name["AuthClient.build"].note
+
+
 @pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")
 def test_real_tree_sitter_extracts_typescript_function_class_and_arrow_shapes(tmp_path):
     repo = tmp_path
@@ -1013,6 +1040,26 @@ def test_real_tree_sitter_extracts_typescript_function_class_and_arrow_shapes(tm
     assert "tree-sitter" in by_name["AuthClient"].note
     assert by_name["validateToken"].component_type == "validator"
     assert by_name["validateToken"].imports
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")
+def test_real_tree_sitter_extracts_typescript_function_expression_variables(tmp_path):
+    repo = tmp_path
+    (repo / "api.ts").write_text(
+        "export const tokenRefreshWorker = async function (token: string) { return token }\n"
+        "export const validateToken = function (token: string) { return !!token }\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "api.ts")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert by_name["tokenRefreshWorker"].symbol_kind == "function"
+    assert by_name["tokenRefreshWorker"].component_type == "worker"
+    assert "tree-sitter" in by_name["tokenRefreshWorker"].note
+    assert by_name["validateToken"].symbol_kind == "function"
+    assert by_name["validateToken"].component_type == "validator"
+    assert "tree-sitter" in by_name["validateToken"].note
 
 
 @pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")
@@ -1096,6 +1143,27 @@ def test_real_tree_sitter_extracts_jsx_wrapped_function_components(tmp_path):
     assert by_name["TextInput"].symbol_kind == "function"
     assert by_name["TextInput"].language == "javascript"
     assert "tree-sitter" in by_name["TextInput"].note
+
+
+@pytest.mark.skipif(not _has_real_tree_sitter("javascript"), reason="tree-sitter javascript parser not installed")
+def test_real_tree_sitter_extracts_javascript_object_methods(tmp_path):
+    repo = tmp_path
+    (repo / "api.js").write_text(
+        "export const authApi = {\n"
+        "  async refreshSession(token) { return token },\n"
+        "  validateToken: (token) => !!token,\n"
+        "}\n",
+        encoding="utf-8",
+    )
+
+    comps = extract_components_from_file(repo, "api.js")
+    by_name = {c.symbol_name: c for c in comps}
+
+    assert "authApi.refreshSession" in by_name
+    assert by_name["authApi.refreshSession"].symbol_kind == "method"
+    assert "tree-sitter" in by_name["authApi.refreshSession"].note
+    assert "authApi.validateToken" in by_name
+    assert by_name["authApi.validateToken"].component_type == "validator"
 
 
 @pytest.mark.skipif(not _has_real_tree_sitter("typescript"), reason="tree-sitter typescript parser not installed")

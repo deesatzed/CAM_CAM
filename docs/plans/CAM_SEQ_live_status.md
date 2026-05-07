@@ -14,9 +14,10 @@ For the full ledger, use:
 
 Active work:
 - resumed the pre-merger plan after the CAM_CAM/CAM-Pulse defense-chain merge
-- `M2`: close component parser precision gaps with focused real-parser coverage
+- `M2`: close component parser precision gaps with focused real-parser coverage; added coverage for Python property/classmethod methods, TypeScript function-expression variables, and JavaScript object methods
 - app troubleshooting: verify frontend/backend runtime behavior and separate app defects from environment/tooling failures
-- `M6`: explicit CodeQL mode control, optional pre-write critical-slot blocking, and security-lane API/UI visibility are implemented; full CodeQL analysis still needs managed CodeQL assets
+- `M6`: explicit CodeQL mode control, optional pre-write critical-slot blocking, security-lane API/UI visibility, and mocked required-mode CodeQL SARIF smoke coverage are implemented; full CodeQL analysis still needs managed CodeQL assets
+- `M7`: external/specialist exchange planning has started with a minimal A2A packet handoff plan; implementation remains pending
 - milestone ledger remains available in the long-form tracker below
 
 Just finished:
@@ -99,6 +100,9 @@ Current proof artifacts:
 - [camseq_connectome_headlines.json](/Volumes/WS4TB/RNACAM/CAM-Pulse/docs/benchmarks/camseq_connectome_headlines.json)
 - [camseq_connectome_status.md](/Volumes/WS4TB/RNACAM/CAM-Pulse/docs/benchmarks/camseq_connectome_status.md)
 
+M7 planning:
+- [CAM_SEQ_M7_external_specialist_exchange_plan.md](/Volumes/WS4TB/CCam/CAM_CAM/docs/plans/CAM_SEQ_M7_external_specialist_exchange_plan.md)
+
 ## How To Read My Updates
 
 - commentary messages are checkpoint summaries, not permission requests
@@ -109,8 +113,8 @@ Current proof artifacts:
 
 - app: Turbopack build still crashes in this sandbox with a port-binding permission error; webpack build is clean
 - app: component search now uses merged scoring and explicit file-level fallback for content matches; the live backend needs a restart before the latest fix can be re-smoke-tested outside the test client
-- `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, and React wrapper components
+- `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, React wrapper components, function-expression variables, and JavaScript object methods
 - `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution plus priority review UI now exist
-- `M6`: full CodeQL analysis still needs managed/advanced assets; local mode now exposes `off`, `deferred`, `required`, optional pre-write blocking, and lane visibility
-- `M7`: no true external/A2A specialist transport yet
+- `M6`: full CodeQL analysis still needs managed/advanced assets; local mode now exposes `off`, `deferred`, `required`, optional pre-write blocking, lane visibility, and required-mode SARIF parser smoke coverage
+- `M7`: no true external/A2A specialist transport yet; first docs plan favors a file-based packet handoff spool before MCP-to-MCP or HTTP transport
 - `M8`: broader real-repo mutation benchmark coverage and more polished demo artifacts
