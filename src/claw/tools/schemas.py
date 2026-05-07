@@ -156,6 +156,18 @@ class BridgeSpecialistExchangeInput(BaseModel):
     specialist_identity: str = Field(default="mcp_bridge", description="Bridge identity label")
 
 
+class SubmitSpecialistWebhookInput(BaseModel):
+    """Input for claw_submit_specialist_webhook."""
+    exchange_id: str = Field(..., description="External specialist exchange ID to submit")
+    endpoint_url: str = Field(..., description="HTTPS endpoint that accepts CAM exchange envelopes")
+    shared_secret: str = Field(..., description="HMAC secret used to sign the webhook body")
+    timeout_seconds: int = Field(default=30, ge=1, le=300, description="HTTP submit timeout")
+    allow_http: bool = Field(
+        default=False,
+        description="Allow plain HTTP for local test transports only",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Tool metadata registry
 # ---------------------------------------------------------------------------
@@ -224,6 +236,10 @@ TOOL_METADATA: dict[str, tuple[type[BaseModel], str]] = {
     "claw_bridge_specialist_exchange": (
         BridgeSpecialistExchangeInput,
         "Submit an existing specialist exchange envelope to an external MCP tool and import its reply.",
+    ),
+    "claw_submit_specialist_webhook": (
+        SubmitSpecialistWebhookInput,
+        "Submit an existing specialist exchange envelope to a signed HTTPS webhook endpoint.",
     ),
 }
 

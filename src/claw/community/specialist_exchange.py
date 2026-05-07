@@ -8,17 +8,25 @@ without gaining direct mutation authority inside CAM.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from claw.core.models import ExternalSpecialistExchange
 
 SCHEMA_VERSION = "cam.specialist.exchange.v1"
+SIGNATURE_HEADER = "X-CAM-Signature"
+TIMESTAMP_HEADER = "X-CAM-Timestamp"
+REQUEST_ID_HEADER = "X-CAM-Request-ID"
+EXCHANGE_ID_HEADER = "X-CAM-Exchange-ID"
 
 
 def new_exchange_id() -> str:
@@ -169,11 +177,123 @@ def write_inbox_reply(spool_dir: Path, envelope: dict[str, Any]) -> Path:
     return output
 
 
+def canonical_envelope_bytes(envelope: dict[str, Any]) -> bytes:
+    return json.dumps(envelope, separators=(",", ":"), sort_keys=True).encode("utf-8")
+
+
+def sign_exchange_payload(
+    body: bytes,
+    *,
+    shared_secret: str,
+    timestamp: int | None = None,
+) -> dict[str, str]:
+    if not shared_secret:
+        raise ValueError("shared_secret is required for signed specialist exchange transport")
+    stamped_at = int(timestamp if timestamp is not None else time.time())
+    base = f"{stamped_at}.".encode("utf-8") + body
+    digest = hmac.new(shared_secret.encode("utf-8"), base, hashlib.sha256).hexdigest()
+    return {
+        TIMESTAMP_HEADER: str(stamped_at),
+        SIGNATURE_HEADER: f"v1={digest}",
+    }
+
+
+def verify_exchange_signature(
+    body: bytes,
+    *,
+    shared_secret: str,
+    timestamp: str | int | None,
+    signature: str | None,
+    tolerance_seconds: int = 300,
+) -> None:
+    if not shared_secret:
+        raise ValueError("shared_secret is required for signed specialist exchange transport")
+    if not timestamp:
+        raise ValueError("missing specialist exchange signature timestamp")
+    if not signature:
+        raise ValueError("missing specialist exchange signature")
+    try:
+        stamped_at = int(timestamp)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid specialist exchange signature timestamp") from exc
+    now = int(time.time())
+    if tolerance_seconds > 0 and abs(now - stamped_at) > tolerance_seconds:
+        raise ValueError("specialist exchange signature timestamp is outside tolerance")
+    expected = sign_exchange_payload(body, shared_secret=shared_secret, timestamp=stamped_at)[
+        SIGNATURE_HEADER
+    ]
+    if not hmac.compare_digest(expected, signature):
+        raise ValueError("invalid specialist exchange signature")
+
+
+def signed_http_headers(
+    envelope: dict[str, Any],
+    *,
+    shared_secret: str,
+    timestamp: int | None = None,
+) -> tuple[bytes, dict[str, str]]:
+    body = canonical_envelope_bytes(envelope)
+    headers = {
+        "Content-Type": "application/json",
+        EXCHANGE_ID_HEADER: str(envelope.get("exchange_id") or ""),
+        REQUEST_ID_HEADER: str(envelope.get("request_id") or ""),
+        **sign_exchange_payload(body, shared_secret=shared_secret, timestamp=timestamp),
+    }
+    return body, headers
+
+
+def validate_https_endpoint(endpoint_url: str, *, allow_http: bool = False) -> str:
+    parsed = urlparse(endpoint_url)
+    if parsed.scheme != "https" and not (allow_http and parsed.scheme == "http"):
+        raise ValueError("endpoint_url must use https unless allow_http is enabled")
+    if not parsed.netloc:
+        raise ValueError("endpoint_url must include a host")
+    return endpoint_url
+
+
+HTTPWebhookSender = Callable[[str, bytes, dict[str, str], int], Awaitable[Any]]
 MCPBridgeCaller = Callable[[str, dict[str, Any]], Awaitable[Any]]
 
 
+async def submit_signed_http_exchange(
+    *,
+    endpoint_url: str,
+    request_envelope: dict[str, Any],
+    shared_secret: str,
+    timeout_seconds: int = 30,
+    allow_http: bool = False,
+    sender: HTTPWebhookSender | None = None,
+) -> dict[str, Any]:
+    endpoint = validate_https_endpoint(endpoint_url, allow_http=allow_http)
+    body, headers = signed_http_headers(request_envelope, shared_secret=shared_secret)
+    if sender is not None:
+        result = await sender(endpoint, body, headers, timeout_seconds)
+        if isinstance(result, dict):
+            return result
+        return {"status": "submitted", "result": str(result)}
+
+    import httpx
+
+    async with httpx.AsyncClient(timeout=timeout_seconds) as client:
+        response = await client.post(endpoint, content=body, headers=headers)
+        response.raise_for_status()
+        try:
+            response_payload = response.json()
+        except ValueError:
+            response_payload = {"text": response.text}
+        return {
+            "status": "submitted",
+            "status_code": response.status_code,
+            "response": response_payload,
+        }
+
+
 def mcp_bridge_arguments(request_envelope: dict[str, Any]) -> dict[str, Any]:
-    slot = request_envelope.get("slot") if isinstance(request_envelope.get("slot"), dict) else {}
+    slot = (
+        request_envelope.get("slot")
+        if isinstance(request_envelope.get("slot"), dict)
+        else {}
+    )
     return {
         "task_text": request_envelope.get("task_text") or "",
         "slot_name": slot.get("name"),
@@ -212,7 +332,10 @@ def normalize_mcp_bridge_reply(
     max_reply_bytes: int = 65536,
 ) -> dict[str, Any]:
     payload = _coerce_tool_payload(result)
-    if payload.get("schema_version") == SCHEMA_VERSION and payload.get("kind") == "external_specialist_reply":
+    if (
+        payload.get("schema_version") == SCHEMA_VERSION
+        and payload.get("kind") == "external_specialist_reply"
+    ):
         reply = dict(payload)
     else:
         candidates = payload.get("packet_candidates") or payload.get("results") or []
@@ -240,7 +363,11 @@ def normalize_mcp_bridge_reply(
             "evidence": [
                 {
                     "kind": "mcp_tool_result",
-                    "summary": payload.get("summary") or payload.get("status") or "external MCP bridge reply",
+                    "summary": (
+                        payload.get("summary")
+                        or payload.get("status")
+                        or "external MCP bridge reply"
+                    ),
                     "payload": payload,
                 }
             ],

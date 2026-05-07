@@ -17,7 +17,7 @@ Active work:
 - `M2`: close component parser precision gaps with focused real-parser coverage; added coverage for Python property/classmethod methods, TypeScript function-expression variables, and JavaScript object methods
 - app troubleshooting: verify frontend/backend runtime behavior and separate app defects from environment/tooling failures
 - `M6`: explicit CodeQL mode control, optional pre-write critical-slot blocking, security-lane API/UI visibility, and mocked required-mode CodeQL SARIF smoke coverage are implemented; full CodeQL analysis still needs managed CodeQL assets
-- `M7`: external/specialist exchange has a feature-flagged file-spool implementation with durable request/reply lifecycle, inbox import, Federation Hub visibility, MCP export/import/list tools, and MCP-to-MCP bridge submission
+- `M7`: external/specialist exchange has a feature-flagged file-spool implementation with durable request/reply lifecycle, inbox import, Federation Hub visibility, MCP export/import/list tools, MCP-to-MCP bridge submission, and a guarded signed HTTP webhook slice
 - milestone ledger remains available in the long-form tracker below
 
 Just finished:
@@ -53,8 +53,10 @@ Just finished:
 - added component search metadata in the UI so results now expose `memory` vs `workspace` origin plus match score
 - added regression coverage proving a workspace auth hit can outrank a weaker persisted DB hit
 - fixed workspace search leakage so a file-content hit now yields one explicit file-level fallback result instead of every unrelated symbol in that file
+- added signed HTTP specialist exchange transport with HMAC-SHA256 outbound submit headers and inbound webhook reply verification
 
 Latest validation:
+- backend: `PYTHONPATH=src pytest tests/test_specialist_exchange.py tests/test_mcp_camseq_tools.py tests/test_tier2_memory_services.py::TestMCPServerToolSchemas tests/test_phase4.py::TestClawMCPServerSchemas -q` passed (`23 passed`)
 - backend: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed (`42 passed`)
 - backend: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py -q` passed (`46 passed`)
 - backend: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed (`61 passed`)
@@ -82,7 +84,7 @@ Milestones:
 - `M4`: `100%`
 - `M5`: `99%`
 - `M6`: `90%`
-- `M7`: `93%`
+- `M7`: `96%`
 - `M8`: `89%`
 
 ## What To Inspect
@@ -116,5 +118,5 @@ M7 planning:
 - `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, React wrapper components, function-expression variables, and JavaScript object methods
 - `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution plus priority review UI now exist
 - `M6`: full CodeQL analysis still needs managed/advanced assets; local mode now exposes `off`, `deferred`, `required`, optional pre-write blocking, lane visibility, and required-mode SARIF parser smoke coverage
-- `M7`: file-based external/A2A packet handoff spool, MCP ledger tools, and MCP-to-MCP bridge submission are implemented; signed HTTP transport remains future work
+- `M7`: file-based external/A2A packet handoff spool, MCP ledger tools, MCP-to-MCP bridge submission, and signed HTTP webhook transport are implemented; remaining work is production hardening such as endpoint allowlists, key rotation, capability negotiation, and durable dead-letter handling
 - `M8`: broader real-repo mutation benchmark coverage and more polished demo artifacts

@@ -33,6 +33,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from claw.community.specialist_exchange import (
+    SIGNATURE_HEADER,
+    TIMESTAMP_HEADER,
     archive_reply,
     build_request_envelope,
     candidate_reply_paths,
@@ -42,6 +44,8 @@ from claw.community.specialist_exchange import (
     new_request_id,
     specialist_exchange_spool_dir,
     validate_reply_envelope,
+    verify_exchange_signature,
+    write_inbox_reply,
     write_request_envelope,
 )
 from claw.connectome.barcodes import build_family_barcode, build_source_barcode
@@ -2754,6 +2758,41 @@ def _exchange_payload(exchange: ExternalSpecialistExchange) -> dict[str, Any]:
     return payload
 
 
+async def _import_external_specialist_reply_path(
+    repo: Any,
+    spool_dir: Path,
+    reply_path: Path,
+) -> tuple[dict[str, Any] | None, dict[str, str] | None]:
+    try:
+        reply = load_reply_envelope(reply_path)
+        validate_reply_envelope(reply)
+        exchange = await repo.get_external_specialist_exchange_by_request(reply["request_id"])
+        if exchange is None:
+            raise ValueError("no matching specialist exchange request")
+        if exchange.status == "expired":
+            raise ValueError("matching specialist exchange is expired")
+        if exchange.reply_id and exchange.reply_id == reply["reply_id"]:
+            return _exchange_payload(exchange), None
+        if exchange.reply_id and exchange.reply_id != reply["reply_id"]:
+            raise ValueError("matching specialist exchange already has a different reply")
+        outcome = str(reply.get("recommendation_kind") or "reply_received")
+        archive_path = archive_reply(spool_dir, reply_path, exchange.request_id, reply["reply_id"])
+        exchange.reply_id = str(reply["reply_id"])
+        exchange.reply_path = str(archive_path)
+        exchange.reply_json = reply
+        exchange.specialist_identity = str(
+            reply.get("specialist_identity") or exchange.specialist_identity or ""
+        )
+        exchange.reconciliation_outcome = outcome
+        exchange.status = "reconciled" if outcome.startswith(("accepted_", "stored_")) else "reply_received"
+        exchange.failure_reason = ""
+        exchange.updated_at = _datetime.now(UTC)
+        saved = await repo.save_external_specialist_exchange(exchange)
+        return _exchange_payload(saved), None
+    except Exception as exc:
+        return None, {"reply_path": str(reply_path), "reason": str(exc)}
+
+
 @app.get("/api/v2/federation/specialist-exchanges")
 async def api_v2_list_specialist_exchanges(
     status: Optional[str] = Query(None),
@@ -2865,35 +2904,73 @@ async def api_v2_import_specialist_exchange_replies(request: Request) -> JSONRes
         return JSONResponse({"imported": [], "rejected": [{"reason": str(exc)}]}, status_code=400)
 
     for reply_path in paths:
-        try:
-            reply = load_reply_envelope(reply_path)
-            validate_reply_envelope(reply)
-            exchange = await repo.get_external_specialist_exchange_by_request(reply["request_id"])
-            if exchange is None:
-                raise ValueError("no matching specialist exchange request")
-            if exchange.status == "expired":
-                raise ValueError("matching specialist exchange is expired")
-            if exchange.reply_id and exchange.reply_id == reply["reply_id"]:
-                imported.append(_exchange_payload(exchange))
-                continue
-            if exchange.reply_id and exchange.reply_id != reply["reply_id"]:
-                raise ValueError("matching specialist exchange already has a different reply")
-            outcome = str(reply.get("recommendation_kind") or "reply_received")
-            archive_path = archive_reply(spool_dir, reply_path, exchange.request_id, reply["reply_id"])
-            exchange.reply_id = str(reply["reply_id"])
-            exchange.reply_path = str(archive_path)
-            exchange.reply_json = reply
-            exchange.specialist_identity = str(reply.get("specialist_identity") or exchange.specialist_identity or "")
-            exchange.reconciliation_outcome = outcome
-            exchange.status = "reconciled" if outcome.startswith(("accepted_", "stored_")) else "reply_received"
-            exchange.failure_reason = ""
-            exchange.updated_at = _datetime.now(UTC)
-            saved = await repo.save_external_specialist_exchange(exchange)
-            imported.append(_exchange_payload(saved))
-        except Exception as exc:
-            rejected.append({"reply_path": str(reply_path), "reason": str(exc)})
+        imported_item, rejected_item = await _import_external_specialist_reply_path(
+            repo,
+            spool_dir,
+            reply_path,
+        )
+        if imported_item is not None:
+            imported.append(imported_item)
+        if rejected_item is not None:
+            rejected.append(rejected_item)
 
     return JSONResponse({"imported": imported, "rejected": rejected})
+
+
+@app.post("/api/v2/federation/specialist-exchanges/webhook")
+async def api_v2_specialist_exchange_webhook(request: Request) -> JSONResponse:
+    st = await _ensure_state(app)
+    repo = st["repository"]
+    config = st["config"]
+    feature_flags = config.feature_flags
+    if not getattr(feature_flags, "a2a_packets", False):
+        return JSONResponse({"error": "a2a packet exchange is disabled"}, status_code=403)
+
+    shared_secret = (
+        os.getenv("CLAW_SPECIALIST_EXCHANGE_WEBHOOK_SECRET")
+        or getattr(config, "specialist_exchange_webhook_secret", "")
+        or getattr(config, "external_specialist_webhook_secret", "")
+    )
+    if not shared_secret:
+        return JSONResponse(
+            {"error": "specialist exchange webhook secret is not configured"},
+            status_code=503,
+        )
+
+    body = await request.body()
+    if len(body) > 1024 * 1024:
+        return JSONResponse({"error": "specialist exchange webhook body is too large"}, status_code=413)
+    try:
+        verify_exchange_signature(
+            body,
+            shared_secret=shared_secret,
+            timestamp=request.headers.get(TIMESTAMP_HEADER),
+            signature=request.headers.get(SIGNATURE_HEADER),
+        )
+        payload = json.loads(body.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("webhook reply body must be a JSON object")
+        validate_reply_envelope(payload)
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=401)
+
+    if hasattr(repo, "expire_external_specialist_exchanges"):
+        await repo.expire_external_specialist_exchanges()
+    spool_dir = specialist_exchange_spool_dir(Path.cwd())
+    reply_path = write_inbox_reply(spool_dir, payload)
+    imported_item, rejected_item = await _import_external_specialist_reply_path(
+        repo,
+        spool_dir,
+        reply_path,
+    )
+    status_code = 200 if imported_item is not None else 400
+    return JSONResponse(
+        {
+            "imported": [imported_item] if imported_item is not None else [],
+            "rejected": [rejected_item] if rejected_item is not None else [],
+        },
+        status_code=status_code,
+    )
 
 
 @app.get("/api/methodology/{methodology_id}")

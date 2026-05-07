@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
+from claw.community.specialist_exchange import TIMESTAMP_HEADER, verify_exchange_signature
 from claw.core.models import ComponentCard, CoverageState, ExternalSpecialistExchange, Receipt
 from claw.mcp_server import ClawMCPServer
 
@@ -221,7 +222,30 @@ async def test_claw_external_specialist_exchange_tools(tmp_path: Path, monkeypat
             ],
         }
 
-    server = ClawMCPServer(repository=repo, mcp_bridge_caller=bridge_caller)
+    async def http_webhook_sender(
+        endpoint_url: str,
+        body: bytes,
+        headers: dict[str, str],
+        timeout_seconds: int,
+    ):
+        assert endpoint_url == "https://specialists.example/cam"
+        assert timeout_seconds == 30
+        assert headers[TIMESTAMP_HEADER]
+        verify_exchange_signature(
+            body,
+            shared_secret="webhook-secret",
+            timestamp=headers[TIMESTAMP_HEADER],
+            signature=headers["X-CAM-Signature"],
+        )
+        payload = json.loads(body.decode("utf-8"))
+        assert payload["kind"] == "external_specialist_request"
+        return {"status": "accepted", "remote_id": "remote_1"}
+
+    server = ClawMCPServer(
+        repository=repo,
+        mcp_bridge_caller=bridge_caller,
+        http_webhook_sender=http_webhook_sender,
+    )
     exported = await server.dispatch_tool(
         "claw_export_specialist_exchange",
         {
@@ -293,3 +317,24 @@ async def test_claw_external_specialist_exchange_tools(tmp_path: Path, monkeypat
     assert bridge_result["bridge_status"] == "submitted"
     assert bridge_result["imported"][0]["status"] == "reconciled"
     assert bridge_result["reply_envelope"]["specialist_identity"] == "external_codex"
+
+    webhook_export = await server.dispatch_tool(
+        "claw_export_specialist_exchange",
+        {
+            "task_text": "Review the signed HTTP specialist transport",
+            "preferred_agent": "codex",
+            "workspace_dir": str(tmp_path),
+        },
+    )
+    webhook_result = await server.dispatch_tool(
+        "claw_submit_specialist_webhook",
+        {
+            "exchange_id": webhook_export["exchange"]["exchange_id"],
+            "endpoint_url": "https://specialists.example/cam",
+            "shared_secret": "webhook-secret",
+        },
+    )
+    assert webhook_result["status"] == "ok"
+    assert webhook_result["transport_status"] == "submitted"
+    assert webhook_result["submit_result"]["remote_id"] == "remote_1"
+    assert webhook_result["exchange"]["request_envelope"]["http_transport"]["status"] == "submitted"

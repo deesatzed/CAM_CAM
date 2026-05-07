@@ -235,6 +235,12 @@ Verification:
 - Effect: CAM-CAM can now hand a bounded specialist packet to another MCP-capable specialist process without a human moving the file manually, while still preventing external replies from mutating source code directly.
 - Verification: focused MCP bridge test coverage passed with the MCP schema tests.
 
+### M7 External Specialist Signed HTTP Webhooks
+
+- Fix: added HMAC-SHA256 signing helpers, `claw_submit_specialist_webhook`, and `/api/v2/federation/specialist-exchanges/webhook` for signed reply ingestion.
+- Effect: CAM-CAM can now submit a bounded specialist packet to a remote HTTPS specialist endpoint and reject unsigned or tampered webhook replies before they reach reconciliation.
+- Verification: focused exchange tests cover signed webhook acceptance and bad-signature rejection.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

@@ -21,6 +21,7 @@ Original tools are exposed, plus CAM-SEQ packet/connectome tools:
     14. claw_import_specialist_exchange -- import external specialist replies
     15. claw_list_specialist_exchanges -- list external specialist exchanges
     16. claw_bridge_specialist_exchange -- send an exchange to an external MCP tool
+    17. claw_submit_specialist_webhook -- send an exchange to a signed HTTPS webhook
 
 Design:
     The ClawMCPServer class contains tool handler methods and schema definitions.
@@ -46,15 +47,16 @@ from typing import TYPE_CHECKING, Any, Optional
 from claw.community.specialist_exchange import (
     archive_reply,
     build_request_envelope,
-    candidate_reply_paths,
     call_stdio_mcp_tool,
+    candidate_reply_paths,
     deadline_from_seconds,
     load_reply_envelope,
     mcp_bridge_arguments,
-    normalize_mcp_bridge_reply,
     new_exchange_id,
     new_request_id,
+    normalize_mcp_bridge_reply,
     specialist_exchange_spool_dir,
+    submit_signed_http_exchange,
     validate_reply_envelope,
     write_inbox_reply,
     write_request_envelope,
@@ -115,6 +117,7 @@ class ClawMCPServer:
         federation: Optional[Any] = None,
         auth_token: Optional[str] = None,
         mcp_bridge_caller: Optional[Any] = None,
+        http_webhook_sender: Optional[Any] = None,
     ):
         self.repository = repository
         self.semantic_memory = semantic_memory
@@ -123,6 +126,7 @@ class ClawMCPServer:
         self.federation = federation
         self._auth_token = auth_token
         self.mcp_bridge_caller = mcp_bridge_caller
+        self.http_webhook_sender = http_webhook_sender
 
         # Mapping of tool name -> handler coroutine
         self._handlers: dict[str, Any] = {
@@ -142,6 +146,7 @@ class ClawMCPServer:
             "claw_import_specialist_exchange": self.handle_import_specialist_exchange,
             "claw_list_specialist_exchanges": self.handle_list_specialist_exchanges,
             "claw_bridge_specialist_exchange": self.handle_bridge_specialist_exchange,
+            "claw_submit_specialist_webhook": self.handle_submit_specialist_webhook,
         }
 
         logger.info(
@@ -1392,7 +1397,11 @@ class ClawMCPServer:
         if exchange.status == "expired":
             return {"status": "error", "error": "specialist exchange is expired"}
         if exchange.reply_id:
-            return {"status": "ok", "exchange": self._exchange_payload(exchange), "already_replied": True}
+            return {
+                "status": "ok",
+                "exchange": self._exchange_payload(exchange),
+                "already_replied": True,
+            }
 
         arguments = mcp_bridge_arguments(exchange.request_json)
         caller = self.mcp_bridge_caller
@@ -1431,6 +1440,66 @@ class ClawMCPServer:
             "reply_envelope": reply,
             "imported": import_result.get("imported", []),
             "rejected": import_result.get("rejected", []),
+        }
+
+    async def handle_submit_specialist_webhook(
+        self,
+        exchange_id: str,
+        endpoint_url: str,
+        shared_secret: str,
+        timeout_seconds: int = 30,
+        allow_http: bool = False,
+    ) -> dict[str, Any]:
+        exchange = await self.repository.get_external_specialist_exchange(exchange_id)
+        if exchange is None:
+            return {"status": "error", "error": "specialist exchange not found"}
+        if not exchange.request_json:
+            return {"status": "error", "error": "specialist exchange has no request envelope"}
+        if exchange.status == "expired":
+            return {"status": "error", "error": "specialist exchange is expired"}
+        if exchange.reply_id:
+            return {
+                "status": "ok",
+                "exchange": self._exchange_payload(exchange),
+                "already_replied": True,
+            }
+
+        try:
+            submit_result = await submit_signed_http_exchange(
+                endpoint_url=endpoint_url,
+                request_envelope=exchange.request_json,
+                shared_secret=shared_secret,
+                timeout_seconds=timeout_seconds,
+                allow_http=allow_http,
+                sender=self.http_webhook_sender,
+            )
+        except Exception as exc:
+            exchange.failure_reason = f"signed webhook submit failed: {exc}"
+            exchange.updated_at = datetime.now(UTC)
+            await self.repository.save_external_specialist_exchange(exchange)
+            return {
+                "status": "error",
+                "error": str(exc),
+                "exchange": self._exchange_payload(exchange),
+            }
+
+        exchange.status = "awaiting_reply"
+        exchange.request_json = {
+            **exchange.request_json,
+            "http_transport": {
+                "endpoint_url": endpoint_url,
+                "status": "submitted",
+                "submitted_at": datetime.now(UTC).isoformat(),
+            },
+        }
+        exchange.failure_reason = ""
+        exchange.updated_at = datetime.now(UTC)
+        saved = await self.repository.save_external_specialist_exchange(exchange)
+        return {
+            "status": "ok",
+            "transport_status": "submitted",
+            "exchange": self._exchange_payload(saved),
+            "submit_result": submit_result,
         }
 
     # ===================================================================

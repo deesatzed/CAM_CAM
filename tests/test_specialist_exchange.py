@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from claw.community.specialist_exchange import SIGNATURE_HEADER, signed_http_headers
 from claw.core.config import DatabaseConfig
 from claw.core.models import ExternalSpecialistExchange
 from claw.db.engine import DatabaseEngine
@@ -294,6 +295,66 @@ def test_specialist_exchange_import_valid_reply_reconciles_lifecycle(
     listed = _find_exchange(_list_items(_data(list_resp)), exchange_id)
     assert (listed.get("status") or listed.get("state")) in {"reply_received", "reconciled"}
     assert (listed.get("outcome") or listed.get("reconciliation_outcome")) == "reconciled"
+
+
+def test_specialist_exchange_signed_webhook_reconciles_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo = AsyncMock()
+    client = _setup_client(tmp_path, repo, monkeypatch)
+    monkeypatch.setenv("CLAW_SPECIALIST_EXCHANGE_WEBHOOK_SECRET", "webhook-secret")
+
+    export_resp = client.post(
+        "/api/v2/federation/specialist-exchanges/export", json=_export_payload()
+    )
+    assert export_resp.status_code in {200, 201}
+    exported = _data(export_resp)
+    exchange_id = _exchange_id(exported)
+    reply = _valid_reply_envelope(
+        exported["request_envelope"]["request_id"],
+        reply_id="reply_webhook_1",
+        specialist_identity="remote_team",
+    )
+    body, headers = signed_http_headers(reply, shared_secret="webhook-secret")
+
+    webhook_resp = client.post(
+        "/api/v2/federation/specialist-exchanges/webhook",
+        content=body,
+        headers=headers,
+    )
+
+    assert webhook_resp.status_code == 200
+    imported = _find_exchange(_list_items(_data(webhook_resp)), exchange_id)
+    assert imported["status"] == "reconciled"
+    assert imported["selected_agent"] == "remote_team"
+
+
+def test_specialist_exchange_signed_webhook_rejects_bad_signature(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    repo = AsyncMock()
+    client = _setup_client(tmp_path, repo, monkeypatch)
+    monkeypatch.setenv("CLAW_SPECIALIST_EXCHANGE_WEBHOOK_SECRET", "webhook-secret")
+
+    export_resp = client.post(
+        "/api/v2/federation/specialist-exchanges/export", json=_export_payload()
+    )
+    assert export_resp.status_code in {200, 201}
+    exported = _data(export_resp)
+    reply = _valid_reply_envelope(exported["request_envelope"]["request_id"])
+    body, headers = signed_http_headers(reply, shared_secret="wrong-secret")
+    headers[SIGNATURE_HEADER] = "v1=bad"
+
+    webhook_resp = client.post(
+        "/api/v2/federation/specialist-exchanges/webhook",
+        content=body,
+        headers=headers,
+    )
+
+    assert webhook_resp.status_code == 401
+    assert "signature" in str(_data(webhook_resp)).lower()
+    stored = repo._external_specialist_exchange_store[_exchange_id(exported)]
+    assert stored.reply_id is None
 
 
 def test_specialist_exchange_duplicate_import_is_cleanly_handled(

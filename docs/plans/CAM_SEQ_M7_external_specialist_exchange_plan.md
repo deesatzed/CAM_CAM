@@ -1,7 +1,7 @@
 # CAM-SEQ M7 External Specialist Exchange Plan
 
 Date: 2026-05-07
-Status: File-spool, MCP ledger tools, and stdio MCP bridge implemented
+Status: File-spool, MCP ledger tools, stdio MCP bridge, and signed HTTP webhook slice implemented
 Scope: implementation/status plan for the remaining M7 A2A/external specialist exchange gap
 
 ## Objective
@@ -24,7 +24,7 @@ Already present in M7:
 
 Remaining gap:
 
-- signed HTTP webhook transport for non-MCP remote specialists, including durable signing, trust, replay, and dead-letter behavior
+- production hardening for remote specialist transport, including endpoint allowlists, key rotation, capability negotiation, and a durable dead-letter queue
 
 ## Minimal Surface
 
@@ -86,10 +86,14 @@ Implementation candidates:
 
 ### Candidate 3: HTTP Webhook Adapter
 
+Status: implemented as a guarded HMAC-signed HTTPS slice.
+
 Shape:
 
 - POST request envelopes to a configured HTTPS endpoint
 - accept signed webhook replies
+- `claw_submit_specialist_webhook` submits an existing request envelope to an HTTPS endpoint with `X-CAM-*` HMAC-SHA256 headers
+- `/api/v2/federation/specialist-exchanges/webhook` verifies signed reply bodies before writing them into the same inbox/reconciliation path
 
 Why last:
 
@@ -99,10 +103,10 @@ Why last:
 
 Implementation candidates:
 
-- allowlist by endpoint origin
-- request signing and reply signature verification
+- allowlist by endpoint origin. Future hardening.
+- request signing and reply signature verification. Done for HMAC-SHA256 shared-secret signatures with timestamp tolerance.
 - idempotency keys per exchange ID
-- dead-letter queue for malformed, late, duplicate, or untrusted replies
+- dead-letter queue for malformed, late, duplicate, or untrusted replies. Future hardening.
 
 ## Exchange Lifecycle
 
@@ -136,7 +140,7 @@ Reconciliation outcomes:
 - The operator can list exchange status and inspect request/reply summaries.
 - Existing MCP tool semantics remain unchanged; new external-exchange tools are additive.
 - Feature flags off leave current CAM, CAM-SEQ, federation, and MCP behavior unchanged.
-- Focused tests cover envelope validation, file-spool round trip, duplicate import, timeout/expiry, and rejected reply cases before code rollout.
+- Focused tests cover envelope validation, file-spool round trip, duplicate import, timeout/expiry, rejected reply cases, MCP bridge submission, signed webhook acceptance, and bad-signature rejection before code rollout.
 
 ## Risks
 
@@ -154,7 +158,7 @@ Reconciliation outcomes:
 3. Add MCP listing/export/import tools over the same repository methods. Done.
 4. Surface status in Federation Hub or plan review without creating a new app section. Done in Federation Hub.
 5. Add MCP-to-MCP bridge only after file-spool behavior is validated. Done for stdio MCP tool submission.
-6. Defer signed HTTP webhooks until the trust, audit, and replay model has real use.
+6. Add signed HTTP webhooks after the file-spool and MCP bridge paths are validated. Done for the guarded HMAC HTTPS slice.
 
 ## Non-Goals For This Slice
 
