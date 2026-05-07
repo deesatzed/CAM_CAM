@@ -24,6 +24,7 @@ from claw.core.models import (
     ComponentFit,
     ComponentLineage,
     ContextSnapshot,
+    ExternalSpecialistExchange,
     GovernancePolicy,
     HypothesisEntry,
     HypothesisOutcome,
@@ -40,12 +41,12 @@ from claw.core.models import (
     RunConnectome,
     RunEvent,
     RunSlotExecution,
+    SlotSpec,
     SynergyExploration,
     Task,
     TaskPlanRecord,
     TaskStatus,
     TokenCostRecord,
-    SlotSpec,
 )
 from claw.db.engine import DatabaseEngine
 
@@ -3531,6 +3532,119 @@ class Repository:
         )
         return [_row_to_mining_mission(r) for r in rows]
 
+    async def save_external_specialist_exchange(
+        self,
+        exchange: ExternalSpecialistExchange,
+    ) -> ExternalSpecialistExchange:
+        await self.engine.execute(
+            """INSERT INTO external_specialist_exchanges
+               (id, request_id, reply_id, plan_id, slot_id, packet_id, task_text, specialty,
+                specialist_identity, status, reconciliation_outcome, request_path, reply_path,
+                request_json, reply_json, failure_reason, deadline_at, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                   reply_id = excluded.reply_id,
+                   plan_id = excluded.plan_id,
+                   slot_id = excluded.slot_id,
+                   packet_id = excluded.packet_id,
+                   task_text = excluded.task_text,
+                   specialty = excluded.specialty,
+                   specialist_identity = excluded.specialist_identity,
+                   status = excluded.status,
+                   reconciliation_outcome = excluded.reconciliation_outcome,
+                   request_path = excluded.request_path,
+                   reply_path = excluded.reply_path,
+                   request_json = excluded.request_json,
+                   reply_json = excluded.reply_json,
+                   failure_reason = excluded.failure_reason,
+                   deadline_at = excluded.deadline_at,
+                   updated_at = excluded.updated_at""",
+            [
+                exchange.id,
+                exchange.request_id,
+                exchange.reply_id,
+                exchange.plan_id,
+                exchange.slot_id,
+                exchange.packet_id,
+                exchange.task_text,
+                exchange.specialty,
+                exchange.specialist_identity,
+                exchange.status,
+                exchange.reconciliation_outcome,
+                exchange.request_path,
+                exchange.reply_path,
+                _json_dumps(exchange.request_json),
+                _json_dumps(exchange.reply_json),
+                exchange.failure_reason,
+                exchange.deadline_at.isoformat() if exchange.deadline_at else None,
+                exchange.created_at.isoformat(),
+                exchange.updated_at.isoformat(),
+            ],
+        )
+        row = await self.engine.fetch_one(
+            "SELECT * FROM external_specialist_exchanges WHERE id = ?",
+            [exchange.id],
+        )
+        return _row_to_external_specialist_exchange(row) if row else exchange
+
+    async def get_external_specialist_exchange(
+        self,
+        exchange_id: str,
+    ) -> Optional[ExternalSpecialistExchange]:
+        row = await self.engine.fetch_one(
+            "SELECT * FROM external_specialist_exchanges WHERE id = ?",
+            [exchange_id],
+        )
+        return _row_to_external_specialist_exchange(row) if row else None
+
+    async def get_external_specialist_exchange_by_request(
+        self,
+        request_id: str,
+    ) -> Optional[ExternalSpecialistExchange]:
+        row = await self.engine.fetch_one(
+            "SELECT * FROM external_specialist_exchanges WHERE request_id = ?",
+            [request_id],
+        )
+        return _row_to_external_specialist_exchange(row) if row else None
+
+    async def list_external_specialist_exchanges(
+        self,
+        status: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[ExternalSpecialistExchange]:
+        clauses = ["1=1"]
+        params: list[Any] = []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        params.append(limit)
+        rows = await self.engine.fetch_all(
+            f"""SELECT * FROM external_specialist_exchanges
+                WHERE {' AND '.join(clauses)}
+                ORDER BY updated_at DESC, created_at DESC
+                LIMIT ?""",
+            params,
+        )
+        return [_row_to_external_specialist_exchange(r) for r in rows]
+
+    async def expire_external_specialist_exchanges(self) -> int:
+        now = datetime.now(UTC).isoformat()
+        await self.engine.execute(
+            """UPDATE external_specialist_exchanges
+               SET status = 'expired',
+                   failure_reason = CASE
+                       WHEN failure_reason = '' THEN 'deadline passed before valid reply'
+                       ELSE failure_reason
+                   END,
+                   updated_at = ?
+               WHERE status IN ('exported', 'awaiting_reply')
+                 AND deadline_at IS NOT NULL
+                 AND deadline_at < ?""",
+            [now, now],
+        )
+        row = await self.engine.fetch_one("SELECT changes() AS count")
+        return int(row["count"] if row else 0)
+
     async def save_governance_policy(self, policy: GovernancePolicy) -> GovernancePolicy:
         await self.engine.execute(
             """INSERT INTO governance_policies
@@ -4010,6 +4124,30 @@ def _row_to_mining_mission(row: dict[str, Any]) -> MiningMission:
         reason=row.get("reason") or "",
         status=row.get("status") or "queued",
         mission_json=_json_loads(row.get("mission_json"), {}),
+        created_at=_parse_dt(row.get("created_at")) or datetime.now(UTC),
+        updated_at=_parse_dt(row.get("updated_at")) or datetime.now(UTC),
+    )
+
+
+def _row_to_external_specialist_exchange(row: dict[str, Any]) -> ExternalSpecialistExchange:
+    return ExternalSpecialistExchange(
+        id=row["id"],
+        request_id=row["request_id"],
+        reply_id=row.get("reply_id"),
+        plan_id=row.get("plan_id"),
+        slot_id=row.get("slot_id"),
+        packet_id=row.get("packet_id"),
+        task_text=row["task_text"],
+        specialty=row.get("specialty") or "general",
+        specialist_identity=row.get("specialist_identity"),
+        status=row.get("status") or "draft",
+        reconciliation_outcome=row.get("reconciliation_outcome"),
+        request_path=row.get("request_path"),
+        reply_path=row.get("reply_path"),
+        request_json=_json_loads(row.get("request_json"), {}),
+        reply_json=_json_loads(row.get("reply_json"), {}),
+        failure_reason=row.get("failure_reason") or "",
+        deadline_at=_parse_dt(row.get("deadline_at")),
         created_at=_parse_dt(row.get("created_at")) or datetime.now(UTC),
         updated_at=_parse_dt(row.get("updated_at")) or datetime.now(UTC),
     )

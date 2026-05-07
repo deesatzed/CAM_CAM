@@ -938,7 +938,34 @@ CREATE INDEX IF NOT EXISTS idx_governance_policies_status ON governance_policies
 CREATE INDEX IF NOT EXISTS idx_mining_missions_run ON mining_missions(run_id);
 CREATE INDEX IF NOT EXISTS idx_mining_missions_status ON mining_missions(status);
 
--- 41. FAILURE_KNOWLEDGE (cross-task preventive failure patterns)
+-- 41. EXTERNAL_SPECIALIST_EXCHANGES (A2A packet handoff request/reply ledger)
+CREATE TABLE IF NOT EXISTS external_specialist_exchanges (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL UNIQUE,
+    reply_id TEXT,
+    plan_id TEXT,
+    slot_id TEXT,
+    packet_id TEXT,
+    task_text TEXT NOT NULL,
+    specialty TEXT NOT NULL DEFAULT 'general',
+    specialist_identity TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    reconciliation_outcome TEXT,
+    request_path TEXT,
+    reply_path TEXT,
+    request_json TEXT NOT NULL DEFAULT '{}',
+    reply_json TEXT NOT NULL DEFAULT '{}',
+    failure_reason TEXT NOT NULL DEFAULT '',
+    deadline_at TEXT,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    updated_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+CREATE INDEX IF NOT EXISTS idx_external_specialist_exchanges_request ON external_specialist_exchanges(request_id);
+CREATE INDEX IF NOT EXISTS idx_external_specialist_exchanges_status ON external_specialist_exchanges(status);
+CREATE INDEX IF NOT EXISTS idx_external_specialist_exchanges_packet ON external_specialist_exchanges(packet_id);
+CREATE INDEX IF NOT EXISTS idx_external_specialist_exchanges_slot ON external_specialist_exchanges(slot_id);
+
+-- 42. FAILURE_KNOWLEDGE (cross-task preventive failure patterns)
 CREATE TABLE IF NOT EXISTS failure_knowledge (
     id TEXT PRIMARY KEY,
     error_signature TEXT NOT NULL,

@@ -1,7 +1,7 @@
 # CAM-SEQ M7 External Specialist Exchange Plan
 
 Date: 2026-05-07
-Status: Planning draft
+Status: First file-spool slice implemented
 Scope: docs-only plan for the remaining M7 A2A/external specialist exchange gap
 
 ## Objective
@@ -32,6 +32,8 @@ Implement the first external exchange as a packet handoff envelope, not as direc
 
 ### Candidate 1: File-Based Handoff Spool
 
+Status: implemented as the first guarded slice.
+
 Shape:
 
 - write JSON request envelopes under a configured spool directory
@@ -50,7 +52,11 @@ Implementation candidates:
 - `ExternalSpecialistRequest` envelope with request ID, plan ID, slot ID, packet ID, requested specialty, task text, allowed context, deadline, and redaction summary
 - `ExternalSpecialistReply` envelope with reply ID, request ID, specialist identity, recommendation kind, candidate component refs or patch notes, confidence, evidence, constraints, and unsafe/unusable reasons
 - repository persistence for request/reply metadata, with raw envelope path retained for audit
-- MCP tools:
+- HTTP/API surface:
+  - `POST /api/v2/federation/specialist-exchanges/export`
+  - `GET /api/v2/federation/specialist-exchanges`
+  - `POST /api/v2/federation/specialist-exchanges/import`
+- future MCP tools:
   - `claw_export_specialist_packet`
   - `claw_import_specialist_reply`
   - `claw_list_specialist_exchanges`
@@ -139,10 +145,10 @@ Reconciliation outcomes:
 
 ## Proposed Rollout
 
-1. Freeze envelope schemas and lifecycle names in docs.
-2. Add file-spool export/import behind `a2a_packets`.
+1. Freeze envelope schemas and lifecycle names in docs. Done for the file-spool slice.
+2. Add file-spool export/import behind `a2a_packets`. Done.
 3. Add MCP listing/export/import tools over the same repository methods.
-4. Surface status in Federation Hub or plan review without creating a new app section.
+4. Surface status in Federation Hub or plan review without creating a new app section. Done in Federation Hub.
 5. Add MCP-to-MCP bridge only after file-spool behavior is validated.
 6. Defer signed HTTP webhooks until the trust, audit, and replay model has real use.
 

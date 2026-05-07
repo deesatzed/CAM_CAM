@@ -21,19 +21,48 @@ import shutil
 import tempfile
 import time
 import uuid
-from datetime import UTC, datetime as _datetime
+from datetime import UTC
+from datetime import datetime as _datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
 
 import toml
-
 from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
-from claw.core.models import CompiledRecipe, ComponentLineage, GovernancePolicy, LandingEvent, LandingOrigin, MiningMission, OutcomeEvent, PacketStatus, PairEvent, ProofGate, RunActionAudit, RunConnectome, RunEvent, RunSlotExecution, TaskPlanRecord
+from claw.community.specialist_exchange import (
+    archive_reply,
+    build_request_envelope,
+    candidate_reply_paths,
+    deadline_from_seconds,
+    load_reply_envelope,
+    new_exchange_id,
+    new_request_id,
+    specialist_exchange_spool_dir,
+    validate_reply_envelope,
+    write_request_envelope,
+)
 from claw.connectome.barcodes import build_family_barcode, build_source_barcode
+from claw.core.models import (
+    CompiledRecipe,
+    ComponentLineage,
+    ExternalSpecialistExchange,
+    GovernancePolicy,
+    LandingEvent,
+    LandingOrigin,
+    MiningMission,
+    OutcomeEvent,
+    PacketStatus,
+    PairEvent,
+    ProofGate,
+    RunActionAudit,
+    RunConnectome,
+    RunEvent,
+    RunSlotExecution,
+    TaskPlanRecord,
+)
 from claw.db.repository import _build_safe_fts5_query
 from claw.memory.component_ranker import rank_components_for_slot
 from claw.mining.component_extractor import extract_components_from_file
@@ -2707,6 +2736,164 @@ async def api_v2_federation_specialist_packet(request: Request) -> JSONResponse:
             "review_required": review_required,
         }
     )
+
+
+def _exchange_payload(exchange: ExternalSpecialistExchange) -> dict[str, Any]:
+    payload = exchange.model_dump(mode="json")
+    request_json = payload.get("request_json") if isinstance(payload.get("request_json"), dict) else {}
+    payload["exchange_id"] = exchange.id
+    payload["selected_agent"] = exchange.specialist_identity
+    payload["preferred_agent"] = request_json.get("selected_agent")
+    payload["request_envelope"] = request_json
+    if exchange.reconciliation_outcome:
+        payload["outcome"] = (
+            "reconciled"
+            if exchange.reconciliation_outcome.startswith(("accepted_", "stored_"))
+            else exchange.reconciliation_outcome
+        )
+    return payload
+
+
+@app.get("/api/v2/federation/specialist-exchanges")
+async def api_v2_list_specialist_exchanges(
+    status: Optional[str] = Query(None),
+    limit: int = Query(25, ge=1, le=100),
+) -> JSONResponse:
+    st = await _ensure_state(app)
+    repo = st["repository"]
+    feature_flags = st["config"].feature_flags
+    if hasattr(repo, "expire_external_specialist_exchanges"):
+        await repo.expire_external_specialist_exchanges()
+    exchanges = []
+    if hasattr(repo, "list_external_specialist_exchanges"):
+        exchanges = await repo.list_external_specialist_exchanges(status=status, limit=limit)
+    return JSONResponse(
+        {
+            "feature_flags": {"a2a_packets": bool(getattr(feature_flags, "a2a_packets", False))},
+            "exchanges": [_exchange_payload(exchange) for exchange in exchanges],
+        }
+    )
+
+
+@app.post("/api/v2/federation/specialist-exchanges/export")
+async def api_v2_export_specialist_exchange(request: Request) -> JSONResponse:
+    st = await _ensure_state(app)
+    repo = st["repository"]
+    feature_flags = st["config"].feature_flags
+    if not getattr(feature_flags, "a2a_packets", False):
+        return JSONResponse({"error": "a2a packet exchange is disabled"}, status_code=403)
+
+    payload = await request.json()
+    task_text = str(payload.get("task_text", "")).strip()
+    if not task_text:
+        return JSONResponse({"error": "task_text is required"}, status_code=400)
+
+    slot_name = payload.get("slot_name")
+    preferred_agent = payload.get("preferred_agent")
+    target_language = payload.get("target_language")
+    limit = max(1, min(int(payload.get("limit", 5)), 20))
+    deadline_seconds = payload.get("deadline_seconds")
+    try:
+        deadline_seconds = int(deadline_seconds) if deadline_seconds is not None else None
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "deadline_seconds must be an integer"}, status_code=400)
+
+    inferred_task_type = _infer_specialist_task_type(task_text)
+    from claw.dispatcher import DEFAULT_AGENT, STATIC_ROUTING
+
+    selected_agent = preferred_agent or STATIC_ROUTING.get(inferred_task_type, DEFAULT_AGENT)
+    packet_response = await api_v2_federation_packets(
+        q=task_text,
+        slot_name=slot_name,
+        language=target_language,
+        limit=limit,
+    )
+    packet_data = json.loads(packet_response.body.decode("utf-8"))
+    exchange = ExternalSpecialistExchange(
+        id=new_exchange_id(),
+        request_id=new_request_id(),
+        plan_id=payload.get("plan_id"),
+        slot_id=payload.get("slot_id"),
+        packet_id=payload.get("packet_id"),
+        task_text=task_text,
+        specialty=inferred_task_type,
+        specialist_identity=selected_agent,
+        status="awaiting_reply",
+        deadline_at=deadline_from_seconds(deadline_seconds),
+    )
+    envelope = build_request_envelope(
+        exchange,
+        selected_agent=selected_agent,
+        task_archetype=packet_data.get("task_archetype"),
+        archetype_confidence=packet_data.get("archetype_confidence"),
+        slot=packet_data.get("slot"),
+        packet_candidates=packet_data.get("results", []),
+        allowed_context=payload.get("allowed_context") if isinstance(payload.get("allowed_context"), dict) else {},
+        redaction_summary=str(payload.get("redaction_summary") or ""),
+    )
+    spool_dir = specialist_exchange_spool_dir(Path.cwd())
+    request_path = write_request_envelope(spool_dir, envelope)
+    exchange.request_path = str(request_path)
+    exchange.request_json = envelope
+    saved = await repo.save_external_specialist_exchange(exchange)
+    return JSONResponse(
+        {
+            "exchange": _exchange_payload(saved),
+            "request_envelope": envelope,
+            "request_path": str(request_path),
+        }
+    )
+
+
+@app.post("/api/v2/federation/specialist-exchanges/import")
+async def api_v2_import_specialist_exchange_replies(request: Request) -> JSONResponse:
+    st = await _ensure_state(app)
+    repo = st["repository"]
+    feature_flags = st["config"].feature_flags
+    if not getattr(feature_flags, "a2a_packets", False):
+        return JSONResponse({"error": "a2a packet exchange is disabled"}, status_code=403)
+
+    payload = await request.json()
+    if hasattr(repo, "expire_external_specialist_exchanges"):
+        await repo.expire_external_specialist_exchanges()
+    spool_dir = specialist_exchange_spool_dir(Path.cwd())
+    imported: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    try:
+        paths = candidate_reply_paths(spool_dir, payload.get("reply_path"))
+    except ValueError as exc:
+        return JSONResponse({"imported": [], "rejected": [{"reason": str(exc)}]}, status_code=400)
+
+    for reply_path in paths:
+        try:
+            reply = load_reply_envelope(reply_path)
+            validate_reply_envelope(reply)
+            exchange = await repo.get_external_specialist_exchange_by_request(reply["request_id"])
+            if exchange is None:
+                raise ValueError("no matching specialist exchange request")
+            if exchange.status == "expired":
+                raise ValueError("matching specialist exchange is expired")
+            if exchange.reply_id and exchange.reply_id == reply["reply_id"]:
+                imported.append(_exchange_payload(exchange))
+                continue
+            if exchange.reply_id and exchange.reply_id != reply["reply_id"]:
+                raise ValueError("matching specialist exchange already has a different reply")
+            outcome = str(reply.get("recommendation_kind") or "reply_received")
+            archive_path = archive_reply(spool_dir, reply_path, exchange.request_id, reply["reply_id"])
+            exchange.reply_id = str(reply["reply_id"])
+            exchange.reply_path = str(archive_path)
+            exchange.reply_json = reply
+            exchange.specialist_identity = str(reply.get("specialist_identity") or exchange.specialist_identity or "")
+            exchange.reconciliation_outcome = outcome
+            exchange.status = "reconciled" if outcome.startswith(("accepted_", "stored_")) else "reply_received"
+            exchange.failure_reason = ""
+            exchange.updated_at = _datetime.now(UTC)
+            saved = await repo.save_external_specialist_exchange(exchange)
+            imported.append(_exchange_payload(saved))
+        except Exception as exc:
+            rejected.append({"reply_path": str(reply_path), "reason": str(exc)})
+
+    return JSONResponse({"imported": imported, "rejected": rejected})
 
 
 @app.get("/api/methodology/{methodology_id}")

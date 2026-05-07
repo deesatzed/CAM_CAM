@@ -1358,10 +1358,12 @@ export interface SpecialistPacketExchangeResponse {
   review_required: boolean;
 }
 
+export type SpecialistAgent = "claude" | "codex" | "gemini" | "grok";
+
 export function requestSpecialistPacketExchange(input: {
   taskText: string;
   slotName?: string;
-  preferredAgent?: "claude" | "codex" | "gemini" | "grok";
+  preferredAgent?: SpecialistAgent;
   targetLanguage?: string;
   limit?: number;
 }): Promise<SpecialistPacketExchangeResponse> {
@@ -1373,6 +1375,75 @@ export function requestSpecialistPacketExchange(input: {
       preferred_agent: input.preferredAgent,
       target_language: input.targetLanguage,
       limit: input.limit ?? 5,
+    }),
+  });
+}
+
+export interface ExternalSpecialistExchange {
+  exchange_id: string;
+  task_text: string;
+  status: string;
+  slot_name?: string | null;
+  preferred_agent?: SpecialistAgent | string | null;
+  selected_agent?: SpecialistAgent | string | null;
+  target_language?: string | null;
+  deadline_seconds?: number | null;
+  allowed_context?: string[] | Record<string, unknown> | null;
+  redaction_summary?: string | null;
+  request_path?: string | null;
+  reply_path?: string | null;
+  request_envelope?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  exported_at?: string | null;
+  imported_at?: string | null;
+}
+
+export interface ExternalSpecialistExchangeExportResponse {
+  exchange: ExternalSpecialistExchange;
+  request_envelope: Record<string, unknown>;
+  request_path: string;
+}
+
+export interface ExternalSpecialistExchangeImportResponse {
+  imported: ExternalSpecialistExchange[];
+  rejected: Array<{ reply_path?: string; reason: string }>;
+}
+
+export function getExternalSpecialistExchanges(): Promise<{ exchanges: ExternalSpecialistExchange[] }> {
+  return fetchAPI("/api/v2/federation/specialist-exchanges");
+}
+
+export function exportExternalSpecialistExchange(input: {
+  taskText: string;
+  slotName?: string;
+  preferredAgent?: SpecialistAgent;
+  targetLanguage?: string;
+  deadlineSeconds?: number;
+  allowedContext?: string[] | Record<string, unknown>;
+  redactionSummary?: string;
+}): Promise<ExternalSpecialistExchangeExportResponse> {
+  return fetchAPI("/api/v2/federation/specialist-exchanges/export", {
+    method: "POST",
+    body: JSON.stringify({
+      task_text: input.taskText,
+      slot_name: input.slotName,
+      preferred_agent: input.preferredAgent,
+      target_language: input.targetLanguage,
+      deadline_seconds: input.deadlineSeconds,
+      allowed_context: input.allowedContext,
+      redaction_summary: input.redactionSummary,
+    }),
+  });
+}
+
+export function importExternalSpecialistExchanges(input?: {
+  replyPath?: string;
+}): Promise<ExternalSpecialistExchangeImportResponse> {
+  return fetchAPI("/api/v2/federation/specialist-exchanges/import", {
+    method: "POST",
+    body: JSON.stringify({
+      reply_path: input?.replyPath,
     }),
   });
 }

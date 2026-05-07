@@ -464,6 +464,29 @@ class MiningMission(BaseModel):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class ExternalSpecialistExchange(BaseModel):
+    """Durable request/reply state for external specialist packet handoffs."""
+    id: str = Field(default_factory=_new_id)
+    request_id: str = Field(default_factory=_new_id)
+    reply_id: Optional[str] = None
+    plan_id: Optional[str] = None
+    slot_id: Optional[str] = None
+    packet_id: Optional[str] = None
+    task_text: str
+    specialty: str = "general"
+    specialist_identity: Optional[str] = None
+    status: str = "draft"
+    reconciliation_outcome: Optional[str] = None
+    request_path: Optional[str] = None
+    reply_path: Optional[str] = None
+    request_json: dict[str, Any] = Field(default_factory=dict)
+    reply_json: dict[str, Any] = Field(default_factory=dict)
+    failure_reason: str = ""
+    deadline_at: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class GovernancePolicy(BaseModel):
     """Durable governance recommendation promoted into active policy memory."""
     id: str = Field(default_factory=_new_id)

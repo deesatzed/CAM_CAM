@@ -217,6 +217,12 @@ Verification:
 - Effect: the next M7 implementation can start with a deterministic file-spool handoff before MCP-to-MCP or HTTP transport, while keeping external replies non-mutating until reviewed.
 - Verification: docs-only change; no runtime validation required.
 
+### M7 External Specialist Exchange Spool
+
+- Fix: added feature-flagged export/list/import endpoints for file-based external specialist exchanges, durable exchange records, request/reply envelope helpers, and a Federation Hub exchange panel.
+- Effect: CAM-CAM can now export bounded specialist handoff envelopes, import inbox replies idempotently, reject invalid or expired replies, and keep external advice non-mutating until reviewed.
+- Verification: `PYTHONPATH=src pytest tests/test_specialist_exchange.py -q`, `npm run lint`, and `npm run build` passed.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

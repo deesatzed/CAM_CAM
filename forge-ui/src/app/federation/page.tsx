@@ -6,11 +6,17 @@ import {
   analyzeFederation,
   getFederationPackets,
   requestSpecialistPacketExchange,
+  getExternalSpecialistExchanges,
+  exportExternalSpecialistExchange,
+  importExternalSpecialistExchanges,
   type TopologyNode,
   type TopologyEdge,
   type CrossLanguageReport,
   type FederationPacketResponse,
   type SpecialistPacketExchangeResponse,
+  type ExternalSpecialistExchange,
+  type ExternalSpecialistExchangeImportResponse,
+  type SpecialistAgent,
 } from "@/lib/api";
 import { Card, CardTitle } from "@/components/card";
 import { GanglionBadge } from "@/components/badge";
@@ -35,6 +41,32 @@ const ORBIT_RX = 200;
 const ORBIT_RY = 140;
 const MIN_RADIUS = 20;
 const MAX_RADIUS = 48;
+
+function formatExchangeTime(value?: string | null): string {
+  if (!value) return "unknown";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function exchangeStatusClass(status: string): string {
+  const normalized = status.toLowerCase();
+  if (normalized.includes("reject") || normalized.includes("fail")) {
+    return "text-red-300 border-red-400/30 bg-red-400/10";
+  }
+  if (normalized.includes("import") || normalized.includes("complete") || normalized.includes("reconcile")) {
+    return "text-cam-green border-cam-green/30 bg-cam-green/10";
+  }
+  if (normalized.includes("export") || normalized.includes("pending") || normalized.includes("awaiting")) {
+    return "text-cam-blue border-cam-blue/30 bg-cam-blue/10";
+  }
+  return "text-muted border-card-border bg-card-border/30";
+}
 
 // ---------------------------------------------------------------------------
 // Topology Visualization (SVG)
@@ -488,10 +520,15 @@ export default function FederationPage() {
   const [packetLoading, setPacketLoading] = useState(false);
   const [packetError, setPacketError] = useState<string | null>(null);
   const [specialistQuery, setSpecialistQuery] = useState("");
-  const [specialistAgent, setSpecialistAgent] = useState<"claude" | "codex" | "gemini" | "grok" | "">("");
+  const [specialistAgent, setSpecialistAgent] = useState<SpecialistAgent | "">("");
   const [specialistExchange, setSpecialistExchange] = useState<SpecialistPacketExchangeResponse | null>(null);
   const [specialistLoading, setSpecialistLoading] = useState(false);
   const [specialistError, setSpecialistError] = useState<string | null>(null);
+  const [externalExchanges, setExternalExchanges] = useState<ExternalSpecialistExchange[]>([]);
+  const [externalExchangeLoading, setExternalExchangeLoading] = useState(false);
+  const [externalExchangeError, setExternalExchangeError] = useState<string | null>(null);
+  const [externalExportPath, setExternalExportPath] = useState<string | null>(null);
+  const [externalImportResult, setExternalImportResult] = useState<ExternalSpecialistExchangeImportResponse | null>(null);
 
   const loadTopology = useCallback(() => {
     getFederationTopology()
@@ -502,6 +539,24 @@ export default function FederationPage() {
   useEffect(() => {
     loadTopology();
   }, [loadTopology]);
+
+  const loadExternalExchanges = useCallback(async () => {
+    setExternalExchangeLoading(true);
+    setExternalExchangeError(null);
+
+    try {
+      const result = await getExternalSpecialistExchanges();
+      setExternalExchanges(result.exchanges);
+    } catch (e) {
+      setExternalExchangeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExternalExchangeLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadExternalExchanges();
+  }, [loadExternalExchanges]);
 
   const handleAnalyze = useCallback(async () => {
     const trimmed = query.trim();
@@ -563,6 +618,47 @@ export default function FederationPage() {
       setSpecialistLoading(false);
     }
   }, [specialistAgent, specialistQuery]);
+
+  const handleExternalExport = useCallback(async () => {
+    const trimmed = specialistQuery.trim();
+    if (!trimmed) return;
+
+    setExternalExchangeLoading(true);
+    setExternalExchangeError(null);
+    setExternalExportPath(null);
+
+    try {
+      const result = await exportExternalSpecialistExchange({
+        taskText: trimmed,
+        preferredAgent: specialistAgent || undefined,
+      });
+      setExternalExportPath(result.request_path);
+      setExternalExchanges((current) => [
+        result.exchange,
+        ...current.filter((exchange) => exchange.exchange_id !== result.exchange.exchange_id),
+      ]);
+    } catch (e) {
+      setExternalExchangeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExternalExchangeLoading(false);
+    }
+  }, [specialistAgent, specialistQuery]);
+
+  const handleExternalImport = useCallback(async () => {
+    setExternalExchangeLoading(true);
+    setExternalExchangeError(null);
+    setExternalImportResult(null);
+
+    try {
+      const result = await importExternalSpecialistExchanges();
+      setExternalImportResult(result);
+      await loadExternalExchanges();
+    } catch (e) {
+      setExternalExchangeError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setExternalExchangeLoading(false);
+    }
+  }, [loadExternalExchanges]);
 
   if (error) {
     return (
@@ -760,6 +856,93 @@ export default function FederationPage() {
             </div>
           </div>
         )}
+        <div className="mt-4 pt-4 border-t border-card-border">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">
+                External Specialist Exchanges
+                <span className="text-muted font-normal ml-2">
+                  ({externalExchanges.length})
+                </span>
+              </h3>
+              <p className="text-xs text-muted">
+                Export handoffs and import replies for offline specialist review.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleExternalExport}
+                disabled={externalExchangeLoading || !specialistQuery.trim()}
+                className="px-3 py-2 bg-card-border/70 hover:bg-card-border disabled:opacity-40 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg transition-colors"
+              >
+                Export Handoff
+              </button>
+              <button
+                onClick={handleExternalImport}
+                disabled={externalExchangeLoading}
+                className="px-3 py-2 bg-card-border/70 hover:bg-card-border disabled:opacity-40 disabled:cursor-not-allowed text-foreground text-xs font-medium rounded-lg transition-colors"
+              >
+                Import Replies
+              </button>
+              <button
+                onClick={loadExternalExchanges}
+                disabled={externalExchangeLoading}
+                className="px-3 py-2 bg-card-border/40 hover:bg-card-border disabled:opacity-40 disabled:cursor-not-allowed text-muted text-xs font-medium rounded-lg transition-colors"
+              >
+                {externalExchangeLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+          </div>
+          {externalExportPath && (
+            <div className="mb-3 rounded-lg bg-cam-blue/10 border border-cam-blue/20 px-3 py-2 text-xs text-cam-blue font-mono break-all">
+              request {externalExportPath}
+            </div>
+          )}
+          {externalImportResult && (
+            <div className="mb-3 rounded-lg bg-card-border/40 px-3 py-2 text-xs text-muted">
+              imported <span className="text-foreground font-mono">{externalImportResult.imported.length}</span>
+              <span className="mx-2">·</span>
+              rejected <span className="text-foreground font-mono">{externalImportResult.rejected.length}</span>
+            </div>
+          )}
+          {externalExchangeError && (
+            <div className="mb-3 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-xs text-red-300">
+              {externalExchangeError}
+            </div>
+          )}
+          {externalExchanges.length > 0 ? (
+            <div className="divide-y divide-card-border rounded-lg border border-card-border overflow-hidden">
+              {externalExchanges.slice(0, 5).map((exchange) => (
+                <div
+                  key={exchange.exchange_id}
+                  className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_9rem_11rem] gap-2 px-3 py-2 text-xs bg-background/30"
+                >
+                  <div className="min-w-0">
+                    <div className="text-foreground truncate">{exchange.task_text}</div>
+                    <div className="text-muted-dark font-mono truncate">
+                      {exchange.request_path || exchange.reply_path || exchange.exchange_id}
+                    </div>
+                  </div>
+                  <div className="flex lg:block items-center gap-2">
+                    <span className={`inline-flex px-2 py-0.5 rounded-md border font-medium ${exchangeStatusClass(exchange.status)}`}>
+                      {exchange.status}
+                    </span>
+                  </div>
+                  <div className="text-muted lg:text-right">
+                    <div>{exchange.selected_agent || exchange.preferred_agent || "auto route"}</div>
+                    <div className="text-muted-dark">
+                      {formatExchangeTime(exchange.updated_at || exchange.imported_at || exchange.exported_at || exchange.created_at)}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-card-border px-3 py-2 text-xs text-muted">
+              No external specialist exchanges yet.
+            </div>
+          )}
+        </div>
       </Card>
 
       {/* Analysis error */}
