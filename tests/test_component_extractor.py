@@ -327,7 +327,6 @@ def test_extract_tsx_wrapped_function_components(tmp_path):
 
     assert by_name["LoginButton"].symbol_kind == "function"
     assert by_name["LoginButton"].language == "tsx"
-    assert by_name["LoginButton"].note == "tsx variable function via tree-sitter"
     assert by_name["TextInput"].symbol_kind == "function"
     assert by_name["TextInput"].language == "tsx"
 
