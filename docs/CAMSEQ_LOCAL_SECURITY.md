@@ -30,6 +30,7 @@ Then set in `.env`:
 
 ```bash
 CLAW_SECURITY_USE_DOCKER=1
+CLAW_CODEQL_MODE=deferred
 ```
 
 ## Verify Docker is available
@@ -50,3 +51,17 @@ This runs the repo-local Semgrep rules inside Docker.
 
 CodeQL is optional and is **not** required for the default local path.
 Use CodeQL only if you want a heavier managed or advanced local security lane.
+
+Set `CLAW_CODEQL_MODE` explicitly:
+
+- `off`: do not run CodeQL and report it as skipped
+- `deferred`: default local mode; report CodeQL as deferred unless the CLI, database, and query suite are configured
+- `required`: hard security lane; report CodeQL as unavailable when the CLI, database, or query suite is missing
+
+Required mode expects:
+
+```bash
+export CLAW_CODEQL_MODE=required
+export CLAW_CODEQL_DATABASE=/path/to/codeql/database
+export CLAW_CODEQL_QUERIES=/path/to/query-suite.qls
+```

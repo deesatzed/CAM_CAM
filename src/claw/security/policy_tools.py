@@ -15,6 +15,11 @@ from pathlib import Path
 from typing import Any
 
 
+def _codeql_mode() -> str:
+    mode = os.getenv("CLAW_CODEQL_MODE", "deferred").strip().lower()
+    return mode if mode in {"off", "deferred", "required"} else "deferred"
+
+
 def _candidate_scan_paths(workspace_dir: str, file_paths: list[str]) -> list[str]:
     workspace = Path(workspace_dir)
     selected: list[str] = []
@@ -182,22 +187,41 @@ async def _run_semgrep(workspace_dir: str, file_paths: list[str]) -> dict[str, A
 
 
 async def _run_codeql(workspace_dir: str, file_paths: list[str]) -> dict[str, Any]:
-    if shutil.which("codeql") is None:
+    mode = _codeql_mode()
+    if mode == "off":
         return {
             "tool": "codeql",
-            "status": "deferred",
+            "status": "skipped",
             "findings": [],
-            "details": ["codeql not installed; deferred in local mode"],
+            "details": ["CodeQL disabled by CLAW_CODEQL_MODE=off"],
+        }
+
+    if shutil.which("codeql") is None:
+        status = "unavailable" if mode == "required" else "deferred"
+        return {
+            "tool": "codeql",
+            "status": status,
+            "findings": [],
+            "details": [
+                "codeql not installed; required by CLAW_CODEQL_MODE=required"
+                if mode == "required"
+                else "codeql not installed; deferred in local mode"
+            ],
         }
 
     database_path = os.getenv("CLAW_CODEQL_DATABASE")
     query_suite = os.getenv("CLAW_CODEQL_QUERIES")
     if not database_path or not query_suite:
+        status = "unavailable" if mode == "required" else "deferred"
         return {
             "tool": "codeql",
-            "status": "deferred",
+            "status": status,
             "findings": [],
-            "details": ["CLAW_CODEQL_DATABASE or CLAW_CODEQL_QUERIES not set; deferred in local mode"],
+            "details": [
+                "CLAW_CODEQL_DATABASE and CLAW_CODEQL_QUERIES required by CLAW_CODEQL_MODE=required"
+                if mode == "required"
+                else "CLAW_CODEQL_DATABASE or CLAW_CODEQL_QUERIES not set; deferred in local mode"
+            ],
         }
 
     output_path = str(Path(workspace_dir) / ".claw_codeql_results.sarif")

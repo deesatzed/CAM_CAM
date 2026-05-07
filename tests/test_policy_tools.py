@@ -41,8 +41,56 @@ async def test_policy_tools_defers_codeql_when_not_installed(tmp_path: Path):
     (workspace / "security").mkdir()
     (workspace / "security" / "semgrep.yml").write_text("rules: []\n", encoding="utf-8")
 
-    with patch("claw.security.policy_tools.shutil.which", return_value=None):
+    with patch.dict("os.environ", {}, clear=True), patch(
+        "claw.security.policy_tools.shutil.which", return_value=None
+    ):
         result = await run_critical_slot_policy_checks(str(workspace), [])
 
     assert result["codeql"]["status"] == "deferred"
     assert "deferred" in result["codeql"]["details"][0]
+
+
+@pytest.mark.asyncio
+async def test_policy_tools_skips_codeql_when_mode_off(tmp_path: Path):
+    workspace = tmp_path
+    (workspace / "security").mkdir()
+    (workspace / "security" / "semgrep.yml").write_text("rules: []\n", encoding="utf-8")
+
+    with patch.dict("os.environ", {"CLAW_CODEQL_MODE": "off"}, clear=True), patch(
+        "claw.security.policy_tools.shutil.which", return_value=None
+    ):
+        result = await run_critical_slot_policy_checks(str(workspace), [])
+
+    assert result["codeql"]["status"] == "skipped"
+    assert "disabled" in result["codeql"]["details"][0]
+
+
+@pytest.mark.asyncio
+async def test_policy_tools_marks_required_codeql_unavailable_when_missing(tmp_path: Path):
+    workspace = tmp_path
+    (workspace / "security").mkdir()
+    (workspace / "security" / "semgrep.yml").write_text("rules: []\n", encoding="utf-8")
+
+    with patch.dict("os.environ", {"CLAW_CODEQL_MODE": "required"}, clear=True), patch(
+        "claw.security.policy_tools.shutil.which", return_value=None
+    ):
+        result = await run_critical_slot_policy_checks(str(workspace), [])
+
+    assert result["codeql"]["status"] == "unavailable"
+    assert "required" in result["codeql"]["details"][0]
+
+
+@pytest.mark.asyncio
+async def test_policy_tools_marks_required_codeql_config_unavailable(tmp_path: Path):
+    workspace = tmp_path
+    (workspace / "security").mkdir()
+    (workspace / "security" / "semgrep.yml").write_text("rules: []\n", encoding="utf-8")
+
+    with patch.dict("os.environ", {"CLAW_CODEQL_MODE": "required"}, clear=True), patch(
+        "claw.security.policy_tools.shutil.which",
+        side_effect=lambda name: "/usr/bin/codeql" if name == "codeql" else None,
+    ):
+        result = await run_critical_slot_policy_checks(str(workspace), [])
+
+    assert result["codeql"]["status"] == "unavailable"
+    assert "CLAW_CODEQL_DATABASE" in result["codeql"]["details"][0]
