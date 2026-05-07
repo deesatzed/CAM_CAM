@@ -193,6 +193,12 @@ Verification:
 - Effect: critical-slot reviewed runs can now stop before mutation when Semgrep fails or required CodeQL is unavailable, while the default reviewed-run proof lane remains available.
 - Verification: `PYTHONPATH=src pytest tests/test_config.py::TestDefaults::test_feature_flags_default tests/test_dashboard_camseq.py::test_prewrite_policy_block_helpers_only_block_configured_critical_slots tests/test_dashboard_camseq.py::test_prewrite_policy_blocks_required_codeql_unavailable -q` passed.
 
+### M6 Security Lane Visibility
+
+- Fix: added `/api/v2/security/lane` and an Evolution Lab Security Lane panel.
+- Effect: operators can now see CodeQL mode/readiness, Semgrep config/tool availability, reviewed-run proof-gate enforcement, and pre-write blocking state without inspecting environment variables.
+- Verification: `PYTHONPATH=src pytest tests/test_policy_tools.py tests/test_dashboard_camseq.py::test_security_lane_endpoint_reports_flags_and_codeql_status -q`, `npm run lint`, and `npx next build --webpack` passed.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

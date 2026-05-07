@@ -71,6 +71,7 @@ def _setup_client(repo: AsyncMock) -> TestClient:
     feature_flags.application_packets = False
     feature_flags.connectome_seq = False
     feature_flags.critical_slot_policy = False
+    feature_flags.critical_slot_prewrite_block = False
     feature_flags.a2a_packets = False
     config = MagicMock()
     config.feature_flags = feature_flags
@@ -809,6 +810,43 @@ def test_plan_create_adds_semgrep_and_codeql_gates_for_critical_slots_when_flag_
     assert "semgrep" in gate_types
     assert "codeql" in gate_types
     assert "critical_policy_scan_required" in packet["review_required_reasons"]
+
+
+def test_security_lane_endpoint_reports_flags_and_codeql_status():
+    repo = AsyncMock()
+    client = _setup_client(repo)
+    from claw.web.dashboard_server import _state
+
+    _state["config"].feature_flags.critical_slot_policy = True
+    _state["config"].feature_flags.critical_slot_prewrite_block = True
+
+    with patch(
+        "claw.web.dashboard_server.get_security_lane_status",
+        return_value={
+            "semgrep": {
+                "cli_available": False,
+                "docker_available": True,
+                "docker_runner_available": True,
+                "config_available": True,
+            },
+            "codeql": {
+                "mode": "required",
+                "cli_available": False,
+                "database_configured": False,
+                "queries_configured": False,
+            },
+        },
+    ):
+        resp = client.get("/api/v2/security/lane")
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["feature_flags"]["critical_slot_policy"] is True
+    assert data["feature_flags"]["critical_slot_prewrite_block"] is True
+    assert data["enforcement"]["reviewed_run_proof_gates"] is True
+    assert data["enforcement"]["prewrite_blocking"] is True
+    assert data["enforcement"]["codeql_blocks_when_required"] is True
+    assert data["codeql"]["lane_status"] == "blocking_unavailable"
 
 
 def test_prewrite_policy_block_helpers_only_block_configured_critical_slots():

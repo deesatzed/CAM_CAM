@@ -54,6 +54,33 @@ def _docker_semgrep_runner(workspace_dir: str) -> str | None:
     return None
 
 
+def get_security_lane_status(workspace_dir: str) -> dict[str, Any]:
+    """Return static-analysis lane configuration without executing scanners."""
+    semgrep_config = os.getenv("CLAW_SEMGREP_CONFIG") or _default_semgrep_config(workspace_dir)
+    semgrep_runner = os.getenv("CLAW_SEMGREP_RUNNER") or _docker_semgrep_runner(workspace_dir)
+    codeql_database = os.getenv("CLAW_CODEQL_DATABASE")
+    codeql_queries = os.getenv("CLAW_CODEQL_QUERIES")
+    return {
+        "semgrep": {
+            "cli_available": shutil.which("semgrep") is not None,
+            "docker_available": shutil.which("docker") is not None,
+            "docker_runner_available": bool(semgrep_runner),
+            "docker_runner_path": semgrep_runner,
+            "config_available": bool(semgrep_config),
+            "config_path": semgrep_config,
+            "use_docker": os.getenv("CLAW_SECURITY_USE_DOCKER", "").lower() in {"1", "true", "yes"},
+        },
+        "codeql": {
+            "mode": _codeql_mode(),
+            "cli_available": shutil.which("codeql") is not None,
+            "database_configured": bool(codeql_database),
+            "queries_configured": bool(codeql_queries),
+            "database_path": codeql_database,
+            "queries_path": codeql_queries,
+        },
+    }
+
+
 async def _run_semgrep_docker(workspace_dir: str, file_paths: list[str], config_path: str) -> dict[str, Any]:
     runner = os.getenv("CLAW_SEMGREP_RUNNER") or _docker_semgrep_runner(workspace_dir)
     if not runner:

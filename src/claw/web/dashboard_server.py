@@ -39,7 +39,7 @@ from claw.memory.component_ranker import rank_components_for_slot
 from claw.mining.component_extractor import extract_components_from_file
 from claw.planning.application_packet import build_application_packet, build_packet_summary
 from claw.planning.taskome import decompose_task, infer_task_archetype
-from claw.security.policy_tools import run_critical_slot_policy_checks
+from claw.security.policy_tools import get_security_lane_status, run_critical_slot_policy_checks
 
 logger = logging.getLogger("claw.web.dashboard")
 
@@ -3523,6 +3523,7 @@ async def api_config_get() -> JSONResponse:
             "application_packets": feature_flags.application_packets,
             "connectome_seq": feature_flags.connectome_seq,
             "critical_slot_policy": feature_flags.critical_slot_policy,
+            "critical_slot_prewrite_block": getattr(feature_flags, "critical_slot_prewrite_block", False),
             "a2a_packets": feature_flags.a2a_packets,
         }
 
@@ -6126,6 +6127,42 @@ async def api_v2_governance_policies(
     if family_barcode:
         policies = [policy for policy in policies if policy.family_barcode == family_barcode]
     return JSONResponse({"policies": [policy.model_dump(mode="json") for policy in policies]})
+
+
+@app.get("/api/v2/security/lane")
+async def api_v2_security_lane() -> JSONResponse:
+    st = await _ensure_state(app)
+    config = st["config"]
+    feature_flags = getattr(config, "feature_flags", None)
+    status = get_security_lane_status(str(Path.cwd()))
+    critical_slot_policy = bool(getattr(feature_flags, "critical_slot_policy", False))
+    prewrite_block = bool(getattr(feature_flags, "critical_slot_prewrite_block", False))
+    codeql = dict(status.get("codeql") or {})
+    codeql_mode = str(codeql.get("mode") or "deferred")
+    codeql_ready = bool(
+        codeql.get("cli_available")
+        and codeql.get("database_configured")
+        and codeql.get("queries_configured")
+    )
+    if codeql_mode == "off":
+        codeql["lane_status"] = "skipped"
+    elif codeql_ready:
+        codeql["lane_status"] = "ready"
+    elif codeql_mode == "required":
+        codeql["lane_status"] = "blocking_unavailable"
+    else:
+        codeql["lane_status"] = "deferred"
+    status["codeql"] = codeql
+    status["feature_flags"] = {
+        "critical_slot_policy": critical_slot_policy,
+        "critical_slot_prewrite_block": prewrite_block,
+    }
+    status["enforcement"] = {
+        "reviewed_run_proof_gates": critical_slot_policy,
+        "prewrite_blocking": critical_slot_policy and prewrite_block,
+        "codeql_blocks_when_required": codeql_mode == "required",
+    }
+    return JSONResponse(status)
 
 
 @app.get("/api/v2/governance/conflicts")

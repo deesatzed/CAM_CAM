@@ -691,6 +691,36 @@ export interface GovernanceConflictsResponse {
   policy_count: number;
 }
 
+export interface SecurityLaneStatus {
+  semgrep: {
+    cli_available?: boolean;
+    docker_available?: boolean;
+    docker_runner_available?: boolean;
+    docker_runner_path?: string | null;
+    config_available?: boolean;
+    config_path?: string | null;
+    use_docker?: boolean;
+  };
+  codeql: {
+    mode: "off" | "deferred" | "required" | string;
+    cli_available?: boolean;
+    database_configured?: boolean;
+    queries_configured?: boolean;
+    database_path?: string | null;
+    queries_path?: string | null;
+    lane_status?: "skipped" | "ready" | "blocking_unavailable" | "deferred" | string;
+  };
+  feature_flags: {
+    critical_slot_policy: boolean;
+    critical_slot_prewrite_block: boolean;
+  };
+  enforcement: {
+    reviewed_run_proof_gates: boolean;
+    prewrite_blocking: boolean;
+    codeql_blocks_when_required: boolean;
+  };
+}
+
 export interface ComponentSearchResponse {
   items: ComponentCardSummary[];
   count: number;
@@ -883,6 +913,10 @@ export function getGovernancePolicies(options?: {
   if (options?.limit) params.set("limit", String(options.limit));
   const suffix = params.toString() ? `?${params.toString()}` : "";
   return fetchAPI(`/api/v2/governance/policies${suffix}`);
+}
+
+export function getSecurityLaneStatus(): Promise<SecurityLaneStatus> {
+  return fetchAPI("/api/v2/security/lane");
 }
 
 export function getGovernanceTrends(options?: {

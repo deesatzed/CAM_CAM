@@ -9,6 +9,7 @@ import {
   getEvolutionFitness,
   getGovernancePolicies,
   getGovernanceTrends,
+  getSecurityLaneStatus,
   getFederationPolicyRecommendations,
   getFederationTrends,
   promoteFederationPolicy,
@@ -18,6 +19,7 @@ import {
   type GovernancePolicy,
   type GovernanceTrendsResponse,
   type RoutingEntry,
+  type SecurityLaneStatus,
   type BanditArm,
   type FitnessTrajectoryEntry,
   updateGovernancePolicyStatus,
@@ -87,6 +89,13 @@ function governanceSeverityTone(severity: "low" | "medium" | "high" | string): s
   if (severity === "high") return "border-red-400/30 bg-red-400/10 text-red-300";
   if (severity === "medium") return "border-amber-400/30 bg-amber-400/10 text-amber-200";
   return "border-cam-green/30 bg-cam-green/10 text-cam-green";
+}
+
+function laneStatusTone(status?: string): string {
+  if (status === "ready") return "border-cam-green/30 bg-cam-green/10 text-cam-green";
+  if (status === "blocking_unavailable") return "border-red-400/30 bg-red-400/10 text-red-300";
+  if (status === "deferred") return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+  return "border-card-border bg-background text-muted";
 }
 
 // ---------------------------------------------------------------------------
@@ -766,6 +775,7 @@ export default function EvolutionLab() {
   const [activeTab, setActiveTab] = useState<Tab>("ab-tests");
   const [error, setError] = useState<string | null>(null);
   const [governanceTrends, setGovernanceTrends] = useState<GovernanceTrendsResponse | null>(null);
+  const [securityLaneStatus, setSecurityLaneStatus] = useState<SecurityLaneStatus | null>(null);
   const [federationTrends, setFederationTrends] = useState<FederationTrendsResponse | null>(null);
   const [federationPolicyRecommendations, setFederationPolicyRecommendations] = useState<FederationPolicyRecommendationsResponse | null>(null);
   const [governancePolicies, setGovernancePolicies] = useState<GovernancePolicy[] | null>(null);
@@ -838,6 +848,7 @@ export default function EvolutionLab() {
         task_archetype: governanceFilters.taskArchetype || undefined,
         family_barcode: governanceFilters.familyBarcode || undefined,
       }),
+      getSecurityLaneStatus(),
       getFederationTrends({
         limit: 10,
         task_archetype: governanceFilters.taskArchetype || undefined,
@@ -861,9 +872,10 @@ export default function EvolutionLab() {
         limit: 20,
       }),
     ])
-      .then(([trends, federation, federationPolicy, conflicts, policies]) => {
+      .then(([trends, securityLane, federation, federationPolicy, conflicts, policies]) => {
         if (cancelled) return;
         setGovernanceTrends(trends);
+        setSecurityLaneStatus(securityLane);
         setFederationTrends(federation);
         setFederationPolicyRecommendations(federationPolicy);
         setGovernanceConflicts(conflicts.conflicts);
@@ -967,6 +979,54 @@ export default function EvolutionLab() {
                     ))}
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+        </Card>
+        <Card>
+          <CardTitle>Security Lane</CardTitle>
+          {!securityLaneStatus ? (
+            <div className="text-sm text-muted">Loading security lane status...</div>
+          ) : (
+            <div className="space-y-4 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-lg border border-card-border bg-background p-3">
+                  <div className="text-xs text-muted uppercase tracking-wider">Proof Gates</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {securityLaneStatus.enforcement.reviewed_run_proof_gates ? "On" : "Off"}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-card-border bg-background p-3">
+                  <div className="text-xs text-muted uppercase tracking-wider">Pre-Write Block</div>
+                  <div className="mt-1 text-lg font-semibold text-foreground">
+                    {securityLaneStatus.enforcement.prewrite_blocking ? "On" : "Off"}
+                  </div>
+                </div>
+              </div>
+              <div className={`rounded-lg border p-3 ${laneStatusTone(securityLaneStatus.codeql.lane_status)}`}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs uppercase tracking-wider">CodeQL</span>
+                  <span className="rounded border border-current/30 px-2 py-0.5 text-[11px]">
+                    {securityLaneStatus.codeql.mode}
+                  </span>
+                  <span className="rounded border border-current/30 px-2 py-0.5 text-[11px]">
+                    {securityLaneStatus.codeql.lane_status || "unknown"}
+                  </span>
+                </div>
+                <div className="mt-2 grid gap-1 text-xs">
+                  <span>CLI {securityLaneStatus.codeql.cli_available ? "available" : "missing"}</span>
+                  <span>database {securityLaneStatus.codeql.database_configured ? "configured" : "not configured"}</span>
+                  <span>queries {securityLaneStatus.codeql.queries_configured ? "configured" : "not configured"}</span>
+                </div>
+              </div>
+              <div className="rounded-lg border border-card-border bg-background p-3 text-xs text-muted">
+                <div className="mb-2 text-xs uppercase tracking-wider text-muted-dark">Semgrep</div>
+                <div className="grid gap-1">
+                  <span>config {securityLaneStatus.semgrep.config_available ? "available" : "missing"}</span>
+                  <span>CLI {securityLaneStatus.semgrep.cli_available ? "available" : "missing"}</span>
+                  <span>Docker {securityLaneStatus.semgrep.docker_available ? "available" : "missing"}</span>
+                  <span>Docker runner {securityLaneStatus.semgrep.docker_runner_available ? "available" : "missing"}</span>
+                </div>
               </div>
             </div>
           )}
