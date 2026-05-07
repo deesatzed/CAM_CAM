@@ -1178,12 +1178,12 @@ class TestHybridSearchSignalsExtended:
 class TestMCPServerToolSchemas:
     """Tests for TOOL_SCHEMAS structure."""
 
-    def test_tool_schemas_has_fifteen_tools(self):
-        """TOOL_SCHEMAS defines exactly 15 tools."""
-        assert len(TOOL_SCHEMAS) == 15
+    def test_tool_schemas_has_sixteen_tools(self):
+        """TOOL_SCHEMAS defines exactly 16 tools."""
+        assert len(TOOL_SCHEMAS) == 16
 
     def test_tool_schemas_names(self):
-        """All 15 expected tool names are present."""
+        """All 16 expected tool names are present."""
         names = {s["name"] for s in TOOL_SCHEMAS}
         expected = {
             "claw_query_memory",
@@ -1201,6 +1201,7 @@ class TestMCPServerToolSchemas:
             "claw_export_specialist_exchange",
             "claw_import_specialist_exchange",
             "claw_list_specialist_exchanges",
+            "claw_bridge_specialist_exchange",
         }
         assert names == expected
 

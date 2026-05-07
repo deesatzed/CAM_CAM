@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -159,3 +160,127 @@ def archive_reply(spool_dir: Path, path: Path, request_id: str, reply_id: str) -
     output = paths["archive"] / f"{request_id}-{reply_id}.json"
     output.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
     return output
+
+
+def write_inbox_reply(spool_dir: Path, envelope: dict[str, Any]) -> Path:
+    paths = ensure_spool_dirs(spool_dir)
+    output = paths["inbox"] / f"{envelope['request_id']}-{envelope['reply_id']}.json"
+    output.write_text(json.dumps(envelope, indent=2, sort_keys=True), encoding="utf-8")
+    return output
+
+
+MCPBridgeCaller = Callable[[str, dict[str, Any]], Awaitable[Any]]
+
+
+def mcp_bridge_arguments(request_envelope: dict[str, Any]) -> dict[str, Any]:
+    slot = request_envelope.get("slot") if isinstance(request_envelope.get("slot"), dict) else {}
+    return {
+        "task_text": request_envelope.get("task_text") or "",
+        "slot_name": slot.get("name"),
+        "preferred_agent": request_envelope.get("selected_agent"),
+        "target_language": None,
+        "limit": 5,
+        "request_envelope": request_envelope,
+    }
+
+
+def _coerce_tool_payload(result: Any) -> dict[str, Any]:
+    if isinstance(result, dict):
+        return result
+    structured = getattr(result, "structuredContent", None)
+    if isinstance(structured, dict):
+        return structured
+    content = getattr(result, "content", None)
+    if content:
+        first = content[0]
+        text = getattr(first, "text", None)
+        if isinstance(text, str) and text.strip():
+            try:
+                payload = json.loads(text)
+            except json.JSONDecodeError:
+                return {"text": text}
+            if isinstance(payload, dict):
+                return payload
+    return {"result": str(result)}
+
+
+def normalize_mcp_bridge_reply(
+    request_envelope: dict[str, Any],
+    result: Any,
+    *,
+    specialist_identity: str,
+    max_reply_bytes: int = 65536,
+) -> dict[str, Any]:
+    payload = _coerce_tool_payload(result)
+    if payload.get("schema_version") == SCHEMA_VERSION and payload.get("kind") == "external_specialist_reply":
+        reply = dict(payload)
+    else:
+        candidates = payload.get("packet_candidates") or payload.get("results") or []
+        has_candidates = isinstance(candidates, list) and bool(candidates)
+        confidence = payload.get("confidence")
+        if not isinstance(confidence, int | float):
+            confidence = payload.get("archetype_confidence") if has_candidates else 0.0
+        if not isinstance(confidence, int | float):
+            confidence = 0.0
+        confidence = max(0.0, min(float(confidence), 1.0))
+        recommendation_kind = "accepted_as_runner_up" if has_candidates else "rejected_low_evidence"
+        identity = (
+            specialist_identity
+            if specialist_identity and specialist_identity != "mcp_bridge"
+            else payload.get("specialist_identity") or payload.get("selected_agent") or "mcp_bridge"
+        )
+        reply = {
+            "schema_version": SCHEMA_VERSION,
+            "kind": "external_specialist_reply",
+            "request_id": request_envelope["request_id"],
+            "reply_id": f"mcpreply_{uuid.uuid4().hex[:12]}",
+            "specialist_identity": identity,
+            "recommendation_kind": recommendation_kind,
+            "confidence": confidence,
+            "evidence": [
+                {
+                    "kind": "mcp_tool_result",
+                    "summary": payload.get("summary") or payload.get("status") or "external MCP bridge reply",
+                    "payload": payload,
+                }
+            ],
+            "constraints": payload.get("constraints", []),
+            "unsafe_or_unusable_reasons": payload.get("unsafe_or_unusable_reasons", []),
+        }
+    reply.setdefault("request_id", request_envelope["request_id"])
+    reply.setdefault("reply_id", f"mcpreply_{uuid.uuid4().hex[:12]}")
+    reply.setdefault("specialist_identity", specialist_identity or "mcp_bridge")
+    reply.setdefault("recommendation_kind", "rejected_schema_or_trust")
+    reply.setdefault("confidence", 0.0)
+    reply.setdefault("evidence", [])
+    encoded = json.dumps(reply, sort_keys=True).encode("utf-8")
+    if len(encoded) > max_reply_bytes:
+        raise ValueError("external MCP bridge reply exceeds max_reply_bytes")
+    validate_reply_envelope(reply)
+    return reply
+
+
+async def call_stdio_mcp_tool(
+    *,
+    command: str,
+    args: list[str],
+    tool_name: str,
+    arguments: dict[str, Any],
+    timeout_seconds: int = 60,
+    env: dict[str, str] | None = None,
+) -> Any:
+    try:
+        from mcp import ClientSession, StdioServerParameters
+        from mcp.client.stdio import stdio_client
+    except Exception as exc:  # pragma: no cover - depends on optional mcp extra
+        raise RuntimeError("mcp SDK is required for stdio MCP bridge transport") from exc
+
+    params = StdioServerParameters(command=command, args=args, env=env)
+    async with stdio_client(params) as (read_stream, write_stream):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+            return await session.call_tool(
+                tool_name,
+                arguments=arguments,
+                read_timeout_seconds=timedelta(seconds=timeout_seconds),
+            )

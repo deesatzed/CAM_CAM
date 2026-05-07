@@ -200,11 +200,28 @@ async def test_claw_external_specialist_exchange_tools(tmp_path: Path, monkeypat
         return items[:limit]
 
     repo.save_external_specialist_exchange = AsyncMock(side_effect=save_exchange)
+    repo.get_external_specialist_exchange = AsyncMock(side_effect=lambda exchange_id: store.get(exchange_id))
     repo.get_external_specialist_exchange_by_request = AsyncMock(side_effect=get_exchange_by_request)
     repo.list_external_specialist_exchanges = AsyncMock(side_effect=list_exchanges)
     repo.expire_external_specialist_exchanges = AsyncMock(return_value=0)
 
-    server = ClawMCPServer(repository=repo)
+    async def bridge_caller(tool_name: str, arguments: dict):
+        assert tool_name == "claw_request_specialist_packet"
+        assert arguments["request_envelope"]["kind"] == "external_specialist_request"
+        return {
+            "status": "ok",
+            "selected_agent": "external_codex",
+            "archetype_confidence": 0.82,
+            "packet_candidates": [
+                {
+                    "component_id": "remote_comp",
+                    "title": "remote refresh lock",
+                    "match_type": "direct_fit",
+                }
+            ],
+        }
+
+    server = ClawMCPServer(repository=repo, mcp_bridge_caller=bridge_caller)
     exported = await server.dispatch_tool(
         "claw_export_specialist_exchange",
         {
@@ -255,3 +272,24 @@ async def test_claw_external_specialist_exchange_tools(tmp_path: Path, monkeypat
     assert imported["status"] == "ok"
     assert imported["imported"][0]["status"] == "reconciled"
     assert imported["imported"][0]["outcome"] == "reconciled"
+
+    bridged_export = await server.dispatch_tool(
+        "claw_export_specialist_exchange",
+        {
+            "task_text": "Review the remote packet bridge path",
+            "preferred_agent": "codex",
+            "workspace_dir": str(tmp_path),
+        },
+    )
+    bridge_result = await server.dispatch_tool(
+        "claw_bridge_specialist_exchange",
+        {
+            "exchange_id": bridged_export["exchange"]["exchange_id"],
+            "workspace_dir": str(tmp_path),
+            "specialist_identity": "external_codex",
+        },
+    )
+    assert bridge_result["status"] == "ok"
+    assert bridge_result["bridge_status"] == "submitted"
+    assert bridge_result["imported"][0]["status"] == "reconciled"
+    assert bridge_result["reply_envelope"]["specialist_identity"] == "external_codex"

@@ -214,7 +214,7 @@ Verification:
 ### M7 External Specialist Exchange Planning
 
 - Fix: added a minimal external specialist exchange plan centered on schema-versioned request/reply envelopes.
-- Effect: the next M7 implementation can start with a deterministic file-spool handoff before MCP-to-MCP or HTTP transport, while keeping external replies non-mutating until reviewed.
+- Effect: M7 could start with a deterministic file-spool handoff before adding MCP-to-MCP or HTTP transport, while keeping external replies non-mutating until reviewed.
 - Verification: docs-only change; no runtime validation required.
 
 ### M7 External Specialist Exchange Spool
@@ -228,6 +228,12 @@ Verification:
 - Fix: added `claw_export_specialist_exchange`, `claw_import_specialist_exchange`, and `claw_list_specialist_exchanges` MCP tools over the same file-spool exchange ledger.
 - Effect: agents can now export handoff envelopes, import replies, and inspect exchange status through MCP without using the browser dashboard.
 - Verification: `PYTHONPATH=src pytest tests/test_mcp_camseq_tools.py -q` and MCP schema tests passed.
+
+### M7 External Specialist MCP Bridge
+
+- Fix: added `claw_bridge_specialist_exchange`, which submits an existing exchange envelope to an external MCP stdio tool and imports the normalized reply through the same inbox/reconciliation path.
+- Effect: CAM-CAM can now hand a bounded specialist packet to another MCP-capable specialist process without a human moving the file manually, while still preventing external replies from mutating source code directly.
+- Verification: focused MCP bridge test coverage passed with the MCP schema tests.
 
 ## Operator Summary
 

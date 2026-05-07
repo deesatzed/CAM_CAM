@@ -17,7 +17,7 @@ Active work:
 - `M2`: close component parser precision gaps with focused real-parser coverage; added coverage for Python property/classmethod methods, TypeScript function-expression variables, and JavaScript object methods
 - app troubleshooting: verify frontend/backend runtime behavior and separate app defects from environment/tooling failures
 - `M6`: explicit CodeQL mode control, optional pre-write critical-slot blocking, security-lane API/UI visibility, and mocked required-mode CodeQL SARIF smoke coverage are implemented; full CodeQL analysis still needs managed CodeQL assets
-- `M7`: external/specialist exchange has a feature-flagged file-spool implementation with durable request/reply lifecycle, inbox import, Federation Hub visibility, and MCP export/import/list tools
+- `M7`: external/specialist exchange has a feature-flagged file-spool implementation with durable request/reply lifecycle, inbox import, Federation Hub visibility, MCP export/import/list tools, and MCP-to-MCP bridge submission
 - milestone ledger remains available in the long-form tracker below
 
 Just finished:
@@ -81,8 +81,8 @@ Milestones:
 - `M3`: `100%`
 - `M4`: `100%`
 - `M5`: `99%`
-- `M6`: `89%`
-- `M7`: `86%`
+- `M6`: `90%`
+- `M7`: `93%`
 - `M8`: `89%`
 
 ## What To Inspect
@@ -116,5 +116,5 @@ M7 planning:
 - `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, React wrapper components, function-expression variables, and JavaScript object methods
 - `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution plus priority review UI now exist
 - `M6`: full CodeQL analysis still needs managed/advanced assets; local mode now exposes `off`, `deferred`, `required`, optional pre-write blocking, lane visibility, and required-mode SARIF parser smoke coverage
-- `M7`: file-based external/A2A packet handoff spool and MCP ledger tools are implemented; MCP-to-MCP bridge and signed HTTP transport remain future work
+- `M7`: file-based external/A2A packet handoff spool, MCP ledger tools, and MCP-to-MCP bridge submission are implemented; signed HTTP transport remains future work
 - `M8`: broader real-repo mutation benchmark coverage and more polished demo artifacts

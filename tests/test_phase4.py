@@ -881,6 +881,7 @@ class TestClawMCPServerSchemas:
             "claw_export_specialist_exchange",
             "claw_import_specialist_exchange",
             "claw_list_specialist_exchanges",
+            "claw_bridge_specialist_exchange",
         }
         assert names == expected
 

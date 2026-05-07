@@ -141,6 +141,21 @@ class ListSpecialistExchangesInput(BaseModel):
     limit: int = Field(default=25, ge=1, le=100, description="Maximum exchanges to return")
 
 
+class BridgeSpecialistExchangeInput(BaseModel):
+    """Input for claw_bridge_specialist_exchange."""
+    exchange_id: str = Field(..., description="External specialist exchange ID to submit")
+    command: Optional[str] = Field(default=None, description="External MCP stdio server command")
+    args: list[str] = Field(default_factory=list, description="External MCP stdio server args")
+    tool_name: str = Field(
+        default="claw_request_specialist_packet",
+        description="External MCP tool to call",
+    )
+    workspace_dir: Optional[str] = Field(default=None, description="Workspace root for the exchange spool")
+    timeout_seconds: int = Field(default=60, ge=1, le=600, description="External MCP call timeout")
+    max_reply_bytes: int = Field(default=65536, ge=1024, le=1048576, description="Reply size cap")
+    specialist_identity: str = Field(default="mcp_bridge", description="Bridge identity label")
+
+
 # ---------------------------------------------------------------------------
 # Tool metadata registry
 # ---------------------------------------------------------------------------
@@ -205,6 +220,10 @@ TOOL_METADATA: dict[str, tuple[type[BaseModel], str]] = {
     "claw_list_specialist_exchanges": (
         ListSpecialistExchangesInput,
         "List durable external specialist exchange lifecycle records.",
+    ),
+    "claw_bridge_specialist_exchange": (
+        BridgeSpecialistExchangeInput,
+        "Submit an existing specialist exchange envelope to an external MCP tool and import its reply.",
     ),
 }
 

@@ -1,14 +1,14 @@
 # CAM-SEQ M7 External Specialist Exchange Plan
 
 Date: 2026-05-07
-Status: First file-spool slice implemented
-Scope: docs-only plan for the remaining M7 A2A/external specialist exchange gap
+Status: File-spool, MCP ledger tools, and stdio MCP bridge implemented
+Scope: implementation/status plan for the remaining M7 A2A/external specialist exchange gap
 
 ## Objective
 
 Add the smallest useful handoff surface that lets CAM-SEQ package a weak or high-risk slot for an external specialist and ingest a bounded reply without changing parser or security internals.
 
-This is not a new autonomous transport layer yet. The first milestone should prove that CAM can create, export, track, and reconcile specialist packets while preserving the canonical chain:
+This is still not a direct remote-code-execution layer. The implemented milestone proves that CAM can create, export, track, bridge, and reconcile specialist packets while preserving the canonical chain:
 
 Component Card -> Slot -> Application Packet -> Pair Event -> Landing Event -> Outcome Event -> Recipe
 
@@ -24,7 +24,7 @@ Already present in M7:
 
 Remaining gap:
 
-- no true A2A transport or external specialist exchange boundary with durable request/reply state, identity, timeout, trust, and replay behavior
+- signed HTTP webhook transport for non-MCP remote specialists, including durable signing, trust, replay, and dead-letter behavior
 
 ## Minimal Surface
 
@@ -63,12 +63,15 @@ Implementation candidates:
 
 ### Candidate 2: MCP-to-MCP Bridge
 
+Status: implemented as a guarded stdio MCP bridge for existing exchange envelopes.
+
 Shape:
 
 - CAM keeps the same envelope model
-- a bridge process sends request envelopes to a configured external MCP server and imports replies
+- `claw_bridge_specialist_exchange` submits an existing request envelope to a configured external MCP stdio server/tool
+- CAM normalizes the MCP result into an `external_specialist_reply` envelope and imports it through the same reconciliation path
 
-Why later:
+Why second:
 
 - closer to real A2A behavior
 - still avoids changing the packet model
@@ -78,7 +81,8 @@ Implementation candidates:
 
 - bridge config with allowed server names, allowed tools, timeout, max bytes, and auth token source
 - capability probe result cached per specialist
-- replies imported through the same reconciliation path as file-based replies
+- replies imported through the same reconciliation path as file-based replies. Done for stdio MCP calls through `claw_bridge_specialist_exchange`
+- focused MCP tool test coverage using an injected bridge caller validates request-envelope forwarding and normalized reply import
 
 ### Candidate 3: HTTP Webhook Adapter
 
@@ -149,7 +153,7 @@ Reconciliation outcomes:
 2. Add file-spool export/import behind `a2a_packets`. Done.
 3. Add MCP listing/export/import tools over the same repository methods. Done.
 4. Surface status in Federation Hub or plan review without creating a new app section. Done in Federation Hub.
-5. Add MCP-to-MCP bridge only after file-spool behavior is validated.
+5. Add MCP-to-MCP bridge only after file-spool behavior is validated. Done for stdio MCP tool submission.
 6. Defer signed HTTP webhooks until the trust, audit, and replay model has real use.
 
 ## Non-Goals For This Slice

@@ -20,6 +20,7 @@ Original tools are exposed, plus CAM-SEQ packet/connectome tools:
     13. claw_export_specialist_exchange -- export an external handoff envelope
     14. claw_import_specialist_exchange -- import external specialist replies
     15. claw_list_specialist_exchanges -- list external specialist exchanges
+    16. claw_bridge_specialist_exchange -- send an exchange to an external MCP tool
 
 Design:
     The ClawMCPServer class contains tool handler methods and schema definitions.
@@ -46,12 +47,16 @@ from claw.community.specialist_exchange import (
     archive_reply,
     build_request_envelope,
     candidate_reply_paths,
+    call_stdio_mcp_tool,
     deadline_from_seconds,
     load_reply_envelope,
+    mcp_bridge_arguments,
+    normalize_mcp_bridge_reply,
     new_exchange_id,
     new_request_id,
     specialist_exchange_spool_dir,
     validate_reply_envelope,
+    write_inbox_reply,
     write_request_envelope,
 )
 from claw.core.models import CompiledRecipe, ExternalSpecialistExchange, MiningMission
@@ -109,6 +114,7 @@ class ClawMCPServer:
         dispatcher: Optional[Dispatcher] = None,
         federation: Optional[Any] = None,
         auth_token: Optional[str] = None,
+        mcp_bridge_caller: Optional[Any] = None,
     ):
         self.repository = repository
         self.semantic_memory = semantic_memory
@@ -116,6 +122,7 @@ class ClawMCPServer:
         self.dispatcher = dispatcher
         self.federation = federation
         self._auth_token = auth_token
+        self.mcp_bridge_caller = mcp_bridge_caller
 
         # Mapping of tool name -> handler coroutine
         self._handlers: dict[str, Any] = {
@@ -134,6 +141,7 @@ class ClawMCPServer:
             "claw_export_specialist_exchange": self.handle_export_specialist_exchange,
             "claw_import_specialist_exchange": self.handle_import_specialist_exchange,
             "claw_list_specialist_exchanges": self.handle_list_specialist_exchanges,
+            "claw_bridge_specialist_exchange": self.handle_bridge_specialist_exchange,
         }
 
         logger.info(
@@ -1363,6 +1371,66 @@ class ClawMCPServer:
         return {
             "status": "ok",
             "exchanges": [self._exchange_payload(exchange) for exchange in exchanges],
+        }
+
+    async def handle_bridge_specialist_exchange(
+        self,
+        exchange_id: str,
+        command: Optional[str] = None,
+        args: Optional[list[str]] = None,
+        tool_name: str = "claw_request_specialist_packet",
+        workspace_dir: Optional[str] = None,
+        timeout_seconds: int = 60,
+        max_reply_bytes: int = 65536,
+        specialist_identity: str = "mcp_bridge",
+    ) -> dict[str, Any]:
+        exchange = await self.repository.get_external_specialist_exchange(exchange_id)
+        if exchange is None:
+            return {"status": "error", "error": "specialist exchange not found"}
+        if not exchange.request_json:
+            return {"status": "error", "error": "specialist exchange has no request envelope"}
+        if exchange.status == "expired":
+            return {"status": "error", "error": "specialist exchange is expired"}
+        if exchange.reply_id:
+            return {"status": "ok", "exchange": self._exchange_payload(exchange), "already_replied": True}
+
+        arguments = mcp_bridge_arguments(exchange.request_json)
+        caller = self.mcp_bridge_caller
+        if caller is not None:
+            result = await caller(tool_name, arguments)
+        else:
+            if not command:
+                return {
+                    "status": "error",
+                    "error": "command is required when no MCP bridge caller is configured",
+                }
+            result = await call_stdio_mcp_tool(
+                command=command,
+                args=args or [],
+                tool_name=tool_name,
+                arguments=arguments,
+                timeout_seconds=timeout_seconds,
+            )
+
+        reply = normalize_mcp_bridge_reply(
+            exchange.request_json,
+            result,
+            specialist_identity=specialist_identity,
+            max_reply_bytes=max_reply_bytes,
+        )
+        spool_dir = specialist_exchange_spool_dir(workspace_dir)
+        reply_path = write_inbox_reply(spool_dir, reply)
+        import_result = await self.handle_import_specialist_exchange(
+            reply_path=reply_path.name,
+            workspace_dir=workspace_dir,
+        )
+        return {
+            "status": import_result.get("status", "ok"),
+            "bridge_status": "submitted",
+            "reply_path": str(reply_path),
+            "reply_envelope": reply,
+            "imported": import_result.get("imported", []),
+            "rejected": import_result.get("rejected", []),
         }
 
     # ===================================================================
