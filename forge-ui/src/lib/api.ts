@@ -506,6 +506,12 @@ export interface DistillResponse {
   promotions: Array<Record<string, unknown>>;
   downgrades: Array<Record<string, unknown>>;
   negative_memory_updates: string[];
+  persisted_negative_memory?: Array<{
+    error_signature: string;
+    error_category: string;
+    task_type?: string | null;
+    prevention_hint: string;
+  }>;
   governance_recommendations: Array<{
     kind: string;
     severity: "low" | "medium" | "high";
@@ -520,6 +526,39 @@ export interface DistillResponse {
   }>;
   packet_transfer_summary: Record<string, number>;
   recipe_candidates: Array<Record<string, unknown>>;
+}
+
+export interface FailureKnowledgeEntry {
+  id: string;
+  error_signature: string;
+  error_category: string;
+  diagnosis: string;
+  prevention_hint: string;
+  agent_id?: string | null;
+  task_type?: string | null;
+  project_id?: string | null;
+  source_task_id?: string | null;
+  occurrence_count: number;
+  resolved: number;
+  resolution_approach?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface FailureKnowledgeResponse {
+  items: FailureKnowledgeEntry[];
+  count: number;
+  filters: {
+    task_type?: string | null;
+    project_id?: string | null;
+    error_category?: string | null;
+    include_resolved: boolean;
+  };
+  summary: {
+    unresolved_count: number;
+    resolved_count: number;
+    category_counts: Record<string, number>;
+  };
 }
 
 export interface MiningMission {
@@ -906,6 +945,32 @@ export function updateGovernancePolicyStatus(
   body: { status: "active" | "inactive" | "superseded" | "waived"; reason?: string; supersedes_policy_id?: string; waiver_note?: string },
 ): Promise<{ policy: GovernancePolicy }> {
   return fetchAPI(`/api/v2/governance/policies/${policyId}/status`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function getFailureKnowledge(options?: {
+  task_type?: string;
+  project_id?: string;
+  error_category?: string;
+  include_resolved?: boolean;
+  limit?: number;
+}): Promise<FailureKnowledgeResponse> {
+  const params = new URLSearchParams();
+  if (options?.task_type) params.set("task_type", options.task_type);
+  if (options?.project_id) params.set("project_id", options.project_id);
+  if (options?.error_category) params.set("error_category", options.error_category);
+  if (options?.include_resolved) params.set("include_resolved", "true");
+  params.set("limit", String(options?.limit ?? 50));
+  return fetchAPI(`/api/v2/failure-knowledge?${params.toString()}`);
+}
+
+export function resolveFailureKnowledge(body: {
+  error_signature: string;
+  resolution_approach?: string;
+}): Promise<{ status: string; error_signature: string; resolution_approach: string }> {
+  return fetchAPI("/api/v2/failure-knowledge/resolve", {
     method: "POST",
     body: JSON.stringify(body),
   });

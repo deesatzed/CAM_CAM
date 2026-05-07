@@ -622,6 +622,40 @@ class Repository:
         )
         return rows
 
+    async def list_failure_knowledge(
+        self,
+        *,
+        task_type: str | None = None,
+        project_id: str | None = None,
+        error_category: str | None = None,
+        include_resolved: bool = False,
+        limit: int = 50,
+    ) -> list[dict]:
+        """List failure knowledge entries for review and operator resolution."""
+        conditions: list[str] = []
+        params: list = []
+        if not include_resolved:
+            conditions.append("resolved = 0")
+        if task_type:
+            conditions.append("(task_type = ? OR task_type IS NULL)")
+            params.append(task_type)
+        if project_id:
+            conditions.append("(project_id = ? OR project_id IS NULL)")
+            params.append(project_id)
+        if error_category:
+            conditions.append("error_category = ?")
+            params.append(error_category)
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(max(1, min(int(limit or 50), 250)))
+        rows = await self.engine.fetch_all(
+            f"""SELECT * FROM failure_knowledge
+                {where_clause}
+                ORDER BY resolved ASC, occurrence_count DESC, updated_at DESC
+                LIMIT ?""",
+            params,
+        )
+        return [dict(row) for row in rows]
+
     async def mark_failure_knowledge_resolved(
         self, error_signature: str, resolution_approach: str
     ) -> None:

@@ -60,6 +60,10 @@ def _setup_client(repo: AsyncMock) -> TestClient:
         repo.save_governance_policy = AsyncMock(return_value=MagicMock(model_dump=lambda mode="json": {"id": "pol_1"}))
     if "list_governance_policies" not in repo.__dict__:
         repo.list_governance_policies = AsyncMock(return_value=[])
+    if "list_failure_knowledge" not in repo.__dict__:
+        repo.list_failure_knowledge = AsyncMock(return_value=[])
+    if "mark_failure_knowledge_resolved" not in repo.__dict__:
+        repo.mark_failure_knowledge_resolved = AsyncMock()
 
     feature_flags = MagicMock()
     feature_flags.component_cards = False
@@ -1739,6 +1743,60 @@ def test_governance_policy_status_update():
     )
     assert resp.status_code == 200
     assert resp.json()["policy"]["status"] == "waived"
+
+
+def test_failure_knowledge_list_and_resolve_endpoints():
+    repo = AsyncMock()
+    repo.list_failure_knowledge = AsyncMock(
+        return_value=[
+            {
+                "id": "fk_1",
+                "error_signature": "camseq_negative_memory:auth:slot:comp:abc",
+                "error_category": "camseq_negative_memory",
+                "diagnosis": "sync wrapper failed",
+                "prevention_hint": "avoid sync wrapper",
+                "task_type": "oauth_session_management",
+                "project_id": None,
+                "source_task_id": "run_1",
+                "occurrence_count": 2,
+                "resolved": 0,
+                "resolution_approach": None,
+                "created_at": "2026-05-07T00:00:00Z",
+                "updated_at": "2026-05-07T00:00:00Z",
+            }
+        ]
+    )
+    repo.mark_failure_knowledge_resolved = AsyncMock()
+
+    client = _setup_client(repo)
+    list_resp = client.get(
+        "/api/v2/failure-knowledge",
+        params={
+            "task_type": "oauth_session_management",
+            "error_category": "camseq_negative_memory",
+            "limit": "10",
+        },
+    )
+    assert list_resp.status_code == 200
+    data = list_resp.json()
+    assert data["count"] == 1
+    assert data["summary"]["unresolved_count"] == 1
+    assert data["summary"]["category_counts"]["camseq_negative_memory"] == 1
+    repo.list_failure_knowledge.assert_awaited_once()
+
+    resolve_resp = client.post(
+        "/api/v2/failure-knowledge/resolve",
+        json={
+            "error_signature": "camseq_negative_memory:auth:slot:comp:abc",
+            "resolution_approach": "replaced wrapper with async lock",
+        },
+    )
+    assert resolve_resp.status_code == 200
+    assert resolve_resp.json()["status"] == "resolved"
+    repo.mark_failure_knowledge_resolved.assert_awaited_once_with(
+        "camseq_negative_memory:auth:slot:comp:abc",
+        "replaced wrapper with async lock",
+    )
 
 
 def test_governance_trends_endpoint():

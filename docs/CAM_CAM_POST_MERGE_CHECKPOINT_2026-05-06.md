@@ -138,6 +138,13 @@ Verification:
 - Effect: later CAM task evaluation can reuse those records as preventive context, and serial evolution can mine them as failure-policy signals.
 - Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py -q` passed with `46 passed`.
 
+### M5 Failure Knowledge Review Surface
+
+- Issue found: durable negative memory could be stored, but not cleanly listed or resolved from the CAM-SEQ API surface.
+- Fix: added `/api/v2/failure-knowledge` listing and `/api/v2/failure-knowledge/resolve` resolution endpoints, plus frontend API client bindings.
+- Effect: operators and future UI workflow can inspect persisted negative memory, filter it by task/category/project, and mark resolved patterns without deleting history.
+- Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py tests/test_failure_knowledge.py -q` passed with `61 passed`; `npm run lint` passed in `forge-ui`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

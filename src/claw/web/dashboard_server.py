@@ -6008,6 +6008,73 @@ async def api_v2_governance_policy_status(policy_id: str, request: Request) -> J
     return JSONResponse({"policy": saved.model_dump(mode="json")})
 
 
+@app.get("/api/v2/failure-knowledge")
+async def api_v2_failure_knowledge(
+    task_type: Optional[str] = None,
+    project_id: Optional[str] = None,
+    error_category: Optional[str] = None,
+    include_resolved: bool = False,
+    limit: int = 50,
+) -> JSONResponse:
+    st = await _ensure_state(app)
+    repo = st["repository"]
+    items = await repo.list_failure_knowledge(
+        task_type=task_type,
+        project_id=project_id,
+        error_category=error_category,
+        include_resolved=include_resolved,
+        limit=max(1, min(limit, 250)),
+    )
+    category_counts: dict[str, int] = {}
+    unresolved_count = 0
+    resolved_count = 0
+    for item in items:
+        category = str(item.get("error_category") or "unknown")
+        category_counts[category] = category_counts.get(category, 0) + 1
+        if int(item.get("resolved") or 0):
+            resolved_count += 1
+        else:
+            unresolved_count += 1
+    return JSONResponse(
+        {
+            "items": items,
+            "count": len(items),
+            "filters": {
+                "task_type": task_type,
+                "project_id": project_id,
+                "error_category": error_category,
+                "include_resolved": include_resolved,
+            },
+            "summary": {
+                "unresolved_count": unresolved_count,
+                "resolved_count": resolved_count,
+                "category_counts": category_counts,
+            },
+        }
+    )
+
+
+@app.post("/api/v2/failure-knowledge/resolve")
+async def api_v2_resolve_failure_knowledge(request: Request) -> JSONResponse:
+    st = await _ensure_state(app)
+    repo = st["repository"]
+    body = await request.json()
+    error_signature = str(body.get("error_signature") or "").strip()
+    if not error_signature:
+        return JSONResponse({"error": "error_signature is required"}, status_code=400)
+    resolution_approach = str(body.get("resolution_approach") or "").strip()
+    if not resolution_approach:
+        resolution_approach = "Marked resolved from CAM-SEQ failure knowledge review"
+    await repo.mark_failure_knowledge_resolved(error_signature, resolution_approach)
+    return JSONResponse(
+        {
+            "status": "resolved",
+            "error_signature": error_signature,
+            "resolution_approach": resolution_approach,
+        }
+    )
+
+
 @app.get("/api/v2/governance/trends")
 async def api_v2_governance_trends(
     task_archetype: Optional[str] = None,

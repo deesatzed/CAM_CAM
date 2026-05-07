@@ -164,6 +164,36 @@ class TestGetFailureKnowledgeForContext:
         entries = await repo.get_failure_knowledge_for_context(limit=3)
         assert len(entries) == 3
 
+    async def test_list_failure_knowledge_includes_resolved_when_requested(self, repo):
+        await repo.record_failure_knowledge(
+            error_signature="err_open",
+            error_category="camseq_negative_memory",
+            diagnosis="open diagnosis",
+            prevention_hint="open hint",
+            task_type="bug_fix",
+        )
+        await repo.record_failure_knowledge(
+            error_signature="err_closed",
+            error_category="camseq_negative_memory",
+            diagnosis="closed diagnosis",
+            prevention_hint="closed hint",
+            task_type="bug_fix",
+        )
+        await repo.mark_failure_knowledge_resolved("err_closed", "verified fix")
+
+        unresolved = await repo.list_failure_knowledge(
+            task_type="bug_fix",
+            error_category="camseq_negative_memory",
+        )
+        assert [entry["error_signature"] for entry in unresolved] == ["err_open"]
+
+        all_entries = await repo.list_failure_knowledge(
+            task_type="bug_fix",
+            error_category="camseq_negative_memory",
+            include_resolved=True,
+        )
+        assert {entry["error_signature"] for entry in all_entries} == {"err_open", "err_closed"}
+
 
 class TestMarkFailureKnowledgeResolved:
     """mark_failure_knowledge_resolved — resolution workflow."""
