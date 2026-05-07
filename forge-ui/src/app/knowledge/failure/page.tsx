@@ -39,6 +39,20 @@ function resolvedTone(resolved: number): string {
     : "border-amber-400/30 bg-amber-400/10 text-amber-200";
 }
 
+function priorityTone(priority?: string): string {
+  if (priority === "high") {
+    return "border-red-400/30 bg-red-400/10 text-red-200";
+  }
+  if (priority === "medium") {
+    return "border-amber-400/30 bg-amber-400/10 text-amber-200";
+  }
+  return "border-cam-blue/30 bg-cam-blue/10 text-cam-blue";
+}
+
+function reasonLabel(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
 function uniqueCategories(items: FailureKnowledgeEntry[]): string[] {
   return Array.from(new Set(items.map((item) => item.error_category).filter(Boolean))).sort();
 }
@@ -97,6 +111,7 @@ export default function FailureKnowledgePage() {
   const items = data?.items ?? [];
   const groups = data?.groups ?? [];
   const summary = data?.summary;
+  const highPriorityCount = groups.filter((group) => group.priority_band === "high").length;
 
   return (
     <div>
@@ -113,10 +128,11 @@ export default function FailureKnowledgePage() {
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-3 mb-6">
+      <div className="grid gap-4 md:grid-cols-4 mb-6">
         <StatCard label="Unresolved" value={summary?.unresolved_count ?? 0} />
         <StatCard label="Resolved" value={summary?.resolved_count ?? 0} />
         <StatCard label="Groups" value={summary?.group_count ?? groups.length} />
+        <StatCard label="High Priority" value={highPriorityCount} />
       </div>
 
       <Card className="mb-6">
@@ -190,8 +206,13 @@ export default function FailureKnowledgePage() {
                   <span className="rounded border border-card-border bg-background px-2 py-1 text-[11px] text-muted">
                     {group.task_type || "global"}
                   </span>
+                  <span
+                    className={`rounded border px-2 py-1 text-[11px] font-semibold ${priorityTone(group.priority_band)}`}
+                  >
+                    {group.priority_band || "low"} priority
+                  </span>
                   <span className="text-xs text-muted font-mono ml-auto">
-                    {group.occurrence_total} hits
+                    {Math.round((group.priority_score ?? 0) * 100)} / 100
                   </span>
                 </div>
                 <p className="mb-2 break-all font-mono text-xs text-muted-dark">
@@ -204,8 +225,57 @@ export default function FailureKnowledgePage() {
                   <span>{group.entry_count} records</span>
                   <span>{group.unresolved_count} open</span>
                   <span>{group.resolved_count} resolved</span>
+                  <span>{group.occurrence_total} hits</span>
                   <span>updated: {formatDate(group.latest_updated_at || undefined)}</span>
                 </div>
+                {(group.priority_reasons?.length ?? 0) > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {group.priority_reasons?.slice(0, 6).map((reason) => (
+                      <span
+                        key={reason}
+                        className="rounded border border-card-border bg-background px-2 py-1 text-[11px] text-muted"
+                      >
+                        {reasonLabel(reason)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {((group.slot_risks?.length ?? 0) > 0 ||
+                  (group.component_files?.length ?? 0) > 0 ||
+                  (group.proof_gate_ids?.length ?? 0) > 0) && (
+                  <div className="mt-3 grid gap-2 rounded-lg border border-card-border bg-background p-3 text-xs text-muted">
+                    {(group.slot_risks?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-muted-dark">risk</span>
+                        {group.slot_risks?.map((risk) => (
+                          <span key={risk} className="font-mono text-foreground">
+                            {risk}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {(group.component_files?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-muted-dark">files</span>
+                        {group.component_files?.slice(0, 3).map((file) => (
+                          <span key={file} className="break-all font-mono text-foreground">
+                            {file}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {(group.proof_gate_ids?.length ?? 0) > 0 && (
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-muted-dark">proof</span>
+                        {group.proof_gate_ids?.slice(0, 4).map((gate) => (
+                          <span key={gate} className="font-mono text-foreground">
+                            {gate}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {group.prevention_hints[0] && (
                   <div className="mt-3 rounded-lg border border-card-border bg-background p-3 text-xs leading-relaxed text-amber-100">
                     {group.prevention_hints[0]}

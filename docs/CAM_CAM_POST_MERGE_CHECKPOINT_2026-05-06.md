@@ -181,6 +181,12 @@ Verification:
 - Effect: repeated high-risk CAM-SEQ negative-memory clusters rank above generic lower-evidence runtime failures in the review API.
 - Verification: `PYTHONPATH=src pytest tests/test_dashboard_camseq.py::test_failure_knowledge_list_and_resolve_endpoints -q` passed.
 
+### M5 Failure Group Priority UI
+
+- Fix: `/knowledge/failure` now surfaces high-priority group count, priority band, score, ranking reasons, slot risks, component files, and proof-gate evidence chips.
+- Effect: operators can see why a failure group is important without reading raw JSON or individual rows first.
+- Verification: `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

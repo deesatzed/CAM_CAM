@@ -35,6 +35,7 @@ Just finished:
 - wired CAM-SEQ negative-memory distill to persist explicit root-cause keys and packet detail signals for failed reviewed-run memories
 - wired CAM task evaluation and serial evolution mining to use root-cause grouped failure knowledge with persisted detail signals as preventive memory
 - added priority scoring for failure-knowledge causal groups using unresolved state, recurrence, slot risk, proof-gate evidence, source trace, and detail-signal richness
+- surfaced failure-knowledge priority bands, scores, reasons, and detail-signal chips in `/knowledge/failure`
 - verified the focused dashboard CAM-SEQ tests with `46 passed`
 - installed `forge-ui` local dependencies
 - fixed frontend lint errors across Evolution, Forge Run, Knowledge, Playground, and Layout
@@ -78,7 +79,7 @@ Milestones:
 - `M2`: `99%`
 - `M3`: `100%`
 - `M4`: `100%`
-- `M5`: `95%`
+- `M5`: `99%`
 - `M6`: `83%`
 - `M7`: `86%`
 - `M8`: `89%`
@@ -109,7 +110,7 @@ Current proof artifacts:
 - app: Turbopack build still crashes in this sandbox with a port-binding permission error; webpack build is clean
 - app: component search now uses merged scoring and explicit file-level fallback for content matches; the live backend needs a restart before the latest fix can be re-smoke-tested outside the test client
 - `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, and React wrapper components
-- `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution now exists, with UI polishing still possible
+- `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution plus priority review UI now exist
 - `M6`: CodeQL remains optional advanced/managed mode, not default local mode
 - `M7`: no true external/A2A specialist transport yet
 - `M8`: broader real-repo mutation benchmark coverage and more polished demo artifacts
