@@ -23,6 +23,7 @@ import time
 import uuid
 from datetime import UTC, datetime as _datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Optional
 
 import toml
@@ -1523,6 +1524,44 @@ def _apply_static_analysis_results(packet: Any, analysis: dict[str, dict[str, An
         findings.extend(gate.details)
         blocked = True
     return findings, blocked
+
+
+def _static_analysis_blocks_prewrite(analysis: dict[str, dict[str, Any]]) -> bool:
+    for result in analysis.values():
+        status = str(result.get("status") or "").lower()
+        if status == "fail":
+            return True
+        if status == "unavailable" and result.get("tool") == "codeql":
+            details = " ".join(str(item) for item in result.get("details") or [])
+            if "required" in details:
+                return True
+    return False
+
+
+def _prewrite_block_findings(analysis: dict[str, dict[str, Any]]) -> list[str]:
+    findings: list[str] = []
+    for gate_type, result in analysis.items():
+        status = str(result.get("status") or "").lower()
+        if status == "fail":
+            for finding in result.get("findings") or []:
+                findings.append(
+                    f"{gate_type}:{finding.get('severity')}:{finding.get('rule_id') or 'rule'}:{finding.get('message') or ''}"
+                )
+            findings.extend(str(item) for item in result.get("details") or [])
+        elif status == "unavailable" and result.get("tool") == "codeql":
+            details = [str(item) for item in result.get("details") or []]
+            if any("required" in item for item in details):
+                findings.extend(details)
+    return findings[:8]
+
+
+def _critical_slot_prewrite_block_enabled(feature_flags: Any, packet: Any) -> bool:
+    if not bool(getattr(feature_flags, "critical_slot_policy", False)):
+        return False
+    if not bool(getattr(feature_flags, "critical_slot_prewrite_block", False)):
+        return False
+    slot_risk = getattr(packet.slot.risk, "value", str(packet.slot.risk))
+    return slot_risk == "critical"
 
 
 async def _save_plan_record(app: FastAPI, repo: Any, plan_record: dict[str, Any]) -> TaskPlanRecord:
@@ -4821,6 +4860,81 @@ async def _start_playground_execution(
                     slot_state["status"] = "executing"
                     slot_state["current_step"] = "reverify_pending" if reverify else "pending"
                     await _persist_run_slot_execution(repo, session_id, slot_state)
+
+                if not reverify and _critical_slot_prewrite_block_enabled(feature_flags, packet):
+                    scan_paths = [
+                        site.file_path
+                        for site in (getattr(packet, "expected_landing_sites", []) or [])
+                        if getattr(site, "file_path", None)
+                    ]
+                    analysis = await run_critical_slot_policy_checks(
+                        workspace_dir or ".",
+                        scan_paths,
+                    )
+                    static_findings, _ = _apply_static_analysis_results(packet, analysis)
+                    blocking_findings = _prewrite_block_findings(analysis)
+                    if _static_analysis_blocks_prewrite(analysis):
+                        findings = blocking_findings or static_findings or ["pre-write critical-slot policy gate blocked execution"]
+                        packet.status = PacketStatus.FAILED
+                        await repo.save_application_packet(packet)
+                        await repo.save_outcome_event(
+                            OutcomeEvent(
+                                run_id=session_id,
+                                slot_id=packet.slot.slot_id,
+                                packet_id=packet.packet_id,
+                                success=False,
+                                verifier_findings=findings,
+                                test_refs=[],
+                                negative_memory_updates=list(getattr(packet.selected, "known_failure_modes", []) or [])[:2],
+                                recipe_eligible=False,
+                            )
+                        )
+                        await repo.update_component_outcome(packet.selected.component_id, False)
+                        await _record_run_event(
+                            repo,
+                            session_id,
+                            "prewrite_policy_blocked",
+                            slot_id=packet.slot.slot_id,
+                            payload={
+                                "packet_id": packet.packet_id,
+                                "gates": {
+                                    key: {
+                                        "status": value.get("status"),
+                                        "details": value.get("details"),
+                                        "finding_count": len(value.get("findings") or []),
+                                    }
+                                    for key, value in analysis.items()
+                                },
+                            },
+                        )
+                        await _record_run_event(
+                            repo,
+                            session_id,
+                            "proof_gate_failed",
+                            slot_id=packet.slot.slot_id,
+                            payload={
+                                "packet_id": packet.packet_id,
+                                "phase": "prewrite",
+                                "gates": {
+                                    key: {
+                                        "status": value.get("status"),
+                                        "details": value.get("details"),
+                                        "finding_count": len(value.get("findings") or []),
+                                    }
+                                    for key, value in analysis.items()
+                                },
+                            },
+                        )
+                        if slot_state is not None:
+                            slot_state["status"] = "failed"
+                            slot_state["current_step"] = "prewrite_policy_blocked"
+                            slot_state["last_retry_detail"] = "; ".join(findings[:3])
+                            await _persist_run_slot_execution(repo, session_id, slot_state)
+                        return SimpleNamespace(
+                            success=False,
+                            outcome=SimpleNamespace(files_changed=[]),
+                            verification=None,
+                        )
 
                 description = _render_packetized_task_description(task_description, [packet])
                 if reverify:

@@ -102,4 +102,5 @@ class TestDefaults:
         assert flags.application_packets is False
         assert flags.connectome_seq is False
         assert flags.critical_slot_policy is False
+        assert flags.critical_slot_prewrite_block is False
         assert flags.a2a_packets is False

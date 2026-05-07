@@ -546,6 +546,7 @@ class FeatureFlagsConfig(BaseModel):
     application_packets: bool = False
     connectome_seq: bool = False
     critical_slot_policy: bool = False
+    critical_slot_prewrite_block: bool = False
     a2a_packets: bool = False
 
 
@@ -715,6 +716,7 @@ def load_config(config_path: Optional[Path] = None) -> ClawConfig:
         "CLAW_FEATURE_APPLICATION_PACKETS": "application_packets",
         "CLAW_FEATURE_CONNECTOME_SEQ": "connectome_seq",
         "CLAW_FEATURE_CRITICAL_SLOT_POLICY": "critical_slot_policy",
+        "CLAW_FEATURE_CRITICAL_SLOT_PREWRITE_BLOCK": "critical_slot_prewrite_block",
         "CLAW_FEATURE_A2A_PACKETS": "a2a_packets",
     }
     for env_name, key in flag_env_map.items():

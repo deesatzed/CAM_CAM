@@ -811,6 +811,64 @@ def test_plan_create_adds_semgrep_and_codeql_gates_for_critical_slots_when_flag_
     assert "critical_policy_scan_required" in packet["review_required_reasons"]
 
 
+def test_prewrite_policy_block_helpers_only_block_configured_critical_slots():
+    from claw.web.dashboard_server import (
+        _critical_slot_prewrite_block_enabled,
+        _prewrite_block_findings,
+        _static_analysis_blocks_prewrite,
+    )
+
+    flags = MagicMock(critical_slot_policy=True, critical_slot_prewrite_block=True)
+    packet = _application_packet("plan_prewrite")
+    packet.slot.risk = "critical"
+    analysis = {
+        "semgrep": {
+            "tool": "semgrep",
+            "status": "fail",
+            "findings": [
+                {
+                    "severity": "high",
+                    "rule_id": "shell-true",
+                    "message": "shell=True in critical path",
+                }
+            ],
+            "details": [],
+        },
+        "codeql": {"tool": "codeql", "status": "deferred", "findings": [], "details": []},
+    }
+
+    assert _critical_slot_prewrite_block_enabled(flags, packet) is True
+    assert _static_analysis_blocks_prewrite(analysis) is True
+    assert _prewrite_block_findings(analysis) == [
+        "semgrep:high:shell-true:shell=True in critical path"
+    ]
+
+    packet.slot.risk = "normal"
+    assert _critical_slot_prewrite_block_enabled(flags, packet) is False
+    flags.critical_slot_prewrite_block = False
+    packet.slot.risk = "critical"
+    assert _critical_slot_prewrite_block_enabled(flags, packet) is False
+
+
+def test_prewrite_policy_blocks_required_codeql_unavailable():
+    from claw.web.dashboard_server import _prewrite_block_findings, _static_analysis_blocks_prewrite
+
+    analysis = {
+        "semgrep": {"tool": "semgrep", "status": "pass", "findings": [], "details": []},
+        "codeql": {
+            "tool": "codeql",
+            "status": "unavailable",
+            "findings": [],
+            "details": ["codeql not installed; required by CLAW_CODEQL_MODE=required"],
+        },
+    }
+
+    assert _static_analysis_blocks_prewrite(analysis) is True
+    assert _prewrite_block_findings(analysis) == [
+        "codeql not installed; required by CLAW_CODEQL_MODE=required"
+    ]
+
+
 def test_plan_approve_and_execute_endpoints():
     repo = AsyncMock()
     card = _component_card("comp_1", "refresh_access_token", "token_refresh_serialization")

@@ -187,6 +187,12 @@ Verification:
 - Effect: operators can see why a failure group is important without reading raw JSON or individual rows first.
 - Verification: `npm run lint` and `npx next build --webpack` passed in `forge-ui`.
 
+### M6 Critical-Slot Pre-Write Blocking
+
+- Fix: added `critical_slot_prewrite_block` / `CLAW_FEATURE_CRITICAL_SLOT_PREWRITE_BLOCK` as an optional stricter lane on top of `critical_slot_policy`.
+- Effect: critical-slot reviewed runs can now stop before mutation when Semgrep fails or required CodeQL is unavailable, while the default reviewed-run proof lane remains available.
+- Verification: `PYTHONPATH=src pytest tests/test_config.py::TestDefaults::test_feature_flags_default tests/test_dashboard_camseq.py::test_prewrite_policy_block_helpers_only_block_configured_critical_slots tests/test_dashboard_camseq.py::test_prewrite_policy_blocks_required_codeql_unavailable -q` passed.
+
 ## Operator Summary
 
 The merger is complete and saved. CAM_CAM has now improved itself beyond the merge in three layers:

@@ -31,6 +31,8 @@ Then set in `.env`:
 ```bash
 CLAW_SECURITY_USE_DOCKER=1
 CLAW_CODEQL_MODE=deferred
+CLAW_FEATURE_CRITICAL_SLOT_POLICY=1
+CLAW_FEATURE_CRITICAL_SLOT_PREWRITE_BLOCK=0
 ```
 
 ## Verify Docker is available
@@ -46,6 +48,17 @@ docker ps
 ```
 
 This runs the repo-local Semgrep rules inside Docker.
+
+## Optional pre-write blocking
+
+Reviewed-run proof enforcement runs after a slot attempt by default. To block critical-slot execution before mutation when Semgrep fails or required CodeQL is unavailable, enable:
+
+```bash
+export CLAW_FEATURE_CRITICAL_SLOT_POLICY=1
+export CLAW_FEATURE_CRITICAL_SLOT_PREWRITE_BLOCK=1
+```
+
+This is stricter than the default reviewed-run proof lane. Keep it off when you want operator waivers and proof-gate review to happen after an attempted slot execution.
 
 ## Advanced mode only
 

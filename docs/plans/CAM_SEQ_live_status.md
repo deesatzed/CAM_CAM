@@ -16,7 +16,7 @@ Active work:
 - resumed the pre-merger plan after the CAM_CAM/CAM-Pulse defense-chain merge
 - `M2`: close component parser precision gaps with focused real-parser coverage
 - app troubleshooting: verify frontend/backend runtime behavior and separate app defects from environment/tooling failures
-- `M6`: explicit CodeQL mode control added for skipped, deferred, and required lanes; full analysis still needs managed CodeQL assets
+- `M6`: explicit CodeQL mode control and optional pre-write critical-slot blocking are implemented; full CodeQL analysis still needs managed CodeQL assets
 - milestone ledger remains available in the long-form tracker below
 
 Just finished:
@@ -80,7 +80,7 @@ Milestones:
 - `M3`: `100%`
 - `M4`: `100%`
 - `M5`: `99%`
-- `M6`: `85%`
+- `M6`: `87%`
 - `M7`: `86%`
 - `M8`: `89%`
 
@@ -111,6 +111,6 @@ Current proof artifacts:
 - app: component search now uses merged scoring and explicit file-level fallback for content matches; the live backend needs a restart before the latest fix can be re-smoke-tested outside the test client
 - `M2`: broader verified parser coverage beyond the currently tested Python/TypeScript/TSX/JSX families, named default-export shapes, TypeScript contract symbols, and React wrapper components
 - `M5`: stronger causal model beyond heuristic weighting, grouped summaries, decision traces, confidence drivers, calibration, stability, and discrimination; negative-memory persistence/listing/resolution plus priority review UI now exist
-- `M6`: full CodeQL analysis still needs managed/advanced assets; local mode now has explicit `off`, `deferred`, and `required` behavior
+- `M6`: full CodeQL analysis still needs managed/advanced assets; local mode now has explicit `off`, `deferred`, `required`, and optional pre-write blocking behavior
 - `M7`: no true external/A2A specialist transport yet
 - `M8`: broader real-repo mutation benchmark coverage and more polished demo artifacts
