@@ -42,6 +42,8 @@ _JS_FUNC_COMPONENT_TYPES = {"function_declaration", "generator_function_declarat
 _JS_CLASS_COMPONENT_TYPES = {"class_declaration"}
 _TS_VAR_COMPONENT_TYPES = {"lexical_declaration", "variable_statement"}
 _TS_CONTRACT_COMPONENT_TYPES = {"interface_declaration", "type_alias_declaration"}
+_JS_FUNCTION_VALUE_TYPES = {"arrow_function", "function", "function_expression"}
+_JS_FUNCTION_WRAPPER_CALLS = {"memo", "forwardRef", "React.memo", "React.forwardRef"}
 
 
 def _detect_language(path: Path) -> Optional[str]:
@@ -360,6 +362,24 @@ def _extract_js_ts_imports(root: Any, text_bytes: bytes) -> list[str]:
     return imports[:12]
 
 
+def _js_function_value_node(value_node: Any, text_bytes: bytes) -> Optional[Any]:
+    if value_node.type in _JS_FUNCTION_VALUE_TYPES:
+        return value_node
+    if value_node.type != "call_expression":
+        return None
+    callee = value_node.child_by_field_name("function")
+    callee_text = _ts_node_text(callee, text_bytes).strip() if callee is not None else ""
+    if callee_text not in _JS_FUNCTION_WRAPPER_CALLS:
+        return None
+    args = value_node.child_by_field_name("arguments")
+    if args is None:
+        return None
+    for nested in _walk_ts_nodes(args):
+        if nested.type in _JS_FUNCTION_VALUE_TYPES:
+            return nested
+    return None
+
+
 def _extract_var_components(node: Any, text_bytes: bytes, relative_path: str, language: str, imports: list[str]) -> list[ExtractedComponent]:
     components: list[ExtractedComponent] = []
     for current in _walk_ts_nodes(node):
@@ -372,10 +392,11 @@ def _extract_var_components(node: Any, text_bytes: bytes, relative_path: str, la
         symbol_name = _ts_node_text(name_node, text_bytes).strip()
         if not symbol_name:
             continue
-        value_type = value_node.type
-        if value_type not in {"arrow_function", "function", "function_expression"}:
+        function_value = _js_function_value_node(value_node, text_bytes)
+        if function_value is None:
             continue
-        is_async = any(grandchild.type == "async" for grandchild in getattr(value_node, "children", []))
+        value_type = value_node.type
+        is_async = any(grandchild.type == "async" for grandchild in getattr(function_value, "children", []))
         component_type = _classify_component(
             symbol_name,
             symbol_kind="function",
@@ -768,6 +789,7 @@ _JS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"^(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "function"),
     (re.compile(r"^(?:export\s+)?(?:default\s+)?class\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "class"),
     (re.compile(r"^(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:async\s*)?\([^\)]*\)\s*=>", re.MULTILINE), "function"),
+    (re.compile(r"^(?:export\s+)?const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:React\.)?(?:memo|forwardRef)\s*(?:<[^>\n]+>)?\(", re.MULTILINE), "function"),
     (re.compile(r"^(?:export\s+)?interface\s+([A-Za-z_][A-Za-z0-9_]*)", re.MULTILINE), "interface"),
     (re.compile(r"^(?:export\s+)?type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", re.MULTILINE), "type_alias"),
 ]

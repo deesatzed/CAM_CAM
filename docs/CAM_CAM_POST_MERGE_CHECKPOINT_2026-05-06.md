@@ -127,8 +127,9 @@ Verification:
 - Follow-on fix: `.tsx` files now use the dedicated `language_tsx` grammar instead of plain TypeScript parsing.
 - Follow-on fix: named `export default function` and `export default class` components are now unwrapped correctly in Tree-sitter extraction, with JavaScript fallback coverage for named default exports when Tree-sitter is unavailable.
 - Follow-on fix: TypeScript/TSX `interface` and `type` declarations now ingest as `type_contract` components through Tree-sitter, with TypeScript fallback coverage when Tree-sitter is unavailable.
-- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `38 passed`.
-- Result: real TypeScript and TSX Tree-sitter extraction now use precision parser paths and preserve common default-exported component and contract-symbol shapes instead of silently falling back or degrading to module-level cards.
+- Follow-on fix: JSX/TSX React wrapper declarations using `memo`, `React.memo`, and `forwardRef` now ingest as function components instead of falling back to module cards.
+- Verification: `PYTHONPATH=src pytest tests/test_component_extractor.py -q` passed with `42 passed`.
+- Result: real TypeScript, TSX, and JSX Tree-sitter extraction now use precision parser paths and preserve common default-exported, contract-symbol, and React-wrapper component shapes instead of silently falling back or degrading to module-level cards.
 
 ## Operator Summary
 
