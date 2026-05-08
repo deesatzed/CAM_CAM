@@ -1,0 +1,26 @@
+{
+  "summary": {
+    "repos_scanned": 238,
+    "clusters": 8,
+    "nodes_emitted": 249,
+    "edges_emitted": 244,
+    "opportunities": 6,
+    "source_mutations": 0
+  },
+  "nodes": [
+    {"id": "cluster:browser_local_tools", "kind": "cluster", "label": "browser_local_tools", "count": 118},
+    {"id": "cluster:repo_intelligence", "kind": "cluster", "label": "repo_intelligence", "count": 40},
+    {"id": "cluster:rag_knowledge", "kind": "cluster", "label": "rag_knowledge", "count": 32},
+    {"id": "cluster:learning_evolution", "kind": "cluster", "label": "learning_evolution", "count": 25},
+    {"id": "opportunity:local_knowledge_appliance", "kind": "opportunity", "label": "Local Knowledge Appliance", "score": 190},
+    {"id": "risk:llm_key_sensitive", "kind": "risk", "label": "llm-key-sensitive", "count": 154},
+    {"id": "risk:no_tests", "kind": "risk", "label": "no-tests", "count": 117}
+  ],
+  "edges": [
+    {"source": "opportunity:local_knowledge_appliance", "target": "cluster:browser_local_tools", "kind": "supported_by"},
+    {"source": "opportunity:local_knowledge_appliance", "target": "cluster:repo_intelligence", "kind": "supported_by"},
+    {"source": "opportunity:local_knowledge_appliance", "target": "cluster:rag_knowledge", "kind": "supported_by"},
+    {"source": "risk:llm_key_sensitive", "target": "cluster:browser_local_tools", "kind": "risk_signal"},
+    {"source": "risk:no_tests", "target": "cluster:learning_evolution", "kind": "risk_signal"}
+  ]
+}

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Rescue Desk Dashboard Snapshot</title>
+  <style>
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f4f7fb; color: #182330; }
+    main { width: min(960px, calc(100% - 32px)); margin: 32px auto; }
+    h1 { margin: 0 0 10px; font-size: 2rem; }
+    p { color: #526170; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 22px 0; }
+    .card { background: #fff; border: 1px solid #d4dee8; border-radius: 8px; padding: 16px; }
+    .card strong { display: block; font-size: 1.8rem; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #d4dee8; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid #e1e8ef; text-align: left; }
+    th { background: #eaf1f6; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Repo Rescue Desk Dashboard Snapshot</h1>
+    <p>Sanitized public snapshot from the 238-repo proof run. Local paths and repo-specific receipts are omitted from this public sample.</p>
+    <section class="grid" aria-label="Run metrics">
+      <div class="card"><strong>238</strong>git repos scanned</div>
+      <div class="card"><strong>8</strong>capability clusters</div>
+      <div class="card"><strong>249</strong>graph nodes</div>
+      <div class="card"><strong>244</strong>graph edges</div>
+      <div class="card"><strong>6</strong>opportunities ranked</div>
+      <div class="card"><strong>0</strong>source mutations</div>
+    </section>
+    <table>
+      <thead><tr><th>Cluster</th><th>Repos</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td>browser_local_tools</td><td>118</td><td>Broad v1 bucket, known split target</td></tr>
+        <tr><td>repo_intelligence</td><td>40</td><td>Repo archaeology and workspace understanding</td></tr>
+        <tr><td>rag_knowledge</td><td>32</td><td>Retrieval and knowledge memory</td></tr>
+        <tr><td>learning_evolution</td><td>25</td><td>RL and self-improvement systems</td></tr>
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>

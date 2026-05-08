@@ -21,11 +21,13 @@ Location:
 
 - `apps/repo_rescue_desk`
 
-Run against the local repo universe:
+Run against any folder whose direct children are git repos:
 
 ```bash
+git clone https://github.com/deesatzed/CAM_CAM.git
+cd CAM_CAM
 PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
-  --root /Volumes/WS4TB/repo421sn \
+  --root /path/to/folder/containing/git/repos \
   --out-dir tmp/repo_rescue_desk/latest
 ```
 
@@ -88,4 +90,3 @@ GraphRAG, inventory, risk, and opportunity artifacts exist.
 The first version uses deterministic README, file, and git metadata analysis.
 It does not yet perform embedding-based semantic clustering or ingest the
 results into CAM's durable learning memory. Those are the next useful upgrades.
-

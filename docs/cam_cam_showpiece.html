@@ -466,6 +466,37 @@
       color: #ffffff;
       border-color: #101820;
     }
+    .identity-strip {
+      margin-bottom: 26px;
+      padding: 12px 14px;
+      background: #ffffff;
+      border: 1px solid #c9d6e2;
+      border-left: 6px solid var(--blue);
+      border-radius: 8px;
+      color: #263442;
+      box-shadow: 0 10px 24px rgba(31, 48, 64, 0.07);
+    }
+    .identity-strip strong { color: #101820; }
+    .proof-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+    }
+    .proof-badges a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 10px;
+      border: 1px solid #c9d6e2;
+      background: #ffffff;
+      color: #25313d;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: 0.82rem;
+      font-weight: 760;
+    }
+    .proof-badges img { display: block; height: 20px; }
 
     .terminal {
       background: #ffffff;
@@ -616,10 +647,91 @@
       color: #101820;
       font-size: 1rem;
     }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+    .preview-panel {
+      background: #ffffff;
+      border: 1px solid #d4dee8;
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(31, 48, 64, 0.07);
+      overflow: hidden;
+    }
+    .preview-head {
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 14px;
+      background: #eaf1f6;
+      border-bottom: 1px solid #d4dee8;
+      color: #445261;
+      font-size: 0.86rem;
+      font-weight: 780;
+    }
+    .preview-body { padding: 14px; }
+    .mini-dashboard {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .mini-stat {
+      border: 1px solid #d4dee8;
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 12px;
+      min-height: 76px;
+    }
+    .mini-stat strong { display: block; color: #101820; font-size: 1.35rem; }
+    .mini-stat span { color: #526170; font-size: 0.82rem; }
+    .mini-bars { display: grid; gap: 9px; }
+    .mini-bar {
+      display: grid;
+      grid-template-columns: 132px 1fr 42px;
+      gap: 10px;
+      align-items: center;
+      color: #526170;
+      font-size: 0.84rem;
+    }
+    .track { height: 8px; border-radius: 999px; background: #dce6ee; overflow: hidden; }
+    .track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--teal), var(--blue)); }
+    .markmap-preview {
+      padding: 14px;
+      background: #f8fbff;
+      border: 1px solid #d4dee8;
+      border-radius: 8px;
+      color: #25313d;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.86rem;
+      line-height: 1.55;
+      overflow-x: auto;
+    }
+    .artifact-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .artifact-links a {
+      color: #123f72;
+      background: #eef5ff;
+      border: 1px solid #c8daf4;
+      border-radius: 8px;
+      padding: 8px 10px;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 760;
+    }
     footer { background: #ffffff; border-top: 1px solid #d4dee8; }
 
     @media (max-width: 980px) {
       .hero-grid { grid-template-columns: 1fr; }
+      .preview-grid { grid-template-columns: 1fr; }
       h1 { font-size: clamp(2.35rem, 9vw, 4rem); }
     }
   </style>
@@ -627,7 +739,7 @@
 <body>
   <header class="topbar">
     <div class="wrap nav">
-      <div class="brand"><span class="mark">C</span><span>CAM_CAM</span></div>
+      <div class="brand"><span class="mark" aria-hidden="true">RD</span><span>CAM_CAM</span></div>
       <nav class="navlinks" aria-label="Primary">
         <a href="#why">Why try it</a>
         <a href="#results">Results</a>
@@ -642,12 +754,16 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
+          <div class="identity-strip">
+            <strong>CAM_CAM</strong> is the repo/workspace. <strong>CAM-PULSE</strong> is the closed-loop learning system inside it.
+            <strong>Repo Rescue Desk</strong> is the read-only triage layer that prepares a repo universe for CAM-PULSE to act on safely.
+          </div>
           <div class="eyebrow"><span class="dot"></span>Repo Rescue Desk: current CAM_CAM flagship</div>
-          <h1>Map any folder of repos into risks, clusters, and next builds.</h1>
+          <h1>Preflight your repo universe before AI agents touch it.</h1>
           <p class="lead">
-            CAM_CAM is being shaped into the operating layer around CAM: it scans a folder of real repos,
-            finds reusable systems, flags risks before an agent edits code, ranks what should be built next,
-            and exports machine-readable context for GraphRAG, Logseq, Markmap, and Freeplane.
+            CAM_CAM scans a folder of real repos, finds reusable systems, flags risk before an agent edits code,
+            ranks what should be built or mined next, and exports machine-readable context for GraphRAG, Logseq,
+            Markmap, and Freeplane.
           </p>
           <div class="callout">
             A SWE would try this when they have a messy local repo collection, inherited code, experimental agent tools,
@@ -655,8 +771,12 @@
           </div>
           <div class="button-row">
             <a class="button primary" href="#run">Run the showpiece</a>
-            <a class="button" href="CAM_SHOWPIECE_REPO_RESCUE_DESK.md">Read proof note</a>
+            <a class="button" href="CAM_SHOWPIECE_REPO_RESCUE_DESK.html">Read proof note</a>
             <a class="button" href="PROOF_POINT_INDEX.md">Proof index</a>
+          </div>
+          <div class="proof-badges" aria-label="Build status links">
+            <a href="https://github.com/deesatzed/CAM_CAM/actions/workflows/ci.yml"><img src="https://github.com/deesatzed/CAM_CAM/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+            <a href="https://github.com/deesatzed/CAM_CAM/actions/workflows/test.yml"><img src="https://github.com/deesatzed/CAM_CAM/actions/workflows/test.yml/badge.svg" alt="Test Suite status"></a>
           </div>
         </div>
 
@@ -695,33 +815,18 @@
         <div class="cards">
           <article class="card">
             <div class="num">01</div>
-            <h3>It turns repo sprawl into an engineering map</h3>
-            <p>Point CAM_CAM at a directory of repos. It inventories them, clusters them by capability, detects duplicates by normalized names, and produces a graph that a human or agent can navigate.</p>
+            <h3>Preflight for multi-repo AI work</h3>
+            <p>Before an agent edits anything, CAM_CAM inventories the repos, records git state, flags dirty worktrees, missing tests, security-sensitive terms, medical/PII signals, and key/API language.</p>
           </article>
           <article class="card">
             <div class="num">02</div>
-            <h3>It blocks the usual AI-agent footgun</h3>
-            <p>The first action is read-only triage. It reports dirty worktrees, missing tests, security-sensitive language, medical/PII indicators, and API-key-sensitive language before any merge or rewrite.</p>
+            <h3>Turn local code sprawl into a map</h3>
+            <p>It clusters repos by capability, finds duplicate-name families, emits a graph, and ranks build opportunities using the systems already sitting in the workspace.</p>
           </article>
           <article class="card">
             <div class="num">03</div>
-            <h3>It gives you reusable context, not just a PDF</h3>
-            <p>The output is structured for follow-on work: JSON inventory, graph nodes/edges, GraphRAG chunks, Logseq pages, Markmap outline, Freeplane map, dashboard HTML, risks, and ranked opportunities.</p>
-          </article>
-          <article class="card">
-            <div class="num">04</div>
-            <h3>It helps choose the next useful build</h3>
-            <p>Instead of forcing an arbitrary demo app, it ranks opportunities from the repo universe. In the real scan, the top recommendation was a Local Knowledge Appliance, followed by Repo Rescue Desk itself.</p>
-          </article>
-          <article class="card">
-            <div class="num">05</div>
-            <h3>It is a bridge into CAM's learning loop</h3>
-            <p>CAM-PULSE proves mining, retrieval, verification, and learning from outcomes. CAM_CAM's role is to prepare high-quality cross-repo context so that loop can be applied safely to a local fleet.</p>
-          </article>
-          <article class="card">
-            <div class="num">06</div>
-            <h3>It is useful even before automation</h3>
-            <p>A team can use the generated risk report, opportunities, and mindmaps as a planning artifact before enabling code modification, model calls, or repository assimilation.</p>
+            <h3>Export context CAM-PULSE can use</h3>
+            <p>The output is not a slide deck. It is JSON inventory, graph JSON, GraphRAG chunks, Logseq pages, Markmap Markdown, Freeplane XML, risk reports, opportunities, and scan receipts.</p>
           </article>
         </div>
       </div>
@@ -802,6 +907,10 @@
               </tbody>
             </table>
           </div>
+          <p class="small">
+            Classifier note: <code>browser_local_tools</code> is intentionally broad in this v1 proof run. Splitting it into browser automation,
+            local CLI tools, dashboards, and agent runtimes is a clear next classifier upgrade.
+          </p>
         </div>
 
         <div>
@@ -811,14 +920,14 @@
           </div>
           <div class="table-wrap">
             <table>
-              <thead><tr><th>Flag</th><th>Count</th><th>Meaning</th></tr></thead>
+              <thead><tr><th>Flag</th><th>Count</th><th>Meaning</th><th>Next action</th></tr></thead>
               <tbody>
-                <tr><td>llm-key-sensitive</td><td><strong>154</strong></td><td>API key, token, secret, OpenRouter, or env language appears.</td></tr>
-                <tr><td>security-sensitive</td><td><strong>124</strong></td><td>Security, sandbox, proxy, audit, or credential language appears.</td></tr>
-                <tr><td>no-tests</td><td><strong>117</strong></td><td>No obvious tests directory or test file was found.</td></tr>
-                <tr><td>medical-sensitive</td><td><strong>72</strong></td><td>Medical, clinical, patient, HIPAA, PHI, or PII language appears.</td></tr>
-                <tr><td>dirty-worktree</td><td><strong>58</strong></td><td>Repo has uncommitted or untracked changes.</td></tr>
-                <tr><td>no-readme</td><td><strong>7</strong></td><td>Purpose is not self-evident from README.</td></tr>
+                <tr><td>llm-key-sensitive</td><td><strong>154</strong></td><td>API key, token, secret, OpenRouter, or env language appears.</td><td>Run a secret scan and redact before cloud LLM ingestion.</td></tr>
+                <tr><td>security-sensitive</td><td><strong>124</strong></td><td>Security, sandbox, proxy, audit, or credential language appears.</td><td>Route to guarded branch-first edits with receipts.</td></tr>
+                <tr><td>no-tests</td><td><strong>117</strong></td><td>No obvious tests directory or test file was found.</td><td>Add smoke tests before migration, mining, or self-modification.</td></tr>
+                <tr><td>medical-sensitive</td><td><strong>72</strong></td><td>Medical, clinical, patient, HIPAA, PHI, or PII language appears.</td><td>Use local-only review until PHI/PII exposure is ruled out.</td></tr>
+                <tr><td>dirty-worktree</td><td><strong>58</strong></td><td>Repo has uncommitted or untracked changes.</td><td>Commit, stash, or copy before any agent writes.</td></tr>
+                <tr><td>no-readme</td><td><strong>7</strong></td><td>Purpose is not self-evident from README.</td><td>Generate or write a short project summary before clustering.</td></tr>
               </tbody>
             </table>
           </div>
@@ -830,7 +939,11 @@
       <div class="wrap">
         <div class="section-head">
           <h2>What CAM_CAM recommended building next</h2>
-          <p>The opportunity score is the support count across required clusters. It is simple, explainable, and auditable.</p>
+          <p>
+            Score = the number of repos in the capability clusters an idea needs. It is a heuristic fit-to-your-existing-repos signal,
+            not independent product-market validation. Repo Rescue Desk appearing in the list means this repo universe strongly supports
+            that tool shape; it is not proof of outside demand.
+          </p>
         </div>
         <div class="table-wrap">
           <table>
@@ -838,7 +951,7 @@
               <tr>
                 <th>Rank</th>
                 <th>Opportunity</th>
-                <th>Score</th>
+                <th>Heuristic score</th>
                 <th>Useful output</th>
                 <th>Measurable outcome</th>
               </tr>
@@ -966,6 +1079,48 @@
             <div class="artifact"><code>risk_report.md</code><p>Flag summary plus per-repo risk list.</p></div>
             <div class="artifact"><code>opportunity_rankings.md</code><p>Ranked next builds, supporting clusters, supporting repos, and measurable outcomes.</p></div>
         </div>
+        <div class="preview-grid" style="margin-top: 18px;">
+          <article class="preview-panel">
+            <div class="preview-head"><span>Dashboard snapshot</span><span>sanitized proof run</span></div>
+            <div class="preview-body">
+              <div class="mini-dashboard">
+                <div class="mini-stat"><strong>238</strong><span>repos</span></div>
+                <div class="mini-stat"><strong>8</strong><span>clusters</span></div>
+                <div class="mini-stat"><strong>6</strong><span>opportunities</span></div>
+              </div>
+              <div class="mini-bars" aria-label="Cluster distribution">
+                <div class="mini-bar"><span>browser/local</span><span class="track"><i style="width: 100%"></i></span><span>118</span></div>
+                <div class="mini-bar"><span>repo intel</span><span class="track"><i style="width: 34%"></i></span><span>40</span></div>
+                <div class="mini-bar"><span>RAG/KB</span><span class="track"><i style="width: 27%"></i></span><span>32</span></div>
+                <div class="mini-bar"><span>learning</span><span class="track"><i style="width: 21%"></i></span><span>25</span></div>
+              </div>
+            </div>
+          </article>
+          <article class="preview-panel">
+            <div class="preview-head"><span>Markmap / GraphRAG outline</span><span>agent-readable</span></div>
+            <div class="preview-body">
+              <pre class="markmap-preview"># CAM_CAM Repo Universe
+## Clusters
+### browser_local_tools (118)
+### repo_intelligence (40)
+### rag_knowledge (32)
+## Risks
+### llm-key-sensitive (154)
+### dirty-worktree (58)
+## Opportunities
+### Local Knowledge Appliance
+### Mindmap GraphRAG Studio</pre>
+            </div>
+          </article>
+        </div>
+        <div class="artifact-links" aria-label="Public sample output links">
+          <a href="showpieces/repo_rescue_desk/sample_output/dashboard_snapshot.html">Dashboard sample</a>
+          <a href="showpieces/repo_rescue_desk/sample_output/repo_graph_sample.json">Graph JSON sample</a>
+          <a href="showpieces/repo_rescue_desk/sample_output/repo_mindmap_markmap.md">Markmap sample</a>
+          <a href="showpieces/repo_rescue_desk/sample_output/graphrag_context.md">GraphRAG sample</a>
+          <a href="showpieces/repo_rescue_desk/sample_output/risk_report.md">Risk report sample</a>
+          <a href="showpieces/repo_rescue_desk/sample_output/opportunity_rankings.md">Opportunity sample</a>
+        </div>
       </div>
     </section>
 
@@ -1014,7 +1169,7 @@ git diff --check</pre>
             <p>
               Focused tests pass. The harness creates a controlled fixture repo universe, runs the CLI,
               and verifies dashboard, inventory, GraphRAG, graph JSON, risk report, opportunities,
-              Logseq, Freeplane, and Markmap artifacts. GitHub CI and Test Suite passed after the prior showpiece commits.
+              Logseq, Freeplane, and Markmap artifacts. CI badges above link to the current GitHub Actions workflows.
             </p>
             <p class="small">
               Honest limit: semantic embeddings and durable CAM memory ingestion are next steps. The current scanner is deterministic and heuristic.
@@ -1030,7 +1185,9 @@ git diff --check</pre>
           <h2>Run it locally</h2>
           <p>Use this when you want a concrete answer to: what do I have, what is risky, what should CAM mine or build next?</p>
         </div>
-        <pre class="codeblock">PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
+        <pre class="codeblock">git clone https://github.com/deesatzed/CAM_CAM.git
+cd CAM_CAM
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
   --root /path/to/folder/containing/git/repos \
   --out-dir tmp/repo_rescue_desk/latest</pre>
         <p class="small">
@@ -1043,7 +1200,8 @@ git diff --check</pre>
 
   <footer>
     <div class="wrap">
-      CAM_CAM Repo Rescue Desk. Current commit exposes the showpiece on GitHub Pages and keeps the source repo clean after push.
+      <strong>Built by Wayne Satz</strong> · <a href="https://github.com/deesatzed">@deesatzed</a> ·
+      CAM_CAM Repo Rescue Desk is a read-only showpiece for safer multi-repo AI engineering.
     </div>
   </footer>
 </body>

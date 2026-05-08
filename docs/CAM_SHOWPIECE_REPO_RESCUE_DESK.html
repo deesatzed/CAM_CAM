@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Rescue Desk Proof Note</title>
+  <meta name="description" content="Proof note for the CAM_CAM Repo Rescue Desk showpiece.">
+  <style>
+    body {
+      margin: 0;
+      background: #f4f7fb;
+      color: #182330;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.58;
+    }
+    main { width: min(960px, calc(100% - 32px)); margin: 44px auto; }
+    a { color: #078f7d; font-weight: 800; }
+    h1 { margin: 0 0 8px; font-size: clamp(2.2rem, 6vw, 4rem); line-height: 1.04; }
+    h2 { margin-top: 34px; color: #101820; }
+    p, li { color: #526170; }
+    .panel {
+      background: #fff;
+      border: 1px solid #d4dee8;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 18px 0;
+      box-shadow: 0 12px 28px rgba(31, 48, 64, 0.07);
+    }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    pre {
+      background: #101820;
+      color: #eaf1f6;
+      border-radius: 8px;
+      padding: 16px;
+      overflow-x: auto;
+    }
+    ul { padding-left: 22px; }
+    .back { display: inline-block; margin-bottom: 22px; }
+  </style>
+</head>
+<body>
+  <main>
+    <a class="back" href="cam_cam_showpiece.html">Back to CAM_CAM showpiece</a>
+    <h1>Repo Rescue Desk Proof Note</h1>
+    <p>Repo Rescue Desk is the current CAM_CAM showpiece: a read-only triage layer that turns a repo universe into risks, capability clusters, ranked opportunities, and graph artifacts before CAM-PULSE or any AI agent mutates code.</p>
+
+    <section class="panel">
+      <h2>What This Proves</h2>
+      <ul>
+        <li>CAM_CAM can scan a real repo universe.</li>
+        <li>It classifies repos into capability clusters.</li>
+        <li>It identifies governance concerns before acting.</li>
+        <li>It ranks useful app and showpiece opportunities.</li>
+        <li>It exports dashboard, graph, GraphRAG, Logseq, Markmap, and Freeplane artifacts.</li>
+        <li>It leaves source repos untouched.</li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Run</h2>
+      <pre>git clone https://github.com/deesatzed/CAM_CAM.git
+cd CAM_CAM
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
+  --root /path/to/folder/containing/git/repos \
+  --out-dir tmp/repo_rescue_desk/latest</pre>
+    </section>
+
+    <section class="panel">
+      <h2>Outputs</h2>
+      <ul>
+        <li><code>repo_inventory.json</code></li>
+        <li><code>repo_rescue_dashboard.html</code></li>
+        <li><code>opportunity_rankings.md</code></li>
+        <li><code>risk_report.md</code></li>
+        <li><code>repo_mindmap_markmap.md</code></li>
+        <li><code>repo_mindmap_freeplane.mm</code></li>
+        <li><code>repo_graph.json</code></li>
+        <li><code>graphrag_context.md</code></li>
+        <li><code>logseq/pages/*.md</code></li>
+      </ul>
+    </section>
+
+    <section class="panel">
+      <h2>Verification</h2>
+      <pre>PYTHONPATH=apps/repo_rescue_desk python -m pytest apps/repo_rescue_desk/tests -q
+./scripts/test_repo_rescue_desk_showpiece.sh
+python -m html.parser docs/cam_cam_showpiece.html
+git diff --check</pre>
+      <p>The harness creates a controlled fixture repo universe, runs the CLI, and verifies dashboard, inventory, GraphRAG, graph JSON, risk report, opportunities, Logseq, Freeplane, and Markmap artifacts.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Limits</h2>
+      <p>The first version uses deterministic README, file, and git metadata analysis. It does not yet perform embedding-based semantic clustering or ingest the results into CAM's durable learning memory. Those are the next useful upgrades.</p>
+    </section>
+  </main>
+</body>
+</html>
