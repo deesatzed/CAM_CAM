@@ -1,5 +1,7 @@
 # CAM-PULSE
 
+> **CAM_CAM showpiece landing page:** [Repo Rescue Desk](docs/cam_cam_showpiece.html) shows the current CAM_CAM value proposition: scan a local repo universe, classify capabilities, triage risk, rank build opportunities, and export GraphRAG / Logseq / Markmap / Freeplane artifacts before changing target code.
+
 ### Powered by Grok 4.3 — the AI coding system that mines, remembers, and learns.
 
 CAM-PULSE **autonomously mines** error handling, retry logic, API design, and testing patterns from real GitHub repos — no human authoring needed. It stores them as structured, novelty-scored, lifecycle-tracked methodologies and uses that knowledge to build working software powered by xAI's Grok 4.3. Build outcomes feed back into pattern quality scores via a Thompson-sampling bandit tournament: patterns that help builds pass get promoted, patterns that hurt builds get demoted.
