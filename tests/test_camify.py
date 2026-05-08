@@ -364,6 +364,16 @@ class TestCamifyPlanner:
         assert plan.steps[0].id == "preflight"
         assert "cam doctor" in plan.steps[0].command
 
+    def test_plan_includes_target_write_policy(
+        self, sample_profile: RepoProfile, sample_match_report: MatchReport,
+    ) -> None:
+        planner = CamifyPlanner()
+        plan = planner.plan(sample_profile, sample_match_report, ["enhance the repo"])
+        policy_steps = [s for s in plan.steps if s.id == "target-write-policy"]
+        assert len(policy_steps) == 1
+        assert "git -C /tmp/test-repo status --short" in policy_steps[0].command
+        assert "direct main pushes require explicit approval" in policy_steps[0].verification
+
     def test_plan_includes_cag_rebuild(
         self, sample_profile: RepoProfile, sample_match_report: MatchReport,
     ) -> None:

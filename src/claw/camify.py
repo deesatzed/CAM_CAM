@@ -432,6 +432,24 @@ class CamifyPlanner:
             verification=f"Shows {matches.kb_methodology_count}+ methodologies",
         ))
 
+        steps.append(CamifyStep(
+            id="target-write-policy",
+            phase="preflight",
+            command=(
+                f"git -C {repo} status --short && "
+                f"git -C {repo} branch --show-current && "
+                f"git -C {repo} log -1 --oneline"
+            ),
+            purpose=(
+                "Snapshot target repo state and choose branch, patch artifact, "
+                "or explicit direct-push approval before code changes"
+            ),
+            verification=(
+                "Target HEAD, dirty state, and write destination are recorded; "
+                "direct main pushes require explicit approval"
+            ),
+        ))
+
         if assimilation_targets:
             source_repo = source_repos[0] if source_repos else repo
             steps.append(CamifyStep(

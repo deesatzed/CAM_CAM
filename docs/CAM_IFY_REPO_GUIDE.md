@@ -67,6 +67,8 @@ git stash  # or commit current work
 git log --oneline -3  # note the HEAD commit for rollback
 ```
 
+**Target write policy**: CAM-ify runs should default to a target branch or a CAM-owned patch artifact. Direct pushes to the target repo's `main` branch require explicit user approval for that target repo.
+
 ---
 
 ## Phase 1: MINE — Study the Target Repo

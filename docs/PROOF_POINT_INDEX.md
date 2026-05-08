@@ -18,6 +18,7 @@ How to reproduce every proof point CAM-PULSE claims.
 
 | # | Proof | What It Shows | Reproduce | Detailed Doc |
 |---|-------|---------------|-----------|--------------|
+| 24 | **ClinSafer Governed Skill Router** | Updated 4 repos, applied medical skill libraries into ClinSafer, added safety-governed routing, and verified with 395 passing target-repo tests | Manual — see detailed doc | [CAM_SHOWPIECE_CLINSAFER_GOVERNED_SKILL_ROUTER.md](CAM_SHOWPIECE_CLINSAFER_GOVERNED_SKILL_ROUTER.md) |
 | 23 | **TidyHome CLI** | Real zero-dep CLI scanned 1.35M files / 97.55 GB on real `~/`, 90% test coverage, 38 tests, 16/16 validation steps pass | `./scripts/test_tidyhome_showpiece.sh` | [CAM_SHOWPIECE_TIDYHOME.md](CAM_SHOWPIECE_TIDYHOME.md) |
 | 8 | **Plugin Event System** | 3 repos synthesized into 1 module, 258 lines, 5/5 tests | `./scripts/test_plugin_event_showpiece.sh` | [CAM_SHOWPIECE_PLUGIN_EVENT_SYSTEM.md](CAM_SHOWPIECE_PLUGIN_EVENT_SYSTEM.md) |
 | 6 | **PULSE Usage Proof** | Retrieved=3, Used=3, Attributed=3 — knowledge applied with provenance | `./scripts/test_pulse_usage_proof.sh` | [CAM_SHOWPIECE_PULSE_USAGE_PROOF.md](CAM_SHOWPIECE_PULSE_USAGE_PROOF.md) |
