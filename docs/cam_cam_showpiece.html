@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CAM_CAM - Repo Rescue Desk Showpiece</title>
-  <meta name="description" content="CAM_CAM turns a folder of repos into a risk-aware, GraphRAG-ready rescue plan with mindmaps, opportunity ranking, and proof-backed next actions.">
+  <title>CAM_CAM - Repo Rescue Desk Technical Showpiece</title>
+  <meta name="description" content="CAM_CAM Repo Rescue Desk scans a local repo universe, triages risk, ranks build opportunities, and exports GraphRAG, Logseq, Markmap, and Freeplane artifacts for safer AI engineering.">
   <style>
     :root {
       color-scheme: dark;
-      --bg: #0b0f14;
-      --panel: #111821;
-      --panel-2: #16202b;
-      --ink: #eef4f8;
-      --muted: #a9b7c2;
-      --line: #263543;
-      --teal: #44d7b6;
-      --amber: #f5b84b;
-      --blue: #65a8ff;
-      --rose: #ff6f8e;
-      --green: #8fe388;
-      --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+      --bg: #090d12;
+      --band: #0e141b;
+      --panel: #121a24;
+      --panel2: #172331;
+      --ink: #edf5f8;
+      --muted: #a8b7c3;
+      --dim: #71818f;
+      --line: #2a3948;
+      --teal: #42d9b7;
+      --blue: #66a9ff;
+      --amber: #f2b84b;
+      --rose: #ff6d8f;
+      --green: #8be28a;
+      --code: #06090d;
     }
 
     * { box-sizing: border-box; }
@@ -27,26 +29,28 @@
     body {
       margin: 0;
       background:
-        linear-gradient(140deg, rgba(68, 215, 182, 0.11), transparent 28%),
-        linear-gradient(220deg, rgba(101, 168, 255, 0.12), transparent 32%),
+        linear-gradient(145deg, rgba(66, 217, 183, 0.10), transparent 24%),
+        linear-gradient(225deg, rgba(102, 169, 255, 0.10), transparent 30%),
         var(--bg);
       color: var(--ink);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.5;
+      line-height: 1.55;
     }
 
-    a { color: inherit; }
-    .wrap { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+    a { color: var(--teal); }
+    code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .wrap { width: min(1220px, calc(100% - 32px)); margin: 0 auto; }
+
     .topbar {
       position: sticky;
       top: 0;
-      z-index: 10;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      background: rgba(11, 15, 20, 0.84);
-      backdrop-filter: blur(18px);
+      z-index: 20;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      background: rgba(9, 13, 18, 0.88);
+      backdrop-filter: blur(16px);
     }
     .nav {
-      min-height: 64px;
+      min-height: 62px;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -56,7 +60,7 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      font-weight: 800;
+      font-weight: 900;
       letter-spacing: 0;
     }
     .mark {
@@ -64,25 +68,23 @@
       height: 36px;
       display: grid;
       place-items: center;
-      border: 1px solid rgba(68, 215, 182, 0.45);
-      background: linear-gradient(145deg, rgba(68, 215, 182, 0.18), rgba(101, 168, 255, 0.12));
-      color: var(--teal);
+      border: 1px solid rgba(66,217,183,0.5);
       border-radius: 8px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: var(--teal);
+      background: rgba(66,217,183,0.10);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     }
-    .navlinks { display: flex; align-items: center; gap: 16px; color: var(--muted); font-size: 0.92rem; }
-    .navlinks a { text-decoration: none; }
+    .navlinks { display: flex; gap: 15px; font-size: 0.9rem; color: var(--muted); }
+    .navlinks a { color: var(--muted); text-decoration: none; }
     .navlinks a:hover { color: var(--ink); }
 
     .hero {
-      min-height: calc(100vh - 64px);
-      display: grid;
-      align-items: center;
-      padding: 52px 0 36px;
+      padding: 76px 0 58px;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
     }
     .hero-grid {
       display: grid;
-      grid-template-columns: minmax(0, 0.92fr) minmax(520px, 1.08fr);
+      grid-template-columns: minmax(0, 0.9fr) minmax(500px, 1.1fr);
       gap: 34px;
       align-items: center;
     }
@@ -90,81 +92,69 @@
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 18px;
-      padding: 8px 12px;
-      border: 1px solid rgba(68, 215, 182, 0.28);
       color: var(--teal);
-      background: rgba(68, 215, 182, 0.08);
+      border: 1px solid rgba(66,217,183,0.35);
+      background: rgba(66,217,183,0.08);
       border-radius: 999px;
+      padding: 8px 12px;
+      font-weight: 800;
       font-size: 0.84rem;
-      font-weight: 700;
+      margin-bottom: 18px;
     }
-    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 18px var(--teal); }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 18px rgba(66,217,183,0.9); }
     h1 {
       margin: 0;
-      font-size: clamp(2.6rem, 6vw, 5.7rem);
-      line-height: 0.96;
+      font-size: clamp(2.5rem, 5.5vw, 5.5rem);
+      line-height: 0.98;
       letter-spacing: 0;
     }
     .lead {
-      max-width: 650px;
       margin: 22px 0 0;
+      max-width: 720px;
       color: var(--muted);
-      font-size: clamp(1.04rem, 2vw, 1.28rem);
+      font-size: clamp(1.05rem, 1.8vw, 1.25rem);
     }
-    .cta-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+    .callout {
+      margin-top: 24px;
+      border-left: 4px solid var(--teal);
+      padding: 14px 16px;
+      background: rgba(66,217,183,0.07);
+      color: var(--ink);
+      border-radius: 0 8px 8px 0;
+    }
+    .button-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
     .button {
+      min-height: 44px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-height: 44px;
-      padding: 0 18px;
       border-radius: 8px;
-      border: 1px solid var(--line);
+      padding: 0 16px;
       text-decoration: none;
-      font-weight: 800;
-      background: var(--panel);
-      color: var(--ink);
-    }
-    .button.primary {
-      color: #06130f;
-      background: var(--teal);
-      border-color: transparent;
-    }
-    .proof-strip {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 30px;
-    }
-    .proof {
-      min-height: 82px;
-      padding: 13px;
       border: 1px solid var(--line);
-      background: rgba(17, 24, 33, 0.76);
-      border-radius: 8px;
+      color: var(--ink);
+      background: var(--panel);
+      font-weight: 850;
     }
-    .proof strong { display: block; font-size: 1.35rem; line-height: 1; }
-    .proof span { display: block; margin-top: 8px; color: var(--muted); font-size: 0.82rem; }
+    .button.primary { background: var(--teal); color: #04130f; border-color: transparent; }
 
-    .showpiece {
-      position: relative;
-      min-height: 620px;
-      padding: 18px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: linear-gradient(180deg, rgba(22, 32, 43, 0.94), rgba(12, 18, 24, 0.98));
+    .terminal {
+      border: 1px solid rgba(255,255,255,0.10);
+      background: linear-gradient(180deg, #101923, #080c11);
       border-radius: 8px;
-      box-shadow: var(--shadow);
       overflow: hidden;
+      box-shadow: 0 28px 90px rgba(0,0,0,0.42);
     }
-    .windowbar {
+    .term-head {
+      min-height: 42px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 16px;
+      gap: 12px;
+      padding: 0 14px;
+      border-bottom: 1px solid var(--line);
       color: var(--muted);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.78rem;
     }
     .lights { display: flex; gap: 7px; }
@@ -172,191 +162,201 @@
     .lights i:nth-child(1) { background: var(--rose); }
     .lights i:nth-child(2) { background: var(--amber); }
     .lights i:nth-child(3) { background: var(--green); }
-    .dash-grid {
-      display: grid;
-      grid-template-columns: 1fr 0.86fr;
-      gap: 14px;
-    }
-    .pane {
-      border: 1px solid var(--line);
-      background: rgba(11, 15, 20, 0.56);
+    .term-body { padding: 18px; }
+    .cmd {
+      margin: 0 0 16px;
+      padding: 14px;
+      background: var(--code);
+      border: 1px solid #1c2a36;
       border-radius: 8px;
-      padding: 15px;
+      overflow-x: auto;
+      color: #d9e8ef;
+      font-size: 0.88rem;
     }
-    .pane h2, .pane h3 { margin: 0 0 12px; font-size: 0.95rem; }
-    .scan-line {
+    .result-grid {
       display: grid;
-      grid-template-columns: 90px 1fr auto;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
-      align-items: center;
-      min-height: 34px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      color: var(--muted);
-      font-size: 0.82rem;
     }
-    .scan-line:last-child { border-bottom: 0; }
-    .bar { height: 8px; border-radius: 999px; background: #1f2c39; overflow: hidden; }
-    .bar i { display: block; height: 100%; border-radius: inherit; }
-    .b1 { background: var(--teal); width: 92%; }
-    .b2 { background: var(--blue); width: 78%; }
-    .b3 { background: var(--amber); width: 64%; }
-    .b4 { background: var(--rose); width: 52%; }
-    .graph {
-      position: relative;
-      height: 250px;
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      border-radius: 8px;
-      background:
-        linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-      background-size: 28px 28px;
-      overflow: hidden;
-    }
-    .edge {
-      position: absolute;
-      height: 1px;
-      transform-origin: left center;
-      background: rgba(68, 215, 182, 0.34);
-    }
-    .edge.e1 { width: 190px; left: 84px; top: 78px; transform: rotate(14deg); }
-    .edge.e2 { width: 150px; left: 170px; top: 158px; transform: rotate(-20deg); }
-    .edge.e3 { width: 180px; left: 60px; top: 168px; transform: rotate(-42deg); }
-    .edge.e4 { width: 132px; left: 250px; top: 92px; transform: rotate(40deg); }
-    .node {
-      position: absolute;
-      display: grid;
-      place-items: center;
-      width: 86px;
-      height: 40px;
-      border: 1px solid rgba(68, 215, 182, 0.42);
-      background: rgba(68, 215, 182, 0.12);
-      color: var(--ink);
-      border-radius: 8px;
-      font-size: 0.72rem;
-      font-weight: 800;
-      text-align: center;
-    }
-    .n1 { left: 22px; top: 56px; }
-    .n2 { left: 232px; top: 96px; border-color: rgba(101, 168, 255, 0.55); background: rgba(101, 168, 255, 0.14); }
-    .n3 { left: 118px; top: 174px; border-color: rgba(245, 184, 75, 0.58); background: rgba(245, 184, 75, 0.12); }
-    .n4 { right: 22px; top: 42px; border-color: rgba(255, 111, 142, 0.58); background: rgba(255, 111, 142, 0.12); }
-    .n5 { right: 42px; bottom: 30px; }
-    .rank {
-      display: grid;
-      grid-template-columns: 28px 1fr auto;
-      gap: 9px;
-      align-items: center;
-      min-height: 40px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      font-size: 0.82rem;
-    }
-    .rank:last-child { border-bottom: 0; }
-    .rank b {
-      display: grid;
-      place-items: center;
-      width: 24px;
-      height: 24px;
-      border-radius: 7px;
-      background: rgba(255, 255, 255, 0.08);
-      color: var(--teal);
-    }
-    .score { color: var(--amber); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-    .exports {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 14px;
-    }
-    .export {
-      padding: 12px;
-      min-height: 74px;
+    .metric {
+      min-height: 92px;
+      padding: 13px;
       border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255, 255, 255, 0.035);
+      background: rgba(255,255,255,0.035);
     }
-    .export strong { display: block; }
-    .export span { display: block; margin-top: 6px; color: var(--muted); font-size: 0.78rem; }
+    .metric strong { display: block; font-size: 1.55rem; line-height: 1; }
+    .metric span { display: block; color: var(--muted); margin-top: 9px; font-size: 0.82rem; }
 
-    section { padding: 86px 0; border-top: 1px solid rgba(255, 255, 255, 0.07); }
-    .section-head { max-width: 780px; margin-bottom: 30px; }
-    .section-head h2 { margin: 0 0 12px; font-size: clamp(2rem, 4vw, 3.2rem); line-height: 1; }
-    .section-head p { margin: 0; color: var(--muted); font-size: 1.08rem; }
+    section {
+      padding: 74px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.07);
+    }
+    .band { background: rgba(14,20,27,0.68); }
+    .section-head { max-width: 850px; margin-bottom: 26px; }
+    h2 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      line-height: 1.04;
+      letter-spacing: 0;
+    }
+    .section-head p { margin: 0; color: var(--muted); font-size: 1.06rem; }
+    h3 { margin: 0 0 10px; font-size: 1.07rem; }
+    p { color: var(--muted); }
+
     .cards {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
     }
     .card {
+      min-height: 200px;
       border: 1px solid var(--line);
-      background: rgba(17, 24, 33, 0.76);
       border-radius: 8px;
+      background: rgba(18,26,36,0.78);
       padding: 20px;
-      min-height: 194px;
     }
-    .card h3 { margin: 0 0 10px; font-size: 1.05rem; }
-    .card p { margin: 0; color: var(--muted); }
-    .number {
+    .card p { margin: 0; }
+    .num {
       color: var(--teal);
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.82rem;
-      font-weight: 800;
-      margin-bottom: 14px;
+      font-weight: 900;
+      margin-bottom: 12px;
     }
-    .compare {
+
+    .table-wrap { overflow-x: auto; }
+    table {
       width: 100%;
       border-collapse: collapse;
-      overflow: hidden;
-      border-radius: 8px;
       border: 1px solid var(--line);
-      background: rgba(17, 24, 33, 0.76);
+      border-radius: 8px;
+      overflow: hidden;
+      background: rgba(18,26,36,0.78);
     }
-    .compare th, .compare td {
-      padding: 14px;
+    th, td {
+      padding: 13px 14px;
       border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
     }
-    .compare th { color: var(--ink); background: rgba(255, 255, 255, 0.04); }
-    .compare td { color: var(--muted); }
-    .compare tr:last-child td { border-bottom: 0; }
-    .yes { color: var(--teal); font-weight: 800; }
-    .no { color: var(--rose); font-weight: 800; }
-    .code {
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #070a0e;
-      color: #d7e2ea;
-      overflow-x: auto;
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    tr:last-child td { border-bottom: 0; }
+    th {
+      color: var(--ink);
+      background: rgba(255,255,255,0.045);
       font-size: 0.9rem;
     }
-    .next {
+    td { color: var(--muted); }
+    td strong, .yes { color: var(--teal); }
+    .warn { color: var(--amber); }
+    .risk { color: var(--rose); }
+
+    .two-col {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
     }
-    footer {
-      padding: 38px 0;
-      color: var(--muted);
-      border-top: 1px solid rgba(255, 255, 255, 0.07);
+    .codeblock {
+      margin: 0;
+      padding: 16px;
+      border: 1px solid var(--line);
+      background: var(--code);
+      color: #d9e8ef;
+      border-radius: 8px;
+      overflow-x: auto;
+      font-size: 0.88rem;
     }
+    .small { font-size: 0.9rem; color: var(--dim); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .step {
+      border: 1px solid var(--line);
+      background: rgba(18,26,36,0.78);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 160px;
+    }
+    .step b { color: var(--teal); display: block; margin-bottom: 8px; }
+    .step p { margin: 0; font-size: 0.92rem; }
+
+    .graph-demo {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background:
+        linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px),
+        rgba(18,26,36,0.78);
+      background-size: 28px 28px;
+      min-height: 330px;
+      position: relative;
+      overflow: hidden;
+    }
+    .node {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 132px;
+      min-height: 44px;
+      padding: 8px;
+      text-align: center;
+      border-radius: 8px;
+      border: 1px solid rgba(66,217,183,0.45);
+      background: rgba(66,217,183,0.12);
+      font-weight: 850;
+      font-size: 0.78rem;
+    }
+    .node.risknode { border-color: rgba(255,109,143,0.55); background: rgba(255,109,143,0.12); }
+    .node.bluenode { border-color: rgba(102,169,255,0.55); background: rgba(102,169,255,0.12); }
+    .node.ambernode { border-color: rgba(242,184,75,0.55); background: rgba(242,184,75,0.12); }
+    .n1 { left: 28px; top: 42px; }
+    .n2 { left: 230px; top: 56px; }
+    .n3 { right: 42px; top: 40px; }
+    .n4 { left: 96px; bottom: 54px; }
+    .n5 { right: 120px; bottom: 66px; }
+    .edge {
+      position: absolute;
+      height: 1px;
+      background: rgba(66,217,183,0.35);
+      transform-origin: left center;
+    }
+    .e1 { width: 190px; left: 145px; top: 72px; transform: rotate(4deg); }
+    .e2 { width: 220px; left: 350px; top: 83px; transform: rotate(-2deg); }
+    .e3 { width: 190px; left: 140px; top: 225px; transform: rotate(-34deg); }
+    .e4 { width: 230px; right: 155px; bottom: 115px; transform: rotate(155deg); }
+
+    .artifact-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .artifact {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(18,26,36,0.78);
+      padding: 15px;
+    }
+    .artifact code { color: var(--teal); }
+    .artifact p { margin: 8px 0 0; font-size: 0.92rem; }
+
+    footer { padding: 34px 0; color: var(--dim); }
 
     @media (max-width: 980px) {
-      .hero-grid, .dash-grid { grid-template-columns: 1fr; }
-      .hero { min-height: auto; }
-      .showpiece { min-height: auto; }
-      .cards, .next { grid-template-columns: 1fr; }
-      .proof-strip, .exports { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .hero-grid, .two-col { grid-template-columns: 1fr; }
+      .cards, .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .navlinks { display: none; }
     }
-    @media (max-width: 620px) {
-      .wrap { width: min(100% - 22px, 1180px); }
-      .proof-strip, .exports { grid-template-columns: 1fr; }
-      .showpiece { padding: 12px; }
-      .scan-line { grid-template-columns: 1fr; gap: 5px; padding: 9px 0; }
-      .compare { font-size: 0.84rem; }
-      .compare th, .compare td { padding: 10px; }
+    @media (max-width: 680px) {
+      .wrap { width: min(100% - 22px, 1220px); }
+      .cards, .flow, .result-grid, .artifact-list { grid-template-columns: 1fr; }
+      .graph-demo { min-height: 420px; }
+      .node { position: static; margin: 14px; width: auto; }
+      .edge { display: none; }
+      th, td { padding: 10px; }
     }
   </style>
 </head>
@@ -365,8 +365,9 @@
     <div class="wrap nav">
       <div class="brand"><span class="mark">C</span><span>CAM_CAM</span></div>
       <nav class="navlinks" aria-label="Primary">
-        <a href="#why">Why</a>
-        <a href="#novel">Novelty</a>
+        <a href="#why">Why try it</a>
+        <a href="#results">Results</a>
+        <a href="#technical">Technical</a>
         <a href="#proof">Proof</a>
         <a href="#run">Run</a>
       </nav>
@@ -377,60 +378,41 @@
     <section class="hero">
       <div class="wrap hero-grid">
         <div>
-          <div class="eyebrow"><span class="dot"></span>Repo Rescue Desk showpiece</div>
-          <h1>CAM_CAM turns repo chaos into an executable rescue plan.</h1>
+          <div class="eyebrow"><span class="dot"></span>Repo Rescue Desk: current CAM_CAM flagship</div>
+          <h1>Not another chat wrapper. A repo-universe triage engine for AI engineering.</h1>
           <p class="lead">
-            Point it at a folder of projects. It inventories the codebase universe, detects risk,
-            ranks the highest-value next apps, and exports GraphRAG plus mindmaps that CAM can use
-            before modifying a single target repo.
+            CAM_CAM is being shaped into the operating layer around CAM: it scans a folder of real repos,
+            finds reusable systems, flags risks before an agent edits code, ranks what should be built next,
+            and exports machine-readable context for GraphRAG, Logseq, Markmap, and Freeplane.
           </p>
-          <div class="cta-row">
-            <a class="button primary" href="#run">Run the showpiece</a>
-            <a class="button" href="CAM_SHOWPIECE_REPO_RESCUE_DESK.md">Read the proof note</a>
+          <div class="callout">
+            A SWE would try this when they have a messy local repo collection, inherited code, experimental agent tools,
+            or a proposed multi-repo merger and need an evidence-backed plan before letting an AI mutate anything.
           </div>
-          <div class="proof-strip" aria-label="Showpiece proof metrics">
-            <div class="proof"><strong>238</strong><span>local repos scanned in the real run</span></div>
-            <div class="proof"><strong>8</strong><span>capability clusters mapped</span></div>
-            <div class="proof"><strong>6</strong><span>ranked build opportunities</span></div>
-            <div class="proof"><strong>0</strong><span>source repos modified by analysis</span></div>
+          <div class="button-row">
+            <a class="button primary" href="#run">Run the showpiece</a>
+            <a class="button" href="CAM_SHOWPIECE_REPO_RESCUE_DESK.md">Read proof note</a>
+            <a class="button" href="PROOF_POINT_INDEX.md">Proof index</a>
           </div>
         </div>
 
-        <div class="showpiece" aria-label="Repo Rescue Desk dashboard preview">
-          <div class="windowbar">
+        <div class="terminal" aria-label="Real Repo Rescue Desk run summary">
+          <div class="term-head">
             <div class="lights"><i></i><i></i><i></i></div>
-            <span>repo_rescue_dashboard.html</span>
+            <span>real local run: /Volumes/WS4TB/repo421sn</span>
           </div>
-          <div class="dash-grid">
-            <div class="pane">
-              <h2>Capability clusters</h2>
-              <div class="scan-line"><span>RAG</span><div class="bar"><i class="b1"></i></div><strong>high</strong></div>
-              <div class="scan-line"><span>Agents</span><div class="bar"><i class="b2"></i></div><strong>high</strong></div>
-              <div class="scan-line"><span>Medical</span><div class="bar"><i class="b3"></i></div><strong>watch</strong></div>
-              <div class="scan-line"><span>Security</span><div class="bar"><i class="b4"></i></div><strong>risk</strong></div>
-              <div class="graph" aria-label="GraphRAG preview">
-                <span class="edge e1"></span><span class="edge e2"></span><span class="edge e3"></span><span class="edge e4"></span>
-                <span class="node n1">Repos</span>
-                <span class="node n2">Skills</span>
-                <span class="node n3">Risks</span>
-                <span class="node n4">Apps</span>
-                <span class="node n5">Plans</span>
-              </div>
+          <div class="term-body">
+            <pre class="cmd">PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
+  --root /Volumes/WS4TB/repo421sn \
+  --out-dir tmp/repo_rescue_desk/latest</pre>
+            <div class="result-grid">
+              <div class="metric"><strong>238</strong><span>git repos scanned</span></div>
+              <div class="metric"><strong>8</strong><span>capability clusters found</span></div>
+              <div class="metric"><strong>249</strong><span>GraphRAG nodes emitted</span></div>
+              <div class="metric"><strong>244</strong><span>GraphRAG edges emitted</span></div>
+              <div class="metric"><strong>6</strong><span>ranked app opportunities</span></div>
+              <div class="metric"><strong>239</strong><span>scan receipts written</span></div>
             </div>
-            <div class="pane">
-              <h3>Opportunity ranking</h3>
-              <div class="rank"><b>1</b><span>Local Knowledge Appliance</span><span class="score">190</span></div>
-              <div class="rank"><b>2</b><span>Repo Rescue Desk</span><span class="score">79</span></div>
-              <div class="rank"><b>3</b><span>Mindmap GraphRAG Studio</span><span class="score">76</span></div>
-              <div class="rank"><b>4</b><span>Guarded Autonomous Engineer</span><span class="score">72</span></div>
-              <div class="rank"><b>5</b><span>Learning Tournament Bench</span><span class="score">72</span></div>
-            </div>
-          </div>
-          <div class="exports">
-            <div class="export"><strong>GraphRAG</strong><span>nodes, edges, retrieval chunks</span></div>
-            <div class="export"><strong>Logseq</strong><span>wikilinked pages</span></div>
-            <div class="export"><strong>Markmap</strong><span>browser mindmap outline</span></div>
-            <div class="export"><strong>Freeplane</strong><span>desktop .mm map</span></div>
           </div>
         </div>
       </div>
@@ -439,91 +421,277 @@
     <section id="why">
       <div class="wrap">
         <div class="section-head">
-          <h2>Why a user would want CAM_CAM</h2>
-          <p>Most coding assistants start at the prompt. CAM_CAM starts by understanding the repo universe, then turns that understanding into safer actions.</p>
+          <h2>Why should a software engineer try this?</h2>
+          <p>
+            Because the hard problem is often not "can an LLM write code?" It is "which code should it touch,
+            what should it learn from, what is risky, and how do I preserve the reasoning for the next run?"
+          </p>
         </div>
         <div class="cards">
           <article class="card">
-            <div class="number">01</div>
-            <h3>It finds what is already valuable</h3>
-            <p>Instead of asking a novice to know which repo matters, it clusters repos by capability and surfaces reusable systems, risky areas, and promising combinations.</p>
+            <div class="num">01</div>
+            <h3>It turns repo sprawl into an engineering map</h3>
+            <p>Point CAM_CAM at a directory of repos. It inventories them, clusters them by capability, detects duplicates by normalized names, and produces a graph that a human or agent can navigate.</p>
           </article>
           <article class="card">
-            <div class="number">02</div>
-            <h3>It lowers merge risk</h3>
-            <p>Before CAM changes a target repo, Repo Rescue Desk shows where medical, security, key-sensitive, dirty-worktree, and no-test risks exist.</p>
+            <div class="num">02</div>
+            <h3>It blocks the usual AI-agent footgun</h3>
+            <p>The first action is read-only triage. It reports dirty worktrees, missing tests, security-sensitive language, medical/PII indicators, and API-key-sensitive language before any merge or rewrite.</p>
           </article>
           <article class="card">
-            <div class="number">03</div>
-            <h3>It gives CAM memory-shaped inputs</h3>
-            <p>The outputs are not just a report. They are GraphRAG, Logseq, Freeplane, and Markmap artifacts that can become planning and retrieval context.</p>
+            <div class="num">03</div>
+            <h3>It gives you reusable context, not just a PDF</h3>
+            <p>The output is structured for follow-on work: JSON inventory, graph nodes/edges, GraphRAG chunks, Logseq pages, Markmap outline, Freeplane map, dashboard HTML, risks, and ranked opportunities.</p>
+          </article>
+          <article class="card">
+            <div class="num">04</div>
+            <h3>It helps choose the next useful build</h3>
+            <p>Instead of forcing an arbitrary demo app, it ranks opportunities from the repo universe. In the real scan, the top recommendation was a Local Knowledge Appliance, followed by Repo Rescue Desk itself.</p>
+          </article>
+          <article class="card">
+            <div class="num">05</div>
+            <h3>It is a bridge into CAM's learning loop</h3>
+            <p>CAM-PULSE proves mining, retrieval, verification, and learning from outcomes. CAM_CAM's role is to prepare high-quality cross-repo context so that loop can be applied safely to a local fleet.</p>
+          </article>
+          <article class="card">
+            <div class="num">06</div>
+            <h3>It is useful even before automation</h3>
+            <p>A team can use the generated risk report, opportunities, and mindmaps as a planning artifact before enabling code modification, model calls, or repository assimilation.</p>
           </article>
         </div>
       </div>
     </section>
 
-    <section id="novel">
+    <section id="results" class="band">
       <div class="wrap">
         <div class="section-head">
-          <h2>What is novel</h2>
-          <p>CAM_CAM is moving from chat-assisted coding toward a closed loop: mine, map, plan, build, verify, learn, and reuse.</p>
+          <h2>Real results from the current showpiece</h2>
+          <p>These are not proposed numbers. They are from the local run written to <code>tmp/repo_rescue_desk/latest</code>.</p>
         </div>
-        <table class="compare">
-          <thead>
-            <tr>
-              <th>Capability</th>
-              <th>Typical coding assistant</th>
-              <th>CAM_CAM direction</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Repo understanding</td>
-              <td>Usually one repo or current editor context.</td>
-              <td><span class="yes">Cross-repo universe scan</span> with clusters, risks, and build opportunities.</td>
-            </tr>
-            <tr>
-              <td>Planning memory</td>
-              <td>Prompt history, rules, or manually maintained notes.</td>
-              <td><span class="yes">Machine-readable artifacts</span> for GraphRAG, Logseq, Markmap, and Freeplane.</td>
-            </tr>
-            <tr>
-              <td>Safety before action</td>
-              <td>Often edits first, discovers risk later.</td>
-              <td><span class="yes">Risk triage before mutation</span>, with source repos left untouched.</td>
-            </tr>
-            <tr>
-              <td>Self-improvement path</td>
-              <td>Mostly static suggestions unless the user curates lessons.</td>
-              <td><span class="yes">Designed for outcome feedback</span> so successful methods can be promoted and failed ones demoted.</td>
-            </tr>
-          </tbody>
-        </table>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Result</th>
+                <th>Value</th>
+                <th>Why a SWE cares</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Repos scanned</td>
+                <td><strong>238</strong></td>
+                <td>Large enough to prove this is not a hand-authored four-repo demo.</td>
+              </tr>
+              <tr>
+                <td>Capability clusters</td>
+                <td><strong>8</strong></td>
+                <td>Turns a folder into domains: repo intelligence, RAG, agent safety, medical, learning, browser/local tools, mindmap/GraphRAG, uncategorized.</td>
+              </tr>
+              <tr>
+                <td>Graph output</td>
+                <td><strong>249 nodes, 244 edges</strong></td>
+                <td>Feeds graph viewers, retrieval pipelines, and future planning agents.</td>
+              </tr>
+              <tr>
+                <td>Opportunities ranked</td>
+                <td><strong>6</strong></td>
+                <td>Converts repo analysis into a build queue with measurable outcomes.</td>
+              </tr>
+              <tr>
+                <td>Receipts</td>
+                <td><strong>239</strong></td>
+                <td>Records the scanned root plus per-repo state, commit, dirty flag, and remote where available.</td>
+              </tr>
+              <tr>
+                <td>Source repo mutation</td>
+                <td><strong>0</strong></td>
+                <td>The showpiece is read-only by design. It plans before it patches.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </section>
 
-    <section id="proof">
+    <section>
+      <div class="wrap two-col">
+        <div>
+          <div class="section-head">
+            <h2>Capability cluster map</h2>
+            <p>The scanner scores repo names and README text against deterministic keyword families, then assigns each repo to its strongest cluster.</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cluster</th><th>Repos</th><th>Example repos</th></tr></thead>
+              <tbody>
+                <tr><td>browser_local_tools</td><td><strong>118</strong></td><td>CAM-Pulse, CLI-Anything, CloakBrowser, LocalMind</td></tr>
+                <tr><td>repo_intelligence</td><td><strong>40</strong></td><td>repowise, codebase-archaeology, DeepScientist</td></tr>
+                <tr><td>rag_knowledge</td><td><strong>32</strong></td><td>CAM-RAG, LightRAG, OpenKB, logseq</td></tr>
+                <tr><td>learning_evolution</td><td><strong>25</strong></td><td>ASI-Evolve, OpenClaw-RL-main, SkillX</td></tr>
+                <tr><td>agent_safety</td><td><strong>7</strong></td><td>ClawdSecbot, MacSift, ClawManager</td></tr>
+                <tr><td>medical_clinical</td><td><strong>6</strong></td><td>OpenClaw-Medical-Skills, VAAS, openmed</td></tr>
+                <tr><td>mindmap_graphrag</td><td><strong>4</strong></td><td>markmap, freeplane, claude-obsidian</td></tr>
+                <tr><td>uncategorized</td><td><strong>6</strong></td><td>Repos needing README/context cleanup</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="section-head">
+            <h2>Risk triage surfaced first</h2>
+            <p>Risk flags are conservative heuristics. They are not proof of leaked secrets or PHI; they are a routing signal that says "scan deeper before ingestion or mutation."</p>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Flag</th><th>Count</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td>llm-key-sensitive</td><td><strong>154</strong></td><td>API key, token, secret, OpenRouter, or env language appears.</td></tr>
+                <tr><td>security-sensitive</td><td><strong>124</strong></td><td>Security, sandbox, proxy, audit, or credential language appears.</td></tr>
+                <tr><td>no-tests</td><td><strong>117</strong></td><td>No obvious tests directory or test file was found.</td></tr>
+                <tr><td>medical-sensitive</td><td><strong>72</strong></td><td>Medical, clinical, patient, HIPAA, PHI, or PII language appears.</td></tr>
+                <tr><td>dirty-worktree</td><td><strong>58</strong></td><td>Repo has uncommitted or untracked changes.</td></tr>
+                <tr><td>no-readme</td><td><strong>7</strong></td><td>Purpose is not self-evident from README.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <div class="wrap">
         <div class="section-head">
-          <h2>Proof-backed, not just described</h2>
-          <p>The current showpiece is deterministic and testable. It has a local harness, focused tests, and CI passed after the commit.</p>
+          <h2>What CAM_CAM recommended building next</h2>
+          <p>The opportunity score is the support count across required clusters. It is simple, explainable, and auditable.</p>
         </div>
-        <div class="cards">
-          <article class="card">
-            <div class="number">TEST</div>
-            <h3>Showpiece harness</h3>
-            <p><code>scripts/test_repo_rescue_desk_showpiece.sh</code> builds fixture repos, runs the CLI, and checks every required artifact exists.</p>
-          </article>
-          <article class="card">
-            <div class="number">OUTPUT</div>
-            <h3>Real artifacts</h3>
-            <p>The run writes inventory JSON, dashboard HTML, ranked opportunities, risk report, graph JSON, GraphRAG context, and mindmap exports.</p>
-          </article>
-          <article class="card">
-            <div class="number">GUARD</div>
-            <h3>No target mutation</h3>
-            <p>The first showpiece is intentionally read-only so it can make a useful plan without repeating the earlier mistake of changing the wrong repo.</p>
-          </article>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Rank</th>
+                <th>Opportunity</th>
+                <th>Score</th>
+                <th>Useful output</th>
+                <th>Measurable outcome</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>1</td><td><strong>Local Knowledge Appliance</strong></td><td>190</td><td>Private searchable knowledge base over repos, docs, and decisions.</td><td>Retrieval hit rate, source citations, repeated-session recall.</td></tr>
+              <tr><td>2</td><td><strong>Repo Rescue Desk</strong></td><td>79</td><td>Dashboard that inventories repos, ranks opportunities, and exports mindmaps.</td><td>Repos scanned, clusters found, risks flagged, artifacts generated.</td></tr>
+              <tr><td>3</td><td><strong>Mindmap GraphRAG Studio</strong></td><td>76</td><td>Logseq, Freeplane, and Markmap exports from a repo knowledge graph.</td><td>Graph nodes, cross-links, orphan clusters, useful query chunks.</td></tr>
+              <tr><td>4</td><td><strong>Guarded Autonomous Engineer</strong></td><td>72</td><td>Branch-first patch runner with receipts and blocked direct-main writes.</td><td>Unsafe actions blocked, allowed patch path succeeds, tests pass.</td></tr>
+              <tr><td>5</td><td><strong>Learning Tournament Bench</strong></td><td>72</td><td>Repeatable task tournament that learns which methods work best.</td><td>Baseline vs learned-method success, cost, retry reduction.</td></tr>
+              <tr><td>6</td><td><strong>Medical Privacy Workbench</strong></td><td>45</td><td>Local PHI/PII-aware document and repo review desk.</td><td>PII cases caught, citation grounding, false-positive review rate.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="technical" class="band">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>How it works technically</h2>
+          <p>Current implementation is deterministic Python. No LLM calls are required for the first triage pass, which keeps it cheap, reproducible, and safe to run on sensitive local repos.</p>
+        </div>
+        <div class="flow">
+          <div class="step"><b>1. Discover</b><p>Walk one root directory and select direct child git repos. Skip dependency and build folders such as <code>node_modules</code>, <code>.venv</code>, <code>.next</code>, <code>target</code>, and caches.</p></div>
+          <div class="step"><b>2. Profile</b><p>Read README text, count language extensions, inspect git remote, branch, short HEAD, last commit date, dirty state, and untracked file count.</p></div>
+          <div class="step"><b>3. Cluster</b><p>Score repo name plus README against domain keyword families. Assign the strongest cluster or mark as uncategorized when no signal is present.</p></div>
+          <div class="step"><b>4. Risk flag</b><p>Detect dirty worktree, no README, no tests, medical/PII terms, security terms, API-key terms, and large Node dependency risk.</p></div>
+          <div class="step"><b>5. Graph</b><p>Create cluster nodes, repo nodes, belongs_to edges, and duplicate-name group edges. The real run emitted 249 nodes and 244 edges.</p></div>
+          <div class="step"><b>6. Rank</b><p>Score showpiece opportunities by support across required clusters, then attach supporting repo evidence and measurable outcome targets.</p></div>
+          <div class="step"><b>7. Export</b><p>Write dashboard HTML, JSON inventory, graph JSON, GraphRAG Markdown, Markmap Markdown, Freeplane XML, Logseq pages, risk report, and opportunities.</p></div>
+          <div class="step"><b>8. Preserve</b><p>Write scan receipts so future CAM steps can prove what source state was inspected before any action is taken.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap two-col">
+        <div>
+          <div class="section-head">
+            <h2>GraphRAG and mindmap output are first-class</h2>
+            <p>This is the part that turns a report into reusable agent context.</p>
+          </div>
+          <div class="graph-demo" aria-label="GraphRAG diagram">
+            <span class="edge e1"></span><span class="edge e2"></span><span class="edge e3"></span><span class="edge e4"></span>
+            <span class="node n1">Repo nodes</span>
+            <span class="node bluenode n2">Capability clusters</span>
+            <span class="node risknode n3">Risk flags</span>
+            <span class="node ambernode n4">Opportunities</span>
+            <span class="node n5">Retrieval chunks</span>
+          </div>
+        </div>
+        <div>
+          <div class="artifact-list">
+            <div class="artifact"><code>repo_inventory.json</code><p>Full structured scan result: repos, git state, risks, clusters, opportunities, graph, and receipts.</p></div>
+            <div class="artifact"><code>repo_graph.json</code><p>Node and edge graph suitable for visualization or GraphRAG ingestion.</p></div>
+            <div class="artifact"><code>graphrag_context.md</code><p>Retrieval-friendly chunks listing clusters, supporting repos, opportunity evidence, and measurements.</p></div>
+            <div class="artifact"><code>logseq/pages/*.md</code><p>Page-oriented Markdown with wikilinks for notebook workflows.</p></div>
+            <div class="artifact"><code>repo_mindmap_markmap.md</code><p>Nested Markdown outline for browser mindmap rendering.</p></div>
+            <div class="artifact"><code>repo_mindmap_freeplane.mm</code><p>Freeplane-compatible XML mindmap for desktop review.</p></div>
+            <div class="artifact"><code>risk_report.md</code><p>Flag summary plus per-repo risk list.</p></div>
+            <div class="artifact"><code>opportunity_rankings.md</code><p>Ranked next builds, supporting clusters, supporting repos, and measurable outcomes.</p></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>How this differs from coding assistants</h2>
+          <p>CAM_CAM is not trying to beat an autocomplete tool at typing. It is trying to decide what context and safeguards should exist before an AI engineer acts.</p>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Capability</th><th>Typical SWE assistant</th><th>CAM_CAM Repo Rescue Desk</th></tr></thead>
+            <tbody>
+              <tr><td>Scope</td><td>Current repo, open files, chat history, or a manually indexed workspace.</td><td><strong>Cross-repo universe</strong>: scanned 238 local repos and produced a graph.</td></tr>
+              <tr><td>First action</td><td>Often edits code immediately after a prompt.</td><td><strong>Read-only triage first</strong>: risks, clusters, duplicate groups, opportunities, receipts.</td></tr>
+              <tr><td>Memory shape</td><td>Mostly chat memory, rules files, or generated summaries.</td><td><strong>Agent-ingestible artifacts</strong>: JSON graph, GraphRAG chunks, Logseq, Markmap, Freeplane.</td></tr>
+              <tr><td>Evidence</td><td>Usually no reproducible harness for a landing-page claim.</td><td><strong>Harness-backed</strong>: <code>scripts/test_repo_rescue_desk_showpiece.sh</code> verifies the artifact set.</td></tr>
+              <tr><td>Safety posture</td><td>Risk is discovered when tests fail or a human notices.</td><td><strong>Risk flags before mutation</strong>: dirty worktrees, no tests, medical/PII language, API-key-sensitive language.</td></tr>
+              <tr><td>Next-step planning</td><td>The user must know what to ask for next.</td><td><strong>Ranks next apps</strong> with supporting repos and measurable outcomes.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="proof" class="band">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Proof and verification</h2>
+          <p>The page now claims only what has a local artifact, test, or GitHub Actions result behind it.</p>
+        </div>
+        <div class="two-col">
+          <pre class="codeblock"># Focused unit tests
+PYTHONPATH=apps/repo_rescue_desk \
+  python -m pytest apps/repo_rescue_desk/tests -q
+
+# Showpiece harness
+./scripts/test_repo_rescue_desk_showpiece.sh
+
+# Static page sanity
+python -m html.parser docs/cam_cam_showpiece.html
+git diff --check</pre>
+          <div class="card">
+            <div class="num">CURRENT STATUS</div>
+            <h3>What is proven now</h3>
+            <p>
+              Focused tests pass. The harness creates a controlled fixture repo universe, runs the CLI,
+              and verifies dashboard, inventory, GraphRAG, graph JSON, risk report, opportunities,
+              Logseq, Freeplane, and Markmap artifacts. GitHub CI and Test Suite passed after the prior showpiece commits.
+            </p>
+            <p class="small">
+              Honest limit: semantic embeddings and durable CAM memory ingestion are next steps. The current scanner is deterministic and heuristic.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -532,34 +700,23 @@
       <div class="wrap">
         <div class="section-head">
           <h2>Run it locally</h2>
-          <p>This is the current command for the committed showpiece app.</p>
+          <p>Use this when you want a concrete answer to: what do I have, what is risky, what should CAM mine or build next?</p>
         </div>
-        <pre class="code">PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
-  --root /Volumes/WS4TB/repo421sn \
+        <pre class="codeblock">PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
+  --root /path/to/folder/containing/git/repos \
   --out-dir tmp/repo_rescue_desk/latest</pre>
-        <div class="next" style="margin-top: 18px;">
-          <article class="card">
-            <div class="number">NEXT 1</div>
-            <h3>Make it semantic</h3>
-            <p>Add embeddings so repo clusters are based on meaning, not only deterministic README and file signals.</p>
-          </article>
-          <article class="card">
-            <div class="number">NEXT 2</div>
-            <h3>Ingest into CAM memory</h3>
-            <p>Feed the GraphRAG and mindmap artifacts into CAM's durable knowledge layer so future builds can retrieve them.</p>
-          </article>
-          <article class="card">
-            <div class="number">NEXT 3</div>
-            <h3>Close the learning loop</h3>
-            <p>Track which recommendations produce passing builds, then promote or demote methods using real task outcomes.</p>
-          </article>
-        </div>
+        <p class="small">
+          The real proof run used <code>/Volumes/WS4TB/repo421sn</code> and wrote outputs under
+          <code>tmp/repo_rescue_desk/latest</code>. The source repos were not modified.
+        </p>
       </div>
     </section>
   </main>
 
   <footer>
-    <div class="wrap">CAM_CAM Repo Rescue Desk. A useful showpiece first, then a learning system.</div>
+    <div class="wrap">
+      CAM_CAM Repo Rescue Desk. Current commit exposes the showpiece on GitHub Pages and keeps the source repo clean after push.
+    </div>
   </footer>
 </body>
 </html>
