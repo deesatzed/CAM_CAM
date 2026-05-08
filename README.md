@@ -1,16 +1,28 @@
-# CAM-PULSE
+# CAM_CAM
 
-> **CAM_CAM showpiece landing page:** [Repo Rescue Desk](docs/cam_cam_showpiece.html) shows the current CAM_CAM value proposition: scan a local repo universe, classify capabilities, triage risk, rank build opportunities, and export GraphRAG / Logseq / Markmap / Freeplane artifacts before changing target code.
+### The repo-universe operating layer for CAM-PULSE.
 
-### Powered by Grok 4.3 — the AI coding system that mines, remembers, and learns.
+CAM_CAM is the canonical umbrella repo. CAM-PULSE is the closed-loop learning engine inside it. Repo Rescue Desk is the read-only triage layer that scans a local universe of repositories, classifies reusable systems, flags risk before an agent edits code, ranks what should be built next, and exports GraphRAG / Logseq / Markmap / Freeplane artifacts.
 
-CAM-PULSE **autonomously mines** error handling, retry logic, API design, and testing patterns from real GitHub repos — no human authoring needed. It stores them as structured, novelty-scored, lifecycle-tracked methodologies and uses that knowledge to build working software powered by xAI's Grok 4.3. Build outcomes feed back into pattern quality scores via a Thompson-sampling bandit tournament: patterns that help builds pass get promoted, patterns that hurt builds get demoted.
+**Current showpiece:** [Repo Rescue Desk](docs/cam_cam_showpiece.html) proves the CAM_CAM layer on a real local run: 238 git repos scanned, 8 capability clusters found, 249 GraphRAG nodes emitted, 244 edges emitted, 6 ranked app opportunities, and 0 source mutations.
 
-**889 methodologies** | **153 source repos mined** | **30/30 batch builds passing** | **Grok 4.3: 7/7 where DeepSeek Flash went 0/7** | **2.6x faster than DeepSeek V4 Pro** | **$0 — MIT licensed**
+CAM-PULSE **autonomously mines** error handling, retry logic, API design, and testing patterns from real GitHub repos. It stores them as structured, novelty-scored, lifecycle-tracked methodologies and uses that knowledge to build working software across multiple models via OpenRouter. Build outcomes feed back into pattern quality scores via a Thompson-sampling bandit tournament: patterns that help builds pass get promoted, patterns that hurt builds get demoted. When a build fails, a 3-layer defense chain - deterministic auto-fix, correction loop, and agent rotation - tries to repair the failure without human intervention.
 
-<!-- Counts verified 2026-05-01. Source: data/claw.db queries + batch_run/results/ + manual pytest verification of all 30 projects -->
+**889 methodologies** | **153 source repos mined** | **30/30 batch builds passing** | **5/6 failures rescued by defense chain** | **5/10 -> 10/10 with rotation** | **$0 - MIT licensed**
 
-> **No other tool closes this loop:** discover → mine → store → retrieve → build → verify → score → learn → demote. Copilot remembers conventions. Cursor stores rules. Devin indexes wikis. **Only CAM-PULSE mines patterns autonomously, scores them by real build outcomes, and demotes what fails.**
+<!-- Counts verified 2026-05-04. Source: CAM-Pulse data/claw.db queries + batch_run/results/compare_overnight/ + retest_rotation/ -->
+
+> **No other tool closes this loop:** discover -> mine -> store -> retrieve -> build -> verify -> correct -> rotate -> learn -> demote. Copilot remembers conventions. Cursor stores rules. Devin indexes wikis. CAM-PULSE mines patterns autonomously, scores them by real build outcomes, rotates failing agents to different models, and demotes what fails. CAM_CAM adds the repo-universe triage layer around that engine.
+
+## Repository Roles
+
+| Repo | Role | Consolidation Status |
+|---|---|---|
+| `CAM_CAM` | Canonical public repo, showpiece layer, repo-universe triage, and future integration home | Active canonical repo |
+| `CAM-Pulse` | Core learning engine lineage: mining, memory, defense chain, routing, self-correction | Being absorbed into `CAM_CAM` by parity-tested slices |
+| `CAM-RAG` | Specialist RAG platform for grounded retrieval, citations, and corpus strategy | Kept separate first; integrate through an adapter contract |
+
+Migration plan: [CAM Repo Consolidation Plan](docs/CAM_REPO_CONSOLIDATION_PLAN_2026-05-08.md). Current inventory: [CAM Repo Consolidation Status](docs/CAM_REPO_CONSOLIDATION_STATUS_2026-05-08.md). Parity diff: [CAM-Pulse Parity Diff](docs/CAM_PULSE_PARITY_DIFF_2026-05-08.md).
 
 ---
 
@@ -27,18 +39,27 @@ CAM built 30 software projects autonomously using patterns mined from 153 repos.
 | Patterns demoted (learned they hurt builds) | 11 |
 | Bugs found and fixed (1-5 line edits each) | 6 |
 
-### Why Grok 4.3? Proven in Head-to-Head
+### Model-Diverse By Design - Defense Chain Proves It
 
-CAM is model-configurable (Claude, GPT, Gemini, Grok via OpenRouter, or local Ollama/MLX-LM). We chose Grok 4.3 as the default because it won every test:
+CAM is model-configurable: Claude, GPT, Gemini, Grok, Qwen, DeepSeek via OpenRouter, or local Ollama/MLX-LM. The default budget-diverse configuration runs multiple models so one model's failure does not become the system's failure.
+
+| What | Result |
+|------|--------|
+| **Overnight comparison (10 projects)** | Single model: 5/10 PASS |
+| **With defense chain + rotation** | **10/10 PASS** (5 rescued) |
+| **Auto-fix rules** | 5 deterministic rules, no LLM cost |
+| **Correction loop** | Feeds exact test output back to the model |
+| **Agent rotation** | Different model on `test_failure` / `syntax_error` |
+| **Failure knowledge** | Cross-task preventive patterns |
+
+The 3-layer defense chain rescued 5 of 6 projects that failed all single-model configs. The lesson is straightforward: no single model wins every task. Model diversity plus deterministic repair, correction feedback, and rotation is more robust than betting the whole system on one model.
+
+**Previous head-to-head (Grok 4.3 era):**
 
 | | Grok 4.3 | DeepSeek V4 Flash | DeepSeek V4 Pro |
 |---|:---:|:---:|:---:|
 | **7 empty-dir projects** | **7/7 PASS** | 0/7 (empty output) | -- |
 | **5-project head-to-head** | 1/5 PASS, 1788s | -- | 1/5 PASS, 4731s |
-| **Speed** | **Baseline** | -- | **2.6x slower** |
-| **Quality** | **Equal or better** | Failed to produce code | Equal |
-
-Grok 4.3 produced working code with passing tests on every project where DeepSeek Flash produced nothing. Against DeepSeek V4 Pro, Grok matched quality and ran 2.6x faster. The 7/7 result is not cherry-picked — these were the 7 projects where Flash produced zero files, and Grok was given the same spec with the same knowledge base.
 
 <p align="center">
   <img src="demos/cam-pulse-demo.gif" alt="CAM-PULSE demo: cam mine-self --quick showing language breakdown, domain signals, and test results" width="700">
@@ -92,7 +113,7 @@ cam learn search "agent routing"   # Search the new knowledge
 
 ## How It Compares
 
-| | CAM-PULSE (Grok 4.3) | Copilot | Cursor | Windsurf | Devin | Aider |
+| | CAM-PULSE core inside CAM_CAM | Copilot | Cursor | Windsurf | Devin | Aider |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Mines patterns from source code** | Autonomous, structured | No | No | No | Indexes repos | No |
 | **Cross-project knowledge base** | 889 methodologies, federated ganglia | Repo-scoped memory | .cursorrules (manual) | Session memories | Wikis + playbooks (manual) | None |
@@ -100,11 +121,12 @@ cam learn search "agent routing"   # Search the new knowledge
 | **Self-improves (demotes failures)** | 11 patterns demoted, lifecycle tracking | No | No | No | No | No |
 | **Statistically validated KB uplift** | Cohen's d = 0.843, p < 0.05 | No data published | No data published | No data published | No data published | No data published |
 | **Batch build proof** | 30/30 pass | No data published | No data published | No data published | No data published | No data published |
-| **Multi-agent routing** | 4 Grok-powered backends (Kelly routing) | 1 | 1 | Cascade | Multi-agent | 1 |
+| **Defense chain (auto-fix + rotation)** | 3-layer, 5/6 rescued | No | No | No | Retry (no rotation) | No |
+| **Multi-agent routing** | 4 models, Kelly routing, rotation on failure | 1 | 1 | Cascade | Multi-agent | 1 |
 | **Runs 100% local (zero cloud)** | Ollama + MLX-LM | No | No | No | No | Partial |
 | **Cost** | **Free + MIT** | $19/mo | $20/mo | $0-40/mo | $500/mo | Free + API |
 
-> **Key distinction:** Copilot, Cursor, and Windsurf all have "memory" features (2025-2026), but these store session observations and user-written rules. CAM-PULSE autonomously extracts structured patterns from source code, assigns novelty scores and lifecycle states, and uses build outcomes to rank them. Devin comes closest with repo indexing and wikis, but its knowledge is manually authored and not fitness-scored.
+> **Key distinction:** Copilot, Cursor, and Windsurf all have "memory" features (2025-2026), but these store session observations and user-written rules. CAM-PULSE autonomously extracts structured patterns from source code, assigns novelty scores and lifecycle states, and uses build outcomes to rank them. When a build fails, a 3-layer defense chain - deterministic auto-fix, ErrorKB-enriched correction, and RL-driven agent rotation - ensures different models attempt the task. Devin comes closest with multi-agent retry, but without model rotation or cross-task failure knowledge.
 
 ---
 
