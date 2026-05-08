@@ -1280,6 +1280,21 @@ class AgentInterface(ABC):
                 parts.append(f"\n### Failure Reason: {correction.failure_reason}")
                 if correction.failure_detail:
                     parts.append(correction.failure_detail[:1000])
+            if correction.known_fix_hint:
+                parts.append("\n### Known Fix (from previous successful resolution)")
+                parts.append(
+                    "A similar error was previously resolved with the following approach. "
+                    "Adapt to the current context:\n"
+                )
+                parts.append(correction.known_fix_hint[:2000])
+            if correction.auto_fixes_applied:
+                parts.append("\n### Auto-Fixes Already Applied")
+                parts.append(
+                    "The following deterministic fixes were applied automatically but "
+                    "did not fully resolve the issue:"
+                )
+                for fix_desc in correction.auto_fixes_applied:
+                    parts.append(f"- {fix_desc}")
             parts.append(
                 "\nThe workspace has been restored to its pre-attempt state. "
                 "Re-implement with a DIFFERENT approach that addresses the "

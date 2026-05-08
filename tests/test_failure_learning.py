@@ -13,7 +13,9 @@ import asyncio
 
 import pytest
 
+from claw.agents.interface import AgentInterface
 from claw.core.models import CorrectionFeedback
+from claw.core.models import AgentHealth, AgentMode, Task, TaskContext, TaskOutcome
 from claw.core.config import OrchestratorConfig
 from claw.evolution.rl_escalation import classify_error, RLEscalationStrategy, EscalationAction
 
@@ -50,6 +52,51 @@ class TestCorrectionFeedbackFields:
         assert feedback.attempt_number == 1
         assert feedback.known_fix_hint is None
         assert feedback.auto_fixes_applied == []
+
+
+class _PromptProbeAgent(AgentInterface):
+    async def execute(self, task: TaskContext, context=None) -> TaskOutcome:
+        raise NotImplementedError
+
+    async def health_check(self) -> AgentHealth:
+        raise NotImplementedError
+
+    @property
+    def supported_modes(self) -> list[AgentMode]:
+        return [AgentMode.OPENROUTER]
+
+    @property
+    def instruction_file(self) -> str:
+        return "PROBE.md"
+
+
+class TestCorrectionPromptFailureKnowledge:
+    def test_openrouter_prompt_includes_known_fix_and_auto_fixes(self):
+        agent = _PromptProbeAgent("probe", "Prompt Probe")
+        task = Task(
+            project_id="p1",
+            title="Fix failing tests",
+            description="Repair the generated project.",
+        )
+        ctx = TaskContext(
+            task=task,
+            correction_feedback=CorrectionFeedback(
+                attempt_number=1,
+                failure_reason="test_failure",
+                failure_detail="NameError: name 'pytest' is not defined",
+                known_fix_hint="Add import pytest to tests that use pytest.raises.",
+                auto_fixes_applied=[
+                    "missing_import_pytest: added missing 'import pytest' [test_app.py]",
+                ],
+            ),
+        )
+
+        prompt = agent._build_openrouter_prompt(ctx)
+
+        assert "Known Fix" in prompt
+        assert "Add import pytest" in prompt
+        assert "Auto-Fixes Already Applied" in prompt
+        assert "missing_import_pytest" in prompt
 
 
 # ---------------------------------------------------------------------------
