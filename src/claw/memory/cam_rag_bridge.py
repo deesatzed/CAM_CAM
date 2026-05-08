@@ -8,6 +8,7 @@ that can be stored in CAM memory.
 from __future__ import annotations
 
 import importlib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -142,7 +143,10 @@ class CamRagBridge:
             return []
         module = self._load_module()
         retriever = self._get_retriever(module)
-        results = retriever.retrieve(query, top_k=top_k, domain=domain)
+        try:
+            results = retriever.retrieve(query, top_k=top_k, domain=domain)
+        except Exception:
+            return self._fallback_retrieve(retriever, query, top_k=top_k, domain=domain)
         chunks: list[RagChunk] = []
         for result in results:
             doc = result.document
@@ -200,7 +204,62 @@ class CamRagBridge:
             self._retriever = module.DeterministicRetriever(rules_path=self.rules_path)
         return self._retriever
 
+    def _fallback_retrieve(
+        self,
+        retriever: Any,
+        query: str,
+        *,
+        top_k: int,
+        domain: str | None,
+    ) -> list[RagChunk]:
+        """Recover when an optional CAM-RAG backend raises during retrieval."""
+        docs = self._indexed_documents(retriever)
+        query_terms = set(_tokenize(query))
+        if not query_terms:
+            return []
+        scored: list[tuple[float, Any]] = []
+        for doc in docs:
+            if domain and getattr(doc, "domain", None) != domain:
+                continue
+            text_terms = set(_tokenize(str(getattr(doc, "text", ""))))
+            if not text_terms:
+                continue
+            overlap = len(query_terms & text_terms)
+            if overlap <= 0:
+                continue
+            score = overlap / max(len(query_terms), 1)
+            scored.append((score, doc))
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [
+            RagChunk(
+                document_id=str(getattr(doc, "id", "")),
+                text=str(getattr(doc, "text", "")),
+                score=score,
+                citation=self._citation_for(doc),
+                confidence=max(0.0, min(score, 1.0)),
+                metadata=dict(getattr(doc, "metadata", {}) or {}),
+                routing_reason="cam_rag_bridge_fallback",
+            )
+            for score, doc in scored[:top_k]
+        ]
+
+    @staticmethod
+    def _indexed_documents(retriever: Any) -> list[Any]:
+        raw_docs = getattr(retriever, "_documents", None)
+        if isinstance(raw_docs, dict):
+            return list(raw_docs.values())
+        if isinstance(raw_docs, list):
+            return raw_docs
+        docs = getattr(retriever, "documents", None)
+        if isinstance(docs, list):
+            return docs
+        return []
+
     @staticmethod
     def _citation_for(doc: Any) -> str:
         metadata = dict(getattr(doc, "metadata", {}) or {})
         return metadata.get("path") or metadata.get("source") or str(doc.id)
+
+
+def _tokenize(text: str) -> list[str]:
+    return re.findall(r"[a-zA-Z0-9]+", text.lower())

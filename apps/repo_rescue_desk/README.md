@@ -16,6 +16,7 @@ knowledge graph into several usable formats:
 - Markmap markdown
 - Freeplane `.mm`
 - Logseq page folder
+- optional CAM-RAG retrieval receipt with citations
 
 ## Run
 
@@ -26,6 +27,21 @@ PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
 ```
 
 Open `tmp/repo_rescue_desk/latest/repo_rescue_dashboard.html` in a browser.
+
+Optional CAM-RAG bridge:
+
+```bash
+PYTHONPATH=src:apps/repo_rescue_desk python -m repo_rescue_desk.cli \
+  --root /path/to/repo/folder \
+  --out-dir tmp/repo_rescue_desk/latest \
+  --rag-folder /path/to/context/docs \
+  --rag-query "repo triage safety evidence"
+```
+
+When CAM-RAG is installed, Repo Rescue Desk indexes the text docs in
+`--rag-folder`, retrieves cited context, emits `cam_rag_receipt.json` and
+`cam_rag_receipt.md`, and adds RAG evidence nodes to the graph, Markmap,
+Freeplane, Logseq, dashboard, and GraphRAG context outputs.
 
 ## Why This Is Useful
 
@@ -43,10 +59,11 @@ Repo Rescue Desk gives CAM_CAM an operator-facing map before it acts.
 - `logseq/pages/*.md`: copy or symlink into a Logseq graph.
 - `repo_graph.json`: nodes and edges for future graph visualization.
 - `graphrag_context.md`: retrieval-friendly chunks for CAM planning.
+- `cam_rag_receipt.json` / `cam_rag_receipt.md`: optional cited retrieval receipt
+  when `--rag-folder` is used.
 
 ## Tests
 
 ```bash
 PYTHONPATH=apps/repo_rescue_desk python -m pytest apps/repo_rescue_desk/tests -q
 ```
-

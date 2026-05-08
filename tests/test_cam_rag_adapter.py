@@ -50,6 +50,11 @@ class FakeDeterministicRetriever:
         return matches[:top_k]
 
 
+class BrokenFakeDeterministicRetriever(FakeDeterministicRetriever):
+    def retrieve(self, query: str, top_k: int = 5, domain=None):
+        raise AttributeError("simulated optional backend failure")
+
+
 @pytest.fixture
 def fake_cam_rag_module(monkeypatch):
     module = types.ModuleType("fake_cam_rag")
@@ -94,6 +99,28 @@ def test_adapter_ingests_retrieves_and_emits_receipt(fake_cam_rag_module):
     assert chunks[0].confidence == 0.9
     assert receipt.as_dict()["result_count"] == 1
     assert receipt.as_dict()["citations"] == ["docs/design-note.md"]
+
+
+def test_adapter_falls_back_when_optional_backend_retrieval_fails(monkeypatch):
+    module = types.ModuleType("broken_fake_cam_rag")
+    module.Document = FakeDocument
+    module.DeterministicRetriever = BrokenFakeDeterministicRetriever
+    monkeypatch.setitem(sys.modules, "broken_fake_cam_rag", module)
+    adapter = CamRagBridge(module_name="broken_fake_cam_rag")
+    adapter.ingest_documents([
+        RagDocument(
+            id="fallback-note",
+            text="cited context remains available through fallback retrieval",
+            metadata={"path": "docs/fallback.md"},
+            domain="cam",
+        ),
+    ])
+
+    chunks = adapter.retrieve("cited context", domain="cam")
+
+    assert len(chunks) == 1
+    assert chunks[0].document_id == "fallback-note"
+    assert chunks[0].routing_reason == "cam_rag_bridge_fallback"
 
 
 def test_existing_rag_to_cag_directory_reader_still_works(tmp_path):

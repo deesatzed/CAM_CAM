@@ -200,6 +200,89 @@ class RescueReport:
         return json.dumps(payload, indent=2, sort_keys=True)
 
 
+def enrich_with_cam_rag(
+    report: RescueReport,
+    rag_folder: Path,
+    *,
+    query: str | None = None,
+    module_name: str = "cam_rag",
+) -> dict[str, Any]:
+    """Attach optional CAM-RAG retrieval evidence to a report.
+
+    This keeps CAM-RAG outside the default dependency set. If the caller opts in
+    with ``--rag-folder``, CAM_CAM asks the specialist package for cited context
+    and stores the result as a receipt plus graph evidence nodes.
+    """
+    from claw.memory.cam_rag_bridge import CamRagBridge
+
+    bridge = CamRagBridge(module_name=module_name)
+    indexed_docs = bridge.ingest_folder(rag_folder, domain="repo_rescue")
+    retrieval_query = query or _default_rag_query(report)
+    chunks = bridge.retrieve(retrieval_query, top_k=5, domain="repo_rescue")
+    receipt = bridge.receipt_for(retrieval_query, chunks).as_dict()
+    receipt_payload = {
+        "kind": "cam-rag-retrieval",
+        "folder": str(Path(rag_folder).resolve()),
+        "indexed_docs": indexed_docs,
+        "receipt": receipt,
+        "chunks": [
+            {
+                "document_id": chunk.document_id,
+                "score": chunk.score,
+                "confidence": chunk.confidence,
+                "citation": chunk.citation,
+                "routing_reason": chunk.routing_reason,
+                "excerpt": chunk.text[:500],
+            }
+            for chunk in chunks
+        ],
+    }
+    report.receipts.append(receipt_payload)
+    _attach_rag_graph(report, receipt_payload)
+    return receipt_payload
+
+
+def _default_rag_query(report: RescueReport) -> str:
+    opportunity = report.opportunities[0]["title"] if report.opportunities else "repo rescue"
+    clusters = ", ".join(list(report.clusters)[:4])
+    return f"{opportunity} repo triage GraphRAG evidence {clusters}".strip()
+
+
+def _attach_rag_graph(report: RescueReport, receipt_payload: dict[str, Any]) -> None:
+    receipt = receipt_payload.get("receipt", {})
+    query = str(receipt.get("query") or "CAM-RAG retrieval")
+    root_id = "rag:cam-rag-receipt"
+    report.graph.setdefault("nodes", []).append({
+        "id": root_id,
+        "type": "rag_receipt",
+        "label": "CAM-RAG receipt",
+        "query": query,
+        "confidence": receipt.get("confidence", 0.0),
+        "result_count": receipt.get("result_count", 0),
+    })
+    report.graph.setdefault("edges", []).append({
+        "source": root_id,
+        "target": "cluster:rag_knowledge",
+        "kind": "grounds",
+        "weight": max(int(receipt.get("result_count") or 1), 1),
+    })
+    for index, chunk in enumerate(receipt_payload.get("chunks", []), 1):
+        chunk_id = f"rag:chunk:{index}"
+        report.graph["nodes"].append({
+            "id": chunk_id,
+            "type": "rag_chunk",
+            "label": chunk.get("document_id") or chunk.get("citation") or f"chunk {index}",
+            "citation": chunk.get("citation", ""),
+            "confidence": chunk.get("confidence", 0.0),
+        })
+        report.graph["edges"].append({
+            "source": root_id,
+            "target": chunk_id,
+            "kind": "retrieved",
+            "weight": float(chunk.get("score") or 0.0),
+        })
+
+
 def scan_universe(root: Path, max_repos: int | None = None) -> RescueReport:
     root = root.resolve()
     repo_paths = discover_repo_paths(root)
@@ -570,8 +653,53 @@ def write_artifacts(report: RescueReport, out_dir: Path) -> dict[str, str]:
         encoding="utf-8",
     )
     paths["graphrag_md"].write_text(render_graphrag_context(report), encoding="utf-8")
+    rag_receipt = latest_cam_rag_receipt(report)
+    if rag_receipt:
+        receipt_json = out_dir / "cam_rag_receipt.json"
+        receipt_md = out_dir / "cam_rag_receipt.md"
+        receipt_json.write_text(json.dumps(rag_receipt, indent=2, sort_keys=True), encoding="utf-8")
+        receipt_md.write_text(render_cam_rag_receipt(rag_receipt), encoding="utf-8")
+        paths["cam_rag_receipt_json"] = receipt_json
+        paths["cam_rag_receipt_md"] = receipt_md
     write_logseq_pages(report, out_dir / "logseq")
     return {name: str(path) for name, path in paths.items()}
+
+
+def latest_cam_rag_receipt(report: RescueReport) -> dict[str, Any] | None:
+    for receipt in reversed(report.receipts):
+        if receipt.get("kind") == "cam-rag-retrieval":
+            return receipt
+    return None
+
+
+def render_cam_rag_receipt(receipt: dict[str, Any]) -> str:
+    inner = receipt.get("receipt", {})
+    lines = [
+        "# CAM-RAG Retrieval Receipt",
+        "",
+        f"- Folder: `{receipt.get('folder', '')}`",
+        f"- Indexed docs: **{receipt.get('indexed_docs', 0)}**",
+        f"- Query: `{inner.get('query', '')}`",
+        f"- Results: **{inner.get('result_count', 0)}**",
+        f"- Confidence: **{inner.get('confidence', 0.0)}**",
+        "",
+        "## Citations",
+    ]
+    for citation in inner.get("citations", []):
+        lines.append(f"- `{citation}`")
+    lines.extend(["", "## Retrieved Chunks"])
+    for chunk in receipt.get("chunks", []):
+        lines.extend([
+            f"### {chunk.get('document_id', 'chunk')}",
+            "",
+            f"- Citation: `{chunk.get('citation', '')}`",
+            f"- Score: {chunk.get('score', 0.0)}",
+            f"- Confidence: {chunk.get('confidence', 0.0)}",
+            "",
+            chunk.get("excerpt", ""),
+            "",
+        ])
+    return "\n".join(lines)
 
 
 def render_opportunities(report: RescueReport) -> str:
@@ -628,6 +756,16 @@ def render_markmap(report: RescueReport) -> str:
     risk_counts = Counter(flag for repo in report.repos for flag in repo.risk_flags)
     for flag, count in risk_counts.most_common():
         lines.append(f"- {flag}: {count}")
+    rag_receipt = latest_cam_rag_receipt(report)
+    if rag_receipt:
+        inner = rag_receipt.get("receipt", {})
+        lines.append("")
+        lines.append("## CAM-RAG Evidence")
+        lines.append(f"- Query: {inner.get('query', '')}")
+        lines.append(f"- Results: {inner.get('result_count', 0)}")
+        lines.append(f"- Confidence: {inner.get('confidence', 0.0)}")
+        for citation in inner.get("citations", [])[:8]:
+            lines.append(f"  - {citation}")
     return "\n".join(lines) + "\n"
 
 
@@ -648,6 +786,14 @@ def render_freeplane(report: RescueReport) -> str:
     risk_counts = Counter(flag for repo in report.repos for flag in repo.risk_flags)
     for flag, count in risk_counts.most_common():
         ET.SubElement(risks, "node", TEXT=f"{flag}: {count}")
+    rag_receipt = latest_cam_rag_receipt(report)
+    if rag_receipt:
+        inner = rag_receipt.get("receipt", {})
+        rag_node = ET.SubElement(root_node, "node", TEXT="CAM-RAG Evidence")
+        ET.SubElement(rag_node, "node", TEXT=f"Query: {inner.get('query', '')}")
+        ET.SubElement(rag_node, "node", TEXT=f"Results: {inner.get('result_count', 0)}")
+        for citation in inner.get("citations", [])[:8]:
+            ET.SubElement(rag_node, "node", TEXT=str(citation))
     return ET.tostring(root, encoding="unicode")
 
 
@@ -660,6 +806,8 @@ def write_logseq_pages(report: RescueReport, out_dir: Path) -> None:
     index_lines.append("  - Clusters")
     for cluster in report.clusters:
         index_lines.append(f"    - [[Cluster {cluster}]]")
+    if latest_cam_rag_receipt(report):
+        index_lines.append("  - [[CAM-RAG Evidence]]")
     (pages / "CAM Repo Rescue Desk.md").write_text("\n".join(index_lines) + "\n", encoding="utf-8")
 
     for cluster, names in report.clusters.items():
@@ -680,6 +828,20 @@ def write_logseq_pages(report: RescueReport, out_dir: Path) -> None:
             lines.append(f"    - [[Repo {name}]]")
         (pages / f"{item['title']}.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    rag_receipt = latest_cam_rag_receipt(report)
+    if rag_receipt:
+        inner = rag_receipt.get("receipt", {})
+        lines = [
+            "- CAM-RAG Evidence",
+            f"  - Query:: {inner.get('query', '')}",
+            f"  - Result count:: {inner.get('result_count', 0)}",
+            f"  - Confidence:: {inner.get('confidence', 0.0)}",
+            "  - Citations",
+        ]
+        for citation in inner.get("citations", [])[:12]:
+            lines.append(f"    - {citation}")
+        (pages / "CAM-RAG Evidence.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
 
 def render_graphrag_context(report: RescueReport) -> str:
     lines = ["# GraphRAG Context: CAM Repo Rescue Desk", ""]
@@ -695,11 +857,23 @@ def render_graphrag_context(report: RescueReport) -> str:
         lines.append(f"Measure: {item['measurable_outcome']}")
         lines.append(f"Supporting repos: {', '.join(item['supporting_repos'])}")
         lines.append("")
+    rag_receipt = latest_cam_rag_receipt(report)
+    if rag_receipt:
+        inner = rag_receipt.get("receipt", {})
+        lines.append("## CAM-RAG Cited Context")
+        lines.append(f"Query: {inner.get('query', '')}")
+        lines.append(f"Confidence: {inner.get('confidence', 0.0)}")
+        lines.append("")
+        for chunk in rag_receipt.get("chunks", []):
+            lines.append(f"### Citation: {chunk.get('citation', '')}")
+            lines.append(chunk.get("excerpt", ""))
+            lines.append("")
     return "\n".join(lines)
 
 
 def render_dashboard(report: RescueReport) -> str:
     risk_counter = Counter(flag for repo in report.repos for flag in repo.risk_flags)
+    rag_receipt = latest_cam_rag_receipt(report)
     cluster_cards = "\n".join(
         f"<section class='panel'><h3>{html.escape(cluster)}</h3>"
         f"<p>{len(names)} repos</p><ul>{render_repo_list_items(names[:12])}</ul></section>"
@@ -722,6 +896,23 @@ def render_dashboard(report: RescueReport) -> str:
         "</tr>"
         for flag, count in risk_counter.most_common()
     )
+    rag_section = ""
+    if rag_receipt:
+        inner = rag_receipt.get("receipt", {})
+        citations = "".join(
+            f"<li><code>{html.escape(str(citation))}</code></li>"
+            for citation in inner.get("citations", [])[:8]
+        )
+        rag_section = f"""
+    <h2>CAM-RAG Evidence</h2>
+    <section class="panel">
+      <p><b>Query:</b> <code>{html.escape(str(inner.get('query', '')))}</code></p>
+      <p>
+        <b>Results:</b> {inner.get('result_count', 0)}
+        · <b>Confidence:</b> {inner.get('confidence', 0.0)}
+      </p>
+      <ul>{citations}</ul>
+    </section>"""
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -800,6 +991,7 @@ def render_dashboard(report: RescueReport) -> str:
     <section class="grid">{cluster_cards}</section>
     <h2>Risk Summary</h2>
     <table><thead><tr><th>Flag</th><th>Count</th><th>Meaning</th></tr></thead><tbody>{risk_rows}</tbody></table>
+    {rag_section}
   </main>
 </body>
 </html>

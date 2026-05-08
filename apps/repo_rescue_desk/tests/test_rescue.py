@@ -1,10 +1,53 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+import types
 from pathlib import Path
 
 from repo_rescue_desk.cli import main
-from repo_rescue_desk.rescue import scan_universe, write_artifacts
+from repo_rescue_desk.rescue import enrich_with_cam_rag, scan_universe, write_artifacts
+
+
+class FakeDocument:
+    def __init__(self, id: str, text: str, metadata=None, domain: str = "default"):
+        self.id = id
+        self.text = text
+        self.metadata = metadata or {}
+        self.domain = domain
+
+
+class FakeRetrievalResult:
+    def __init__(self, document, score: float, routing_reason=None):
+        self.document = document
+        self.score = score
+        self.routing_reason = routing_reason
+
+
+class FakeDeterministicRetriever:
+    def __init__(self, rules_path=None):
+        self.documents = []
+
+    def index_documents(self, documents):
+        self.documents.extend(documents)
+
+    def retrieve(self, query: str, top_k: int = 5, domain=None):
+        candidates = self.documents
+        if domain:
+            candidates = [doc for doc in candidates if doc.domain == domain]
+        return [
+            FakeRetrievalResult(doc, 0.88, "test evidence")
+            for doc in candidates
+            if query.lower() in doc.text.lower()
+        ][:top_k]
+
+
+def install_fake_cam_rag(monkeypatch, module_name: str = "fake_cam_rag") -> str:
+    module = types.ModuleType(module_name)
+    module.Document = FakeDocument
+    module.DeterministicRetriever = FakeDeterministicRetriever
+    monkeypatch.setitem(sys.modules, module_name, module)
+    return module_name
 
 
 def init_repo(path: Path, readme: str, extra_files: dict[str, str] | None = None) -> None:
@@ -79,6 +122,35 @@ def test_write_artifacts_creates_mindmap_and_graphrag_outputs(tmp_path: Path) ->
     assert (out_dir / "logseq" / "pages" / "CAM Repo Rescue Desk.md").exists()
 
 
+def test_cam_rag_bridge_adds_receipt_graph_and_artifacts(tmp_path: Path, monkeypatch) -> None:
+    module_name = install_fake_cam_rag(monkeypatch)
+    init_repo(
+        tmp_path / "repo-map",
+        "# Repo Map\n\nKnowledge graph repo triage retrieval.",
+    )
+    rag_docs = tmp_path / "rag-docs"
+    rag_docs.mkdir()
+    (rag_docs / "plan.md").write_text(
+        "Repo Rescue Desk needs cited context for repo triage.",
+        encoding="utf-8",
+    )
+
+    report = scan_universe(tmp_path)
+    receipt = enrich_with_cam_rag(
+        report,
+        rag_docs,
+        query="cited context",
+        module_name=module_name,
+    )
+    artifacts = write_artifacts(report, tmp_path / "out")
+
+    assert receipt["kind"] == "cam-rag-retrieval"
+    assert receipt["receipt"]["result_count"] == 1
+    assert "cam_rag_receipt_json" in artifacts
+    assert any(node["type"] == "rag_receipt" for node in report.graph["nodes"])
+    assert (tmp_path / "out" / "logseq" / "pages" / "CAM-RAG Evidence.md").exists()
+
+
 def test_cli_generates_outputs(tmp_path: Path) -> None:
     init_repo(
         tmp_path / "medical-rag",
@@ -90,3 +162,31 @@ def test_cli_generates_outputs(tmp_path: Path) -> None:
     assert exit_code == 0
     assert (out_dir / "repo_inventory.json").exists()
     assert (out_dir / "opportunity_rankings.md").exists()
+
+
+def test_cli_generates_cam_rag_receipt_when_requested(tmp_path: Path, monkeypatch) -> None:
+    module_name = install_fake_cam_rag(monkeypatch)
+    init_repo(
+        tmp_path / "knowledge-rag",
+        "# Knowledge RAG\n\nKnowledge retrieval graph.",
+    )
+    rag_docs = tmp_path / "rag-docs"
+    rag_docs.mkdir()
+    (rag_docs / "context.md").write_text("agent safety cited context", encoding="utf-8")
+    out_dir = tmp_path / "artifacts"
+
+    exit_code = main([
+        "--root",
+        str(tmp_path),
+        "--out-dir",
+        str(out_dir),
+        "--rag-folder",
+        str(rag_docs),
+        "--rag-query",
+        "cited context",
+        "--rag-module",
+        module_name,
+    ])
+
+    assert exit_code == 0
+    assert (out_dir / "cam_rag_receipt.json").exists()
