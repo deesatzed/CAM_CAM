@@ -137,6 +137,22 @@ async def ensure_language_ganglion(
     return repo, sem
 
 
+async def _close_temporary_ganglion_repository(
+    target_repository: Repository,
+    primary_repository: Repository,
+) -> None:
+    """Close a mining-created ganglion engine without touching primary DB."""
+    if (
+        target_repository is primary_repository
+        or target_repository.engine is primary_repository.engine
+    ):
+        return
+    try:
+        await target_repository.engine.close()
+    except Exception as e:
+        logger.warning("Failed to close temporary ganglion repository: %s", e)
+
+
 def _register_sibling_if_needed(
     name: str, db_path: str, config: ClawConfig,
 ) -> None:
@@ -3105,25 +3121,30 @@ class RepoMiner:
                 )
 
                 zone_meth_ids: list[str] = []
-                for finding in findings:
-                    try:
-                        mid = await self.store_finding(
-                            finding, target_project_id,
-                            run_assimilation=False, brain=zone_brain,
-                            target_repository=target_repo,
-                            target_semantic_memory=target_sem,
-                        )
-                        if mid:
-                            zone_meth_ids.append(mid)
-                        if finding.action_template_id:
-                            all_action_template_ids.append(finding.action_template_id)
-                    except Exception as e:
-                        logger.warning("Failed to store finding '%s': %s", finding.title, e)
+                try:
+                    for finding in findings:
+                        try:
+                            mid = await self.store_finding(
+                                finding, target_project_id,
+                                run_assimilation=False, brain=zone_brain,
+                                target_repository=target_repo,
+                                target_semantic_memory=target_sem,
+                            )
+                            if mid:
+                                zone_meth_ids.append(mid)
+                            if finding.action_template_id:
+                                all_action_template_ids.append(finding.action_template_id)
+                        except Exception as e:
+                            logger.warning("Failed to store finding '%s': %s", finding.title, e)
 
-                # Per-zone assimilation with ganglion-aware repo binding
-                if zone_meth_ids and self.assimilation_engine is not None and not self._fast_mine:
-                    await self._assimilate_methodologies(
-                        zone_meth_ids, repository=target_repo,
+                    # Per-zone assimilation with ganglion-aware repo binding
+                    if zone_meth_ids and self.assimilation_engine is not None and not self._fast_mine:
+                        await self._assimilate_methodologies(
+                            zone_meth_ids, repository=target_repo,
+                        )
+                finally:
+                    await _close_temporary_ganglion_repository(
+                        target_repo, self.repository,
                     )
 
                 all_findings.extend(findings)
@@ -3310,26 +3331,31 @@ class RepoMiner:
         # Store each finding in the brain's ganglion
         methodology_ids: list[str] = []
         action_template_ids: list[str] = []
-        for finding in findings:
-            try:
-                methodology_id = await self.store_finding(
-                    finding,
-                    target_project_id,
-                    run_assimilation=False,
-                    brain=brain,
-                    target_repository=target_repo,
-                    target_semantic_memory=target_sem,
-                )
-                if methodology_id:
-                    methodology_ids.append(methodology_id)
-                if finding.action_template_id:
-                    action_template_ids.append(finding.action_template_id)
-            except Exception as e:
-                logger.warning("Failed to store finding '%s': %s", finding.title, e)
+        try:
+            for finding in findings:
+                try:
+                    methodology_id = await self.store_finding(
+                        finding,
+                        target_project_id,
+                        run_assimilation=False,
+                        brain=brain,
+                        target_repository=target_repo,
+                        target_semantic_memory=target_sem,
+                    )
+                    if methodology_id:
+                        methodology_ids.append(methodology_id)
+                    if finding.action_template_id:
+                        action_template_ids.append(finding.action_template_id)
+                except Exception as e:
+                    logger.warning("Failed to store finding '%s': %s", finding.title, e)
 
-        if methodology_ids and self.assimilation_engine is not None and not self._fast_mine:
-            await self._assimilate_methodologies(
-                methodology_ids, repository=target_repo,
+            if methodology_ids and self.assimilation_engine is not None and not self._fast_mine:
+                await self._assimilate_methodologies(
+                    methodology_ids, repository=target_repo,
+                )
+        finally:
+            await _close_temporary_ganglion_repository(
+                target_repo, self.repository,
             )
 
         duration = time.monotonic() - start
