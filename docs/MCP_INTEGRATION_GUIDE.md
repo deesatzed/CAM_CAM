@@ -12,7 +12,9 @@ cam mcp --transport stdio
 python -m claw.mcp_server
 ```
 
-## Exposed Tools (5)
+## Exposed Tools (17, partially documented)
+
+> **Note:** The live server exposes 17 tools. This guide documents 5 of them in detail. The full list is always discoverable at runtime: start the server with `cam mcp --transport stdio` and call `tools/list` from any MCP client. The 12 undocumented tools follow the same JSON-RPC conventions shown below.
 
 ### 1. `claw_query_memory`
 
@@ -90,7 +92,7 @@ Add to `~/.claude/mcp_servers.json`:
 }
 ```
 
-After adding, restart Claude Code. CAM's 5 tools will appear as available MCP tools.
+After adding, restart Claude Code. CAM's 17 tools will appear as available MCP tools.
 
 ## Connect from Cursor
 

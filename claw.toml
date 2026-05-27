@@ -18,7 +18,8 @@ fallback_models = [
     "qwen/qwen3.6-flash",
     "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
-    "openai/gpt-mini-latest",
+    "qwen/qwen3.5-9b",
+    "openai/gpt-4o-mini",
 ]
 
 [embeddings]
