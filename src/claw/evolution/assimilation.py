@@ -48,9 +48,23 @@ def _canonical_pair(id_a: str, id_b: str) -> tuple[str, str]:
 
 
 def _extract_json_object_text(raw: str) -> str:
-    """Extract the first JSON object from fenced or prose-wrapped model output."""
+    """Extract the first JSON object from fenced or prose-wrapped model output.
+
+    Handles three common model response patterns:
+    1. Bare JSON (no fencing)
+    2. JSON wrapped in a leading ```[json] ... ``` fence
+    3. Reasoning/thinking text followed by a ``` fence block anywhere in the response
+    """
+    import re as _re
     cleaned = raw.strip()
-    if cleaned.startswith("```"):
+
+    # Strip any fence block (leading or embedded) — take content between first
+    # opening ``` and its matching closing ```.
+    fence_match = _re.search(r"```(?:json)?\s*\n(.*?)```", cleaned, _re.DOTALL)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+    elif cleaned.startswith("```"):
+        # Simple leading fence with no closing fence found — strip all ``` lines
         lines = cleaned.split("\n")
         lines = [line for line in lines if not line.strip().startswith("```")]
         cleaned = "\n".join(lines).strip()

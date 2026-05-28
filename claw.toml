@@ -156,7 +156,7 @@ max_prompt_tokens = 80000
 
 [assimilation]
 enabled = true
-capability_llm_enabled = false
+capability_llm_enabled = true
 synergy_candidate_limit = 20
 synergy_score_threshold = 0.6
 auto_compose_threshold = 0.8
@@ -209,7 +209,7 @@ context_window_tokens = 1000000
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "qwen/qwen3.6-flash"
+model = "openai/gpt-4.1-mini"
 max_concurrent = 2
 timeout = 600
 max_budget_usd = 10.0
