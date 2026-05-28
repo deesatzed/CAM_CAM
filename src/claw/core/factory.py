@@ -521,10 +521,16 @@ class ClawFactory:
         )
 
         # ── Verifier ──────────────────────────────────────────────
+        # The corpus uses hash-embedding-384 for fast retrieval, but the verifier's
+        # drift alignment check requires real semantic embeddings. Use the default
+        # all-MiniLM-L6-v2 model (no required_model constraint) for the verifier.
+        from claw.core.config import EmbeddingsConfig as _EmbeddingsConfig
+        _verifier_embed_cfg = _EmbeddingsConfig()
+        verifier_embeddings = EmbeddingEngine(_verifier_embed_cfg)
         from claw.verifier import Verifier
         sentinel_cfg = config.sentinel if hasattr(config, "sentinel") else None
         verifier = Verifier(
-            embedding_engine=embeddings,
+            embedding_engine=verifier_embeddings,
             banned_dependencies=getattr(sentinel_cfg, "banned_dependencies", []) if sentinel_cfg else [],
             drift_threshold=getattr(sentinel_cfg, "drift_threshold", 0.40) if sentinel_cfg else 0.40,
             llm_client=llm_client,

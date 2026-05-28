@@ -150,9 +150,12 @@ class Verifier:
     """
 
     _DEFAULT_DEEP_CHECK_PROMPT = (
-        "Review this diff against the task. Does it fully solve the task? "
-        "Return JSON: {\"verdict\": \"PASS\"|\"FAIL\", \"gaps\": [...], "
-        "\"severity\": \"none\"|\"low\"|\"medium\"|\"high\"|\"critical\"}"
+        "Task: {task_description}\n\n"
+        "Approach summary: {approach_summary}\n\n"
+        "Diff:\n{diff}\n\n"
+        "Review the diff against the task. Does it fully solve the task? "
+        "Return JSON only: {{\"verdict\": \"PASS\" or \"FAIL\", \"gaps\": [\"...\"], "
+        "\"severity\": \"none\"|\"low\"|\"medium\"|\"high\"|\"critical\"}}"
     )
 
     def __init__(
