@@ -744,6 +744,7 @@
         <a href="#why">Why try it</a>
         <a href="#results">Results</a>
         <a href="#technical">Technical</a>
+        <a href="#mcp-cortex">MCP-Cortex</a>
         <a href="#proof">Proof</a>
         <a href="#run">Run</a>
       </nav>
@@ -1140,6 +1141,72 @@
               <tr><td>Evidence</td><td>Usually no reproducible harness for a landing-page claim.</td><td><strong>Harness-backed</strong>: <code>scripts/test_repo_rescue_desk_showpiece.sh</code> verifies the artifact set.</td></tr>
               <tr><td>Safety posture</td><td>Risk is discovered when tests fail or a human notices.</td><td><strong>Risk flags before mutation</strong>: dirty worktrees, no tests, medical/PII language, API-key-sensitive language.</td></tr>
               <tr><td>Next-step planning</td><td>The user must know what to ask for next.</td><td><strong>Ranks next apps</strong> with supporting repos and measurable outcomes.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="mcp-cortex">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>MCP-Cortex capability profiles</h2>
+          <p>
+            A second CAM_Codx showpiece used CAM to mine MCP-Cortex methodology patterns, recall and cite them through the native
+            <code>cam_cam</code> MCP, apply one pattern to a real MCP server, and record the outcome back into the CAM outcome log.
+          </p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <div class="num">01</div>
+            <h3>What changed</h3>
+            <p>
+              The external <code>agentmedq</code> / <code>sci-stapler</code> MCP server now exposes static MCP-Cortex-style capability profiles through
+              its existing <code>list_sources</code> tool. No new public MCP tool was added.
+            </p>
+          </article>
+          <article class="card">
+            <div class="num">02</div>
+            <h3>What clients can inspect</h3>
+            <p>
+              Profiles label read-only network calls, local metadata reads, data flow, risk class, rollback expectation, assurance level,
+              and the Codex-CAM methodology IDs applied during the change.
+            </p>
+          </article>
+          <article class="card">
+            <div class="num">03</div>
+            <h3>What comes next</h3>
+            <p>
+              The current layer is inspectable metadata. The next layer is policy enforcement: a client or server gate reads the profile and
+              decides whether to allow, warn, deny, or require confirmation before a tool call.
+            </p>
+          </article>
+        </div>
+        <div class="table-wrap" style="margin-top: 22px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Proof point</th>
+                <th>Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Native CAM proof path</td>
+                <td><code>cam_recall</code>, <code>cam_provenance</code>, and <code>cam_record_outcome</code> all ran through native <code>cam_cam</code>.</td>
+              </tr>
+              <tr>
+                <td>Outcome recorded</td>
+                <td><code>b0dfe005-d8d6-4c05-8248-ff86fd854d93</code></td>
+              </tr>
+              <tr>
+                <td>Verification</td>
+                <td><code>pytest tests/codex_mcp/ -q</code> passed with 68 tests, and <code>python tools/product_smoke.py</code> reported <code>PRODUCT SMOKE PASS</code>.</td>
+              </tr>
+              <tr>
+                <td>External MCP adoption</td>
+                <td><code>agentmedq</code> kept five public MCP tools and exposes capability profiles under <code>mcp_cortex_capabilities</code>.</td>
+              </tr>
             </tbody>
           </table>
         </div>

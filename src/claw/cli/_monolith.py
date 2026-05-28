@@ -9194,6 +9194,167 @@ async def _learn_proof_async(
         await ctx.close()
 
 
+@learn_app.command(name="ingest-codex-outcomes")
+def learn_ingest_codex_outcomes(
+    outcome_db: Optional[str] = typer.Option(
+        None,
+        "--outcome-db",
+        help="Path to codex_outcome_log.db; defaults to ~/.cam_codex_mcp/codex_outcome_log.db",
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Report what would be ingested without writing"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help="Enable debug logging"),
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+) -> None:
+    """Consume rows from codex_outcome_log and push them into the CAM_CAM corpus.
+
+    Reads unprocessed rows from the MCP outcome staging table and calls
+    semantic_memory.record_outcome() for each methodology_id referenced.
+    Idempotent: already-ingested row IDs are tracked in claw.db.
+    """
+    _setup_logging(verbose)
+    asyncio.run(_learn_ingest_codex_outcomes_async(outcome_db, dry_run, verbose, config))
+
+
+INGEST_TRACKING_DDL = """
+CREATE TABLE IF NOT EXISTS codex_outcome_ingested (
+    row_id      TEXT PRIMARY KEY,
+    ingested_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    methodology_ids TEXT NOT NULL,
+    outcome     TEXT NOT NULL
+);
+"""
+
+
+async def _learn_ingest_codex_outcomes_async(
+    outcome_db_path: Optional[str],
+    dry_run: bool,
+    verbose: bool,
+    config_path: Optional[str],
+) -> None:
+    import json as json_mod
+    import sqlite3 as _sqlite3
+    from pathlib import Path as _Path
+
+    from claw.core.factory import ClawFactory
+
+    # Resolve outcome DB path
+    if outcome_db_path:
+        src_path = _Path(outcome_db_path).expanduser().resolve()
+    else:
+        src_path = _Path("~/.cam_codex_mcp/codex_outcome_log.db").expanduser()
+
+    if not src_path.exists():
+        console.print(f"[red]Outcome DB not found: {src_path}[/red]")
+        raise typer.Exit(1)
+
+    config_p = _Path(config_path) if config_path else None
+    ctx = await ClawFactory.create(config_path=config_p)
+
+    try:
+        primary_db_path = _Path(ctx.config.database.db_path).resolve()
+
+        # Ensure the tracking table exists in claw.db
+        with _sqlite3.connect(str(primary_db_path)) as tracking_conn:
+            tracking_conn.executescript(INGEST_TRACKING_DDL)
+
+        # Read all rows from codex_outcome_log
+        with _sqlite3.connect(str(src_path)) as src_conn:
+            src_conn.row_factory = _sqlite3.Row
+            rows = src_conn.execute(
+                "SELECT id, methodology_ids, outcome, task_id, repo, ts FROM codex_outcome_log ORDER BY ts ASC"
+            ).fetchall()
+
+        if not rows:
+            console.print("[yellow]codex_outcome_log is empty — nothing to ingest.[/yellow]")
+            return
+
+        # Identify already-ingested IDs
+        with _sqlite3.connect(str(primary_db_path)) as tracking_conn:
+            already_done = {
+                r[0]
+                for r in tracking_conn.execute("SELECT row_id FROM codex_outcome_ingested").fetchall()
+            }
+
+        pending = [r for r in rows if r["id"] not in already_done]
+
+        console.print(
+            f"\n[bold]CAM Learn — Ingest Codex Outcomes[/bold]\n"
+            f"  Source: {src_path}\n"
+            f"  Total rows: {len(rows)} | already ingested: {len(already_done)} | pending: {len(pending)}"
+        )
+
+        if not pending:
+            console.print("[green]All rows already ingested. Nothing to do.[/green]")
+            return
+
+        if dry_run:
+            console.print("[yellow]Dry run — no writes will occur.[/yellow]")
+
+        semantic_memory = ctx.semantic_memory
+        ingested = 0
+        skipped = 0
+        errors = 0
+
+        for row in pending:
+            row_id = row["id"]
+            raw_ids = row["methodology_ids"]
+            outcome_val = row["outcome"]
+
+            try:
+                meth_ids: list[str] = json_mod.loads(raw_ids) if raw_ids else []
+            except Exception:
+                meth_ids = [raw_ids] if raw_ids else []
+
+            if not meth_ids:
+                skipped += 1
+                continue
+
+            # green=success, all others (red, partial, rejected)=failure
+            success = outcome_val == "green"
+
+            if not dry_run:
+                row_errors = 0
+                for mid in meth_ids:
+                    try:
+                        await semantic_memory.record_outcome(
+                            methodology_id=mid,
+                            success=success,
+                            retrieval_relevance=0.5,
+                        )
+                    except Exception as exc:
+                        logger.warning("record_outcome failed for %s: %s", mid, exc)
+                        row_errors += 1
+                errors += row_errors
+
+                if row_errors == 0:
+                    # Mark row as ingested only when all method calls succeeded
+                    with _sqlite3.connect(str(primary_db_path)) as tracking_conn:
+                        tracking_conn.execute(
+                            "INSERT OR IGNORE INTO codex_outcome_ingested (row_id, methodology_ids, outcome) VALUES (?, ?, ?)",
+                            (row_id, raw_ids, outcome_val),
+                        )
+
+            ingested += 1
+            if verbose:
+                ids_preview = ", ".join(meth_ids[:3])
+                if len(meth_ids) > 3:
+                    ids_preview += f" +{len(meth_ids) - 3} more"
+                console.print(
+                    f"  [{'green' if success else 'red'}]{'PASS' if success else 'FAIL'}[/{'green' if success else 'red'}] "
+                    f"{row_id[:8]}  {ids_preview}"
+                )
+
+        action = "Would ingest" if dry_run else "Ingested"
+        console.print(
+            f"\n[bold green]{action}: {ingested}[/bold green]  "
+            f"skipped (no IDs): {skipped}  "
+            f"errors: {errors}"
+        )
+
+    finally:
+        await ctx.close()
+
+
 async def _learn_search_async(
     query: str, limit: int, verbose: bool, config_path: Optional[str]
 ) -> None:
