@@ -10,7 +10,7 @@ CAM_CAM is the canonical umbrella repo. CAM-PULSE is the closed-loop learning en
 
 CAM-PULSE **autonomously mines** error handling, retry logic, API design, and testing patterns from real GitHub repos. It stores them as structured, novelty-scored, lifecycle-tracked methodologies and uses that knowledge to build working software across multiple models via OpenRouter. Build outcomes feed back into pattern quality scores via a Thompson-sampling bandit tournament: patterns that help builds pass get promoted, patterns that hurt builds get demoted. When a build fails, a 3-layer defense chain - deterministic auto-fix, correction loop, and agent rotation - tries to repair the failure without human intervention.
 
-**889 methodologies** | **153 source repos mined** | **30/30 batch builds passing** | **5/6 failures rescued by defense chain** | **5/10 -> 10/10 with rotation** | **$0 - MIT licensed**
+**2,241 methodologies** | **266 source repos mined** | **30/30 batch builds passing** | **5/6 failures rescued by defense chain** | **5/10 -> 10/10 with rotation** | **$0 - MIT licensed**
 
 <!-- Counts verified 2026-05-04. Source: CAM-Pulse data/claw.db queries + batch_run/results/compare_overnight/ + retest_rotation/ -->
 
@@ -30,7 +30,7 @@ Migration plan: [CAM Repo Consolidation Plan](docs/CAM_REPO_CONSOLIDATION_PLAN_2
 
 ### Proven: 30-Project Batch Build
 
-CAM built 30 software projects autonomously using patterns mined from 153 repos. Every project was verified with real `python -c "import ..."` and `pytest` — no mock, no manual intervention. 6 initial bugs (1-5 line fixes each) were diagnosed and patched; the most common (missing `__init__.py` exports) was fixed systemically in CAM's verifier so future builds self-correct.
+CAM built 30 software projects autonomously using patterns mined from 266 repos. Every project was verified with real `python -c "import ..."` and `pytest` — no mock, no manual intervention. 6 initial bugs (1-5 line fixes each) were diagnosed and patched; the most common (missing `__init__.py` exports) was fixed systemically in CAM's verifier so future builds self-correct.
 
 | What Happened | Number |
 |--------------|--------|
@@ -118,7 +118,7 @@ cam learn search "agent routing"   # Search the new knowledge
 | | CAM-PULSE core inside CAM_CAM | Copilot | Cursor | Windsurf | Devin | Aider |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Mines patterns from source code** | Autonomous, structured | No | No | No | Indexes repos | No |
-| **Cross-project knowledge base** | 889 methodologies, federated ganglia | Repo-scoped memory | .cursorrules (manual) | Session memories | Wikis + playbooks (manual) | None |
+| **Cross-project knowledge base** | 2,241 methodologies, federated ganglia | Repo-scoped memory | .cursorrules (manual) | Session memories | Wikis + playbooks (manual) | None |
 | **Patterns scored by build outcomes** | RL bandit tournament | No | No | No | No | No |
 | **Self-improves (demotes failures)** | 11 patterns demoted, lifecycle tracking | No | No | No | No | No |
 | **Statistically validated KB uplift** | Cohen's d = 0.843, p < 0.05 | No data published | No data published | No data published | No data published | No data published |
@@ -142,7 +142,7 @@ Everything CAM does is now accessible through a browser. No CLI memorization req
 ┌─ CAM-PULSE ──────────────────────────────────────────────────────┐
 │                                                                   │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │   889    │  │  Grok    │  │   153    │  │  30/30   │        │
+│  │  2,241   │  │  Grok    │  │   266    │  │  30/30   │        │
 │  │ Methods  │  │  4.3     │  │  Repos   │  │ Passing  │        │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
 │                                                                   │
@@ -387,7 +387,7 @@ Does CAM's knowledge base actually make agent output better? We ran **two indepe
 **Task:** Add retry logic with exponential backoff to a Python API client with no error handling.
 
 - **Run A (Base):** Empty knowledge base — agent sees only the task description
-- **Run B (KB-Equipped):** Full knowledge base — 889 mined methodologies available
+- **Run B (KB-Equipped):** Full knowledge base — 2,241 mined methodologies available
 
 Run B retrieved 5 battle-tested retry patterns from 4 real source repos in 1.4 seconds.
 
@@ -458,7 +458,7 @@ Full writeup: [docs/showcase_retry_backoff.md](docs/showcase_retry_backoff.md) |
 CAM doesn't keep everything in one database. It operates as a **federated brain** — multiple specialist knowledge nodes (ganglia) that share knowledge through read-only cross-queries.
 
 ```
-CAM Brain (889 methodologies, 153 source repos)
+CAM Brain (2,241 methodologies, 266 source repos)
 ├── Python Ganglion (primary) — 3,234 methodologies
 ├── TypeScript Ganglion — 142 methodologies (Next.js, React, Node patterns)
 ├── Rust Ganglion — 154 methodologies (WASM, safety, CLI, systems)
@@ -622,7 +622,7 @@ After the atomic swap completed, a live install verification confirmed 30/30 bui
 This is what makes CAM different from code generators that start from zero every time:
 
 ```
-Mine 889 patterns from 153 repos across 4 Grok-powered agents
+Mine 2,241 patterns from 266 repos across 4 Grok-powered agents
   --> Retrieve and inject relevant patterns into agent prompts
     --> Produce code informed by those patterns
       --> Verify quality and drift alignment
@@ -837,7 +837,7 @@ This is what makes CAM-PULSE different from every other AI coding tool. It's not
                     +---------+----------+
                               |
                     +---------v----------+
-                    |  SQLite + Vectors  |  889 methodologies with
+                    |  SQLite + Vectors  |  2,241 methodologies with
                     |  Knowledge Base    |  provenance, lifecycle state,
                     |  (claw.db)         |  and 384-dim embeddings
                     +---------+----------+
@@ -900,7 +900,7 @@ GitHub Copilot remembers your workspace conventions (28-day expiry). Cursor stor
 │  = the body — same for every CAM ganglion                        │
 ├─────────────────────────────────────────────────────────────────┤
 │  THE BRAIN (local only, never pushed)                            │
-│  data/claw.db — 889 methodologies, agent scores,               │
+│  data/claw.db — 2,241 methodologies, agent scores,               │
 │  task history, 384-dim embeddings, lifecycle states               │
 │  = unique to YOUR ganglion — YOUR learned experience             │
 ├─────────────────────────────────────────────────────────────────┤
@@ -920,10 +920,10 @@ GitHub Copilot remembers your workspace conventions (28-day expiry). Cursor stor
 
 | Metric | This Ganglion | Fresh Clone |
 |--------|:------------:|:-----------:|
-| Learned methodologies | 889 | 0 |
-| Source repos mined | 153 | 0 |
+| Learned methodologies | 2,241 | 0 |
+| Source repos mined | 266 | 0 |
 | Tasks executed | 1,668 | 0 |
-| Lifecycle promotions (embryonic → viable) | 18 | 0 |
+| Lifecycle promotions (embryonic → viable) | 127 | 0 |
 | Brains (language ganglia) | 5 | 0 |
 | Agent quality scores | Bayesian-tracked | Uniform prior (0.5) |
 
