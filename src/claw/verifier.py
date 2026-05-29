@@ -1347,6 +1347,13 @@ class Verifier:
             if any((workspace / d).exists() for d in ["tests", "test"]):
                 return "pytest", ["--tb=short"]
 
+        # Python test files present — prefer pytest even for mixed-language repos
+        # (e.g. a JS repo where cam enhance added Python tests)
+        for test_dir_name in ["tests", "test"]:
+            test_dir = workspace / test_dir_name
+            if test_dir.is_dir() and list(test_dir.glob("test_*.py")):
+                return "pytest", ["--tb=short"]
+
         # Node.js projects
         if (workspace / "package.json").exists():
             return "npm", ["test", "--if-present"]
@@ -1358,11 +1365,6 @@ class Verifier:
         # Rust projects
         if (workspace / "Cargo.toml").exists():
             return "cargo", ["test"]
-
-        for test_dir_name in ["tests", "test"]:
-            test_dir = workspace / test_dir_name
-            if test_dir.is_dir() and list(test_dir.glob("test_*.py")):
-                return "pytest", ["--tb=short"]
 
         # No recognized project type
         return None, []
