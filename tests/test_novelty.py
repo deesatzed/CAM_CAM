@@ -335,7 +335,8 @@ class TestNearestNeighborNovelty:
         """A methodology with close neighbors should have low novelty."""
         config = load_config()
         from claw.db.embeddings import EmbeddingEngine
-        embedding_engine = EmbeddingEngine(config.embeddings)
+        from claw.core.config import EmbeddingsConfig as _EmbeddingsConfig
+        embedding_engine = EmbeddingEngine(_EmbeddingsConfig())
 
         # Save several similar methodologies
         for i in range(5):

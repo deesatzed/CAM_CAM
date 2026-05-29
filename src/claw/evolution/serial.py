@@ -38,6 +38,8 @@ APPROVED_MODEL_IDS = (
     "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
     "openai/gpt-mini-latest",
+    "openai/gpt-4.1-mini",
+    "x-ai/grok-4.3",
 )
 CHAMPION_POINTER_FILENAME = "current_champion.json"
 

@@ -740,7 +740,7 @@ class TestSerialEvolutionRunner:
         await evolution_engine.execute(
             """INSERT INTO token_costs
                (id, model_used, input_tokens, output_tokens, total_tokens, cost_usd)
-               VALUES ('tc-blocked', 'x-ai/grok-4.3', 100, 50, 150, 0.01)"""
+               VALUES ('tc-blocked', 'unapproved/model-sentinel', 100, 50, 150, 0.01)"""
         )
         runner = SerialEvolutionRunner(
             Repository(evolution_engine),

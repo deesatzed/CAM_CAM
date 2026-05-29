@@ -5,6 +5,8 @@ import json
 import pytest
 import typer
 
+import claw.cli._monolith as _monolith
+
 
 class TestPreflightAnswerHandling:
     def test_apply_answers_to_preflight_resolves_matching_questions_and_blockers(self):
@@ -91,8 +93,8 @@ class TestPreflightAnswerHandling:
         async def fake_quickstart_async(**kwargs):
             return None
 
-        monkeypatch.setattr(cli, "_run_preflight_async", fake_preflight_async)
-        monkeypatch.setattr(cli, "_quickstart_async", fake_quickstart_async)
+        monkeypatch.setattr(_monolith, "_run_preflight_async", fake_preflight_async)
+        monkeypatch.setattr(_monolith, "_quickstart_async", fake_quickstart_async)
 
         await cli._create_async(
             repo_path=tmp_path / "demo",
@@ -138,7 +140,7 @@ class TestPreflightAnswerHandling:
             }
             return report, tmp_path / "data" / "preflights" / "demo.json"
 
-        monkeypatch.setattr(cli, "_run_preflight_async", fake_preflight_async)
+        monkeypatch.setattr(_monolith, "_run_preflight_async", fake_preflight_async)
 
         with pytest.raises(typer.Exit) as exc:
             await cli._create_async(
