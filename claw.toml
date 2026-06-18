@@ -3,7 +3,7 @@ db_path = "data/claw.db"
 
 [llm]
 base_url = "https://openrouter.ai/api/v1"
-timeout = 120
+timeout = 300
 max_retries = 3
 backoff_base = 2.0
 backoff_cap = 60.0
@@ -15,9 +15,10 @@ model_cooldown_seconds = 90
 # DegradationManager's agent-level fallback (which routes to a different agent).
 # Leave empty to disable model-level fallback.
 fallback_models = [
-    "qwen/qwen3.6-flash",
+    "moonshotai/kimi-k2.7-code",
     "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
+    "nvidia/nemotron-3-ultra-550b-a55b",
     "x-ai/grok-4.3",
     "openai/gpt-4.1-mini",
 ]
@@ -189,9 +190,9 @@ potential_retrieval_boost = 0.10
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "deepseek/deepseek-v4-flash"
+model = "z-ai/glm-5.2"
 max_concurrent = 2
-timeout = 600
+timeout = 900
 max_budget_usd = 10.0
 context_window_tokens = 1000000
 
@@ -199,9 +200,9 @@ context_window_tokens = 1000000
 enabled = true
 mode = "openrouter"
 api_key_env = "OPENROUTER_API_KEY"
-model = "deepseek/deepseek-v4-flash"
+model = "moonshotai/kimi-k2.7-code"
 max_concurrent = 4
-timeout = 600
+timeout = 900
 max_budget_usd = 10.0
 context_window_tokens = 1000000
 

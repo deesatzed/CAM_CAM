@@ -342,7 +342,7 @@ _SKELETON_HEAD_LINES: int = 30
 
 # Max per-mining-call LLM timeout in seconds (prevents indefinite stalls
 # from huge or malformed inputs). Wraps llm_client.complete() via asyncio.wait_for.
-_MINING_LLM_TIMEOUT_SECONDS: float = 300.0  # 5 minutes
+_MINING_LLM_TIMEOUT_SECONDS: float = 600.0  # 10 minutes
 
 # Maximum bytes to read per file for content hashing (4 KB).
 _CONTENT_HASH_CHUNK: int = 4096
