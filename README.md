@@ -1,20 +1,32 @@
 # CAM_CAM
 
-### The repo-universe operating layer for CAM-PULSE.
+CAM_CAM is a local repo-intelligence and coding-memory system for people who operate more than one codebase and need evidence before an AI agent edits anything.
 
-CAM_CAM is the canonical umbrella repo. CAM-PULSE is the closed-loop learning engine inside it. Repo Rescue Desk is the read-only triage layer that scans a local universe of repositories, classifies reusable systems, flags risk before an agent edits code, ranks what should be built next, and exports GraphRAG / Logseq / Markmap / Freeplane artifacts.
+The current flagship proof is [Repo Rescue Desk](docs/cam_cam_showpiece.html): a read-only triage layer that scans a local universe of repositories, classifies reusable systems, flags risk, ranks build opportunities, and exports GraphRAG, Logseq, Markmap, and Freeplane artifacts. In the current showpiece run it scanned 238 git repos, found 8 capability clusters, emitted 249 GraphRAG nodes plus 244 edges, ranked 6 app opportunities, and made 0 source mutations.
 
-**Current showpiece:** [Repo Rescue Desk](docs/cam_cam_showpiece.html) proves the CAM_CAM layer on a real local run: 238 git repos scanned, 8 capability clusters found, 249 GraphRAG nodes emitted, 244 edges emitted, 6 ranked app opportunities, and 0 source mutations.
+Under that surface is CAM-PULSE: the method engine that mines reusable engineering patterns from source, stores them in local SQLite with provenance, tracks lifecycle and fitness, verifies reuse through tests, and demotes methods that hurt outcomes.
 
-**MCP-Cortex showpiece:** CAM_Codx also proved a smaller MCP-Cortex adoption path: mine MCP-Cortex methodologies, recall and cite them through native `cam_cam`, apply the pattern to a real MCP server, and record the outcome. The external `agentmedq` / `sci-stapler` server now exposes static MCP-Cortex-style capability profiles through its existing `list_sources` tool, preserving the same five public MCP tools while labeling read-only network effects, local metadata reads, data flow, risk class, rollback expectations, and applied methodology IDs. This is capability metadata today; policy enforcement is the next layer.
+**Launch metrics verified 2026-06-19:** 2,304 methodologies in the canonical local DB, 110 projects, 91 FastAPI routes, 20 Next.js page files, and a 257-test focused Python smoke suite passing. The metric source is [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md), using only `data/claw.db` from this repo.
 
-CAM-PULSE **autonomously mines** error handling, retry logic, API design, and testing patterns from real GitHub repos. It stores them as structured, novelty-scored, lifecycle-tracked methodologies and uses that knowledge to build working software across multiple models via OpenRouter. Build outcomes feed back into pattern quality scores via a Thompson-sampling bandit tournament: patterns that help builds pass get promoted, patterns that hurt builds get demoted. When a build fails, a 3-layer defense chain - deterministic auto-fix, correction loop, and agent rotation - tries to repair the failure without human intervention.
+CAM_CAM is not trying to beat IDE assistants at autocomplete. It is for operators with many repos who need to map, mine, verify, and reuse engineering knowledge before an agent mutates code.
 
-**2,274 methodologies** | **266 source repos mined** | **30/30 batch builds passing** | **5/6 failures rescued by defense chain** | **5/10 -> 10/10 with rotation** | **$0 - MIT licensed**
+```bash
+git clone https://github.com/deesatzed/CAM_CAM.git
+cd CAM_CAM
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
+PYTHONPATH=src python -m claw.cli --help
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli --help
+```
 
-<!-- Counts verified 2026-05-29. Source: CAM-Pulse data/claw.db queries + batch_run/results/compare_overnight/ + retest_rotation/ -->
+Optional browser UI:
 
-> **No other tool closes this loop:** discover -> mine -> store -> retrieve -> build -> verify -> correct -> rotate -> learn -> demote. Copilot remembers conventions. Cursor stores rules. Devin indexes wikis. CAM-PULSE mines patterns autonomously, scores them by real build outcomes, rotates failing agents to different models, and demotes what fails. CAM_CAM adds the repo-universe triage layer around that engine.
+```bash
+PYTHONPATH=src python -m claw.cli dashboard
+cd forge-ui && npm ci && npm run dev
+```
+
+CAM_Codx is a separate companion repo at `https://github.com/deesatzed/CAM_Codx.git`; it is not the CAM_CAM product repo. Its current new-user status is audited in the launch-refresh report.
 
 ## Repository Roles
 
@@ -28,7 +40,9 @@ Migration plan: [CAM Repo Consolidation Plan](docs/CAM_REPO_CONSOLIDATION_PLAN_2
 
 ---
 
-### Proven: 30-Project Batch Build
+### Historical Proof Snapshot: 30-Project Batch Build
+
+The sections below preserve earlier proof runs and may mention historical counts. Use [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md) for current launch metrics.
 
 CAM built 30 software projects autonomously using patterns mined from 266 repos. Every project was verified with real `python -c "import ..."` and `pytest` — no mock, no manual intervention. 6 initial bugs (1-5 line fixes each) were diagnosed and patched; the most common (missing `__init__.py` exports) was fixed systemically in CAM's verifier so future builds self-correct.
 
@@ -118,7 +132,7 @@ cam learn search "agent routing"   # Search the new knowledge
 | | CAM-PULSE core inside CAM_CAM | Copilot | Cursor | Windsurf | Devin | Aider |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|
 | **Mines patterns from source code** | Autonomous, structured | No | No | No | Indexes repos | No |
-| **Cross-project knowledge base** | 2,274 methodologies, federated ganglia | Repo-scoped memory | .cursorrules (manual) | Session memories | Wikis + playbooks (manual) | None |
+| **Cross-project knowledge base** | 2,304 methodologies in local SQLite, lifecycle-tracked | Repo-scoped memory | Rules/indexing | Memories/rules | DeepWiki/knowledge surfaces | Repo map |
 | **Patterns scored by build outcomes** | RL bandit tournament | No | No | No | No | No |
 | **Self-improves (demotes failures)** | 11 patterns demoted, lifecycle tracking | No | No | No | No | No |
 | **Statistically validated KB uplift** | Cohen's d = 0.843, p < 0.05 | No data published | No data published | No data published | No data published | No data published |
@@ -128,13 +142,13 @@ cam learn search "agent routing"   # Search the new knowledge
 | **Runs 100% local (zero cloud)** | Ollama + MLX-LM | No | No | No | No | Partial |
 | **Cost** | **Free + MIT** | $19/mo | $20/mo | $0-40/mo | $500/mo | Free + API |
 
-> **Key distinction:** Copilot, Cursor, and Windsurf all have "memory" features (2025-2026), but these store session observations and user-written rules. CAM-PULSE autonomously extracts structured patterns from source code, assigns novelty scores and lifecycle states, and uses build outcomes to rank them. When a build fails, a 3-layer defense chain - deterministic auto-fix, ErrorKB-enriched correction, and RL-driven agent rotation - ensures different models attempt the task. Devin comes closest with multi-agent retry, but without model rotation or cross-task failure knowledge.
+> **Key distinction:** Copilot, Devin, Windsurf, Cursor-class tools, and Aider all have useful memory, indexing, rules, wiki, or repo-map features. CAM_CAM's narrower claim is different: it keeps a local SQLite corpus of source-mined methodologies with provenance, lifecycle state, outcome scoring, method demotion, and repo-universe preflight artifacts before mutation.
 
 ---
 
 ## Web UI & Forge Builder
 
-Everything CAM does is now accessible through a browser. No CLI memorization required -- search knowledge, watch agents execute, build new brains, track evolution, and mine repos from a single interface.
+The browser UI exposes the core CAM workflows: search knowledge, inspect lifecycle state, run playground tasks, track evolution, and mine repos from a single interface.
 
 <p align="center">
 
@@ -142,8 +156,8 @@ Everything CAM does is now accessible through a browser. No CLI memorization req
 ┌─ CAM-PULSE ──────────────────────────────────────────────────────┐
 │                                                                   │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐        │
-│  │  2,274   │  │  Grok    │  │   266    │  │  30/30   │        │
-│  │ Methods  │  │  4.3     │  │  Repos   │  │ Passing  │        │
+│  │  2,304   │  │  Local   │  │   110    │  │  257     │        │
+│  │ Methods  │  │  DB      │  │ Projects │  │ Tests    │        │
 │  └──────────┘  └──────────┘  └──────────┘  └──────────┘        │
 │                                                                   │
 │  Lifecycle Distribution        Languages                         │
@@ -247,8 +261,8 @@ Everything CAM does is now accessible through a browser. No CLI memorization req
 ### Start the Web UI
 
 ```bash
-cam dashboard &                            # FastAPI backend on :8420
-cd forge-ui && npm install && npm run dev  # Next.js on :3000
+PYTHONPATH=src python -m claw.cli dashboard # FastAPI backend on :8420
+cd forge-ui && npm ci && npm run dev        # Next.js on :3000
 # Open http://localhost:3000
 ```
 
@@ -300,13 +314,13 @@ cam doctor routing   # Kelly weights per agent, with cold-start warnings
 cam doctor keycheck --live   # Real provider round-trip (OpenRouter + Gemini)
 ```
 
-**Verified**: Fresh clone → `./camify.sh` → `cam init --domain python` → `cam doctor status` returns a clean report with **3760 tests passing, zero failures**.
+Historical install verification has varied across snapshots. For the current launch-refresh evidence, use [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md) and the focused smoke commands near the top of this README.
 
 **Web UI** (optional):
 
 ```bash
-cam dashboard &                            # FastAPI backend on :8420
-cd forge-ui && npm install && npm run dev  # Next.js frontend on :3000
+PYTHONPATH=src python -m claw.cli dashboard # FastAPI backend on :8420
+cd forge-ui && npm ci && npm run dev        # Next.js frontend on :3000
 open http://localhost:3000
 ```
 
@@ -447,7 +461,7 @@ Key files: `scripts/run_ab_paired.py` | [Interactive proof →](docs/ab-proof.ht
 
 Three independent experiments. Three different designs (qualitative, unpaired statistical, paired within-subject). Same conclusion: **agents equipped with CAM's mined knowledge base produce materially better code than agents starting from zero.** The paired study (Experiment 3) is definitive — by testing the same task with the same agent under both conditions, it eliminates agent confounding, task difficulty variance, and sample imbalance.
 
-No other AI coding tool — Copilot, Cursor, Windsurf, Devin, or Aider — publishes controlled ablation studies showing their knowledge system's impact on code quality. CAM's is fully reproducible: `scripts/run_ab_paired.py`.
+CAM's ablation harness is designed to make the knowledge-system claim reproducible instead of anecdotal: `scripts/run_ab_paired.py`. Competing assistants publish useful memory, indexing, repo-map, and wiki features; this section is about CAM's own evidence standard.
 
 Full writeup: [docs/showcase_retry_backoff.md](docs/showcase_retry_backoff.md) | [docs/SKYDATE_KB_SHOWPIECE.md](docs/SKYDATE_KB_SHOWPIECE.md) | [docs/ab-proof.html](docs/ab-proof.html)
 
@@ -891,7 +905,7 @@ This is what makes CAM-PULSE different from every other AI coding tool. It's not
 
 ## How CAM Thinks: The Brain Transplant Analogy
 
-GitHub Copilot remembers your workspace conventions (28-day expiry). Cursor stores `.cursorrules` you wrote yourself. Devin indexes repos into wikis. **None of them autonomously mine patterns, score them by build outcomes, or demote what fails.** CAM-PULSE is a **brain transplant hospital for coding knowledge**:
+GitHub Copilot, Windsurf/Cascade, Cursor-class tools, Devin, and Aider all provide useful forms of memory, rules, indexing, wiki generation, or repo maps. CAM-PULSE's narrower claim is source-mined methods with local provenance, outcome scoring, and demotion when reuse fails:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -989,7 +1003,7 @@ The infrastructure is built and tested (44 tests) — imports go through 7 valid
 
 ## Novel Technology
 
-**Why this section matters:** Every feature below is absent from GitHub Copilot, Cursor, Windsurf, and Aider. Devin comes closest with repo indexing, but its knowledge is manually authored — not autonomously mined, not novelty-scored, not fitness-ranked by build outcomes. These are the capabilities that make the 30/30 batch build result possible.
+**Why this section matters:** The features below are the parts of CAM's local method engine that differ from assistant memory, repo maps, rules, and generated wikis: source mining, novelty scoring, fitness ranking, lifecycle transitions, and demotion after bad outcomes. These are the capabilities behind the historical 30/30 batch build result.
 
 ### Autonomous X-Scout Discovery
 CAM-PULSE uses xAI's Responses API with Grok's native `x_search` tool to find GitHub repos that developers are sharing on X/Twitter. No scraping, no RSS — native server-side search through Grok. Results are filtered by semantic novelty (embedding distance via Google's `gemini-embedding-2-preview`, 384 dimensions) so CAM only assimilates what it doesn't already know.

@@ -774,6 +774,7 @@
             <a class="button primary" href="#run">Run the showpiece</a>
             <a class="button" href="CAM_SHOWPIECE_REPO_RESCUE_DESK.html">Read proof note</a>
             <a class="button" href="PROOF_POINT_INDEX.md">Proof index</a>
+            <a class="button" href="LAUNCH_METRICS_2026-06-19.md">Launch metrics</a>
           </div>
           <div class="proof-badges" aria-label="Build status links">
             <a href="https://github.com/deesatzed/CAM_CAM/actions/workflows/ci.yml"><img src="https://github.com/deesatzed/CAM_CAM/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
@@ -1129,7 +1130,7 @@
       <div class="wrap">
         <div class="section-head">
           <h2>How this differs from coding assistants</h2>
-          <p>CAM_CAM is not trying to beat an autocomplete tool at typing. It is trying to decide what context and safeguards should exist before an AI engineer acts.</p>
+          <p>Copilot, Devin, Windsurf, Cursor-class tools, and Aider all have useful memory, indexing, rules, wiki, or repo-map features. CAM_CAM is narrower: it decides what local repo evidence, mined methods, and safeguards should exist before an AI engineer acts.</p>
         </div>
         <div class="table-wrap">
           <table>
@@ -1137,7 +1138,7 @@
             <tbody>
               <tr><td>Scope</td><td>Current repo, open files, chat history, or a manually indexed workspace.</td><td><strong>Cross-repo universe</strong>: scanned 238 local repos and produced a graph.</td></tr>
               <tr><td>First action</td><td>Often edits code immediately after a prompt.</td><td><strong>Read-only triage first</strong>: risks, clusters, duplicate groups, opportunities, receipts.</td></tr>
-              <tr><td>Memory shape</td><td>Mostly chat memory, rules files, or generated summaries.</td><td><strong>Agent-ingestible artifacts</strong>: JSON graph, GraphRAG chunks, Logseq, Markmap, Freeplane.</td></tr>
+              <tr><td>Memory shape</td><td>Assistant memory, rules files, generated repo docs, repo maps, or indexed workspace summaries.</td><td><strong>Local evidence corpus</strong>: source-mined methods, SQLite provenance, lifecycle/fitness state, JSON graph, GraphRAG chunks, Logseq, Markmap, Freeplane.</td></tr>
               <tr><td>Evidence</td><td>Usually no reproducible harness for a landing-page claim.</td><td><strong>Harness-backed</strong>: <code>scripts/test_repo_rescue_desk_showpiece.sh</code> verifies the artifact set.</td></tr>
               <tr><td>Safety posture</td><td>Risk is discovered when tests fail or a human notices.</td><td><strong>Risk flags before mutation</strong>: dirty worktrees, no tests, medical/PII language, API-key-sensitive language.</td></tr>
               <tr><td>Next-step planning</td><td>The user must know what to ask for next.</td><td><strong>Ranks next apps</strong> with supporting repos and measurable outcomes.</td></tr>
@@ -1152,8 +1153,9 @@
         <div class="section-head">
           <h2>MCP-Cortex capability profiles</h2>
           <p>
-            A second CAM_Codx showpiece used CAM to mine MCP-Cortex methodology patterns, recall and cite them through the native
-            <code>cam_cam</code> MCP, apply one pattern to a real MCP server, and record the outcome back into the CAM outcome log.
+            CAM_Codx is a separate companion repo, not this CAM_CAM product repo. A smaller CAM_Codx showpiece used CAM to mine
+            MCP-Cortex methodology patterns, recall and cite them through native <code>cam_cam</code> tooling, apply one pattern
+            to a real MCP server, and record the outcome back into the CAM outcome log.
           </p>
         </div>
         <div class="cards">
@@ -1177,8 +1179,8 @@
             <div class="num">03</div>
             <h3>What comes next</h3>
             <p>
-              The current layer is inspectable metadata. The next layer is policy enforcement: a client or server gate reads the profile and
-              decides whether to allow, warn, deny, or require confirmation before a tool call.
+              The current layer is inspectable metadata. Policy enforcement and CAM_Codx implementation-branch readiness are tracked
+              separately from this Repo Rescue Desk launch page.
             </p>
           </article>
         </div>
