@@ -9,6 +9,11 @@ knowledge graph into several usable formats:
 
 - HTML dashboard
 - inventory JSON
+- next-action recommendations
+- git-safe preflight results
+- repo-to-repo reuse matches
+- plain-English executive report
+- deterministic ask-my-repo index
 - opportunity rankings
 - risk report
 - GraphRAG context markdown
@@ -27,6 +32,34 @@ PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
 ```
 
 Open `tmp/repo_rescue_desk/latest/repo_rescue_dashboard.html` in a browser.
+
+The same command also writes:
+
+- `next_actions.md` / `next_actions.json`: ranked recommendations with effort,
+  risk, payoff, evidence, and verification commands.
+- `preflight_results.json`: `allow`, `warn`, or `block` decisions for scanned
+  repos before agent mutation.
+- `reuse_matches.md` / `reuse_matches.json`: local auth/retry/API reuse
+  candidates with repo/path provenance and confidence.
+- `executive_report.md`: plain-English report for a lead, client, or future
+  maintainer.
+- `ask_index.json`: deterministic answers for common follow-up questions.
+
+Ask a saved scan:
+
+```bash
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli ask \
+  --report tmp/repo_rescue_desk/latest/repo_inventory.json \
+  --question "Which repos have no tests?"
+```
+
+Preflight one repo before an agent edits it:
+
+```bash
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli preflight \
+  --repo /path/to/repo \
+  --json-out tmp/repo_rescue_desk/preflight.json
+```
 
 Optional CAM-RAG bridge:
 

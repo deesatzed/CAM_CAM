@@ -6,7 +6,14 @@ import types
 from pathlib import Path
 
 from repo_rescue_desk.cli import main
-from repo_rescue_desk.rescue import enrich_with_cam_rag, scan_universe, write_artifacts
+from repo_rescue_desk.rescue import (
+    answer_repo_question,
+    enrich_with_cam_rag,
+    find_reuse_matches,
+    preflight_repo,
+    scan_universe,
+    write_artifacts,
+)
 
 
 class FakeDocument:
@@ -190,3 +197,159 @@ def test_cli_generates_cam_rag_receipt_when_requested(tmp_path: Path, monkeypatc
 
     assert exit_code == 0
     assert (out_dir / "cam_rag_receipt.json").exists()
+
+
+def test_top_six_outputs_include_recommendations_report_reuse_and_ask_index(tmp_path: Path) -> None:
+    init_repo(
+        tmp_path / "fastapi-auth",
+        "# FastAPI Auth\n\nFastAPI auth middleware token verification login session guard.",
+        {
+            "app/auth.py": "def verify_token(token):\n    return token == 'ok'\n",
+            "tests/test_auth.py": "def test_auth():\n    assert True\n",
+        },
+    )
+    init_repo(
+        tmp_path / "retry-client",
+        "# Retry Client\n\nHTTP client retry backoff timeout resilience API wrapper.",
+        {"client.py": "def retry_request():\n    return 'retry with backoff'\n"},
+    )
+    init_repo(
+        tmp_path / "retry-client-backup",
+        "# Retry Client Backup\n\nHTTP client retry backoff timeout old copy.",
+    )
+    init_repo(
+        tmp_path / "clinical-agent",
+        "# Clinical Agent\n\nPatient triage HIPAA audit token.",
+    )
+
+    report = scan_universe(tmp_path)
+    artifacts = write_artifacts(report, tmp_path / "out")
+
+    categories = {item["category"] for item in report.next_actions}
+    assert {"add-tests", "mine-reuse", "consolidate-duplicates"}.issubset(categories)
+    assert report.reuse_matches
+    assert any(match["query"] == "retry" for match in report.reuse_matches)
+    assert any(match["query"] == "auth" for match in report.reuse_matches)
+    assert "next_actions_json" in artifacts
+    assert "reuse_matches_json" in artifacts
+    assert "executive_report_md" in artifacts
+    assert "ask_index_json" in artifacts
+    executive = Path(artifacts["executive_report_md"]).read_text(encoding="utf-8")
+    assert "# CAM_CAM Repo Universe Report" in executive
+    assert "What to do next" in executive
+    assert "Reusable code and patterns" in executive
+    dashboard = Path(artifacts["dashboard_html"]).read_text(encoding="utf-8")
+    assert "What to do next" in dashboard
+    assert "Reusable code and patterns" in dashboard
+
+
+def test_preflight_repo_blocks_dirty_and_warns_for_missing_tests(tmp_path: Path) -> None:
+    init_repo(
+        tmp_path / "safe-feature",
+        "# Safe Feature\n\nSmall documented CLI.",
+        {"tests/test_safe.py": "def test_safe():\n    assert True\n"},
+    )
+    subprocess.run(["git", "checkout", "-q", "-b", "feature/safe-agent"], cwd=tmp_path / "safe-feature", check=True)
+    subprocess.run(
+        ["git", "remote", "add", "origin", "https://example.com/safe-feature.git"],
+        cwd=tmp_path / "safe-feature",
+        check=True,
+    )
+    init_repo(
+        tmp_path / "clean-no-tests",
+        "# Clean No Tests\n\nSmall CLI with documentation.",
+    )
+    init_repo(
+        tmp_path / "dirty-risky",
+        "# Dirty Risky\n\nSecurity sandbox API key patient workflow.",
+        {"tests/test_ok.py": "def test_ok():\n    assert True\n"},
+    )
+    (tmp_path / "dirty-risky" / "scratch.py").write_text("print('dirty')\n", encoding="utf-8")
+
+    safe = preflight_repo(tmp_path / "safe-feature")
+    clean = preflight_repo(tmp_path / "clean-no-tests")
+    dirty = preflight_repo(tmp_path / "dirty-risky")
+
+    assert safe["decision"] == "allow"
+    assert clean["decision"] == "warn"
+    assert any(check["id"] == "tests-present" and check["status"] == "warn" for check in clean["checks"])
+    assert dirty["decision"] == "block"
+    assert any(check["id"] == "git-clean" and check["status"] == "block" for check in dirty["checks"])
+    assert dirty["remediation"]
+
+
+def test_reuse_matches_include_provenance_and_confidence(tmp_path: Path) -> None:
+    init_repo(
+        tmp_path / "api-auth",
+        "# API Auth\n\nFastAPI auth middleware bearer token validation.",
+        {"src/auth.py": "class AuthMiddleware:\n    pass\n"},
+    )
+    init_repo(
+        tmp_path / "resilient-client",
+        "# Resilient Client\n\nRetry backoff timeout circuit breaker request wrapper.",
+        {"client.py": "def retry_with_backoff():\n    pass\n"},
+    )
+
+    report = scan_universe(tmp_path)
+    matches = find_reuse_matches(report.repos)
+
+    assert any(match["query"] == "auth" and match["repo"] == "api-auth" for match in matches)
+    assert any(match["query"] == "retry" and match["repo"] == "resilient-client" for match in matches)
+    assert all(match["repo"] and match["path"] and match["confidence"] in {"high", "medium", "weak"} for match in matches)
+
+
+def test_answer_repo_question_handles_common_intents(tmp_path: Path) -> None:
+    init_repo(
+        tmp_path / "fastapi-service",
+        "# FastAPI Service\n\nFastAPI API service with auth token middleware.",
+    )
+    init_repo(
+        tmp_path / "dirty-service",
+        "# Dirty Service\n\nRetry backoff API client.",
+    )
+    (tmp_path / "dirty-service" / "scratch.py").write_text("print('dirty')\n", encoding="utf-8")
+    report = scan_universe(tmp_path)
+
+    assert "dirty-service" in answer_repo_question(report, "Which repos are dirty?")["answer"]
+    assert "fastapi-service" in answer_repo_question(report, "Which repos have no tests?")["answer"]
+    assert "fastapi-service" in answer_repo_question(report, "Which repos look like FastAPI apps?")["answer"]
+    assert "What to do next" in answer_repo_question(report, "What should I do next?")["answer"]
+    assert "retry" in answer_repo_question(report, "Where are reusable auth/retry/API patterns?")["answer"].lower()
+    assert answer_repo_question(report, "What is the deployment password?")["confidence"] == "unknown"
+
+
+def test_cli_preflight_writes_json(tmp_path: Path) -> None:
+    init_repo(
+        tmp_path / "dirty-target",
+        "# Dirty Target\n\nSecurity workflow.",
+    )
+    (tmp_path / "dirty-target" / "scratch.py").write_text("print('dirty')\n", encoding="utf-8")
+    json_out = tmp_path / "preflight.json"
+
+    exit_code = main(["preflight", "--repo", str(tmp_path / "dirty-target"), "--json-out", str(json_out)])
+
+    assert exit_code == 0
+    payload = json_out.read_text(encoding="utf-8")
+    assert '"decision": "block"' in payload
+    assert '"git-clean"' in payload
+
+
+def test_cli_ask_answers_from_saved_report(tmp_path: Path, capsys) -> None:
+    init_repo(
+        tmp_path / "fastapi-api",
+        "# FastAPI API\n\nFastAPI auth endpoint.",
+    )
+    out_dir = tmp_path / "out"
+    assert main(["--root", str(tmp_path), "--out-dir", str(out_dir)]) == 0
+
+    exit_code = main([
+        "ask",
+        "--report",
+        str(out_dir / "repo_inventory.json"),
+        "--question",
+        "Which repos look like FastAPI apps?",
+    ])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "fastapi-api" in captured.out

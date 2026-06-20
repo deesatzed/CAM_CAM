@@ -2,13 +2,28 @@
 
 CAM_CAM is a local repo-intelligence and coding-memory system for people who operate more than one codebase and need evidence before an AI agent edits anything.
 
-The current flagship proof is [Repo Rescue Desk](docs/cam_cam_showpiece.html): a read-only triage layer that scans a local universe of repositories, classifies reusable systems, flags risk, ranks build opportunities, and exports GraphRAG, Logseq, Markmap, and Freeplane artifacts. In the current showpiece run it scanned 238 git repos, found 8 capability clusters, emitted 249 GraphRAG nodes plus 244 edges, ranked 6 app opportunities, and made 0 source mutations.
+The current flagship proof is [Repo Rescue Desk](docs/cam_cam_showpiece.html): a read-only triage layer that scans a local universe of repositories, classifies reusable systems, flags risk, ranks build opportunities, finds repo-to-repo reuse candidates, runs git-safe preflight checks, answers deterministic follow-up questions, and exports GraphRAG, Logseq, Markmap, Freeplane, dashboard, and executive-report artifacts. In the current showpiece run it scanned 238 git repos, found 8 capability clusters, emitted 249 GraphRAG nodes plus 244 edges, ranked 6 app opportunities, and made 0 source mutations.
 
 Under that surface is CAM-PULSE: the method engine that mines reusable engineering patterns from source, stores them in local SQLite with provenance, tracks lifecycle and fitness, verifies reuse through tests, and demotes methods that hurt outcomes.
 
 **Launch metrics verified 2026-06-19:** 2,304 methodologies in the canonical local DB, 110 projects, 91 FastAPI routes, 20 Next.js page files, and a 257-test focused Python smoke suite passing. The metric source is [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md), using only `data/claw.db` from this repo.
 
 CAM_CAM is not trying to beat IDE assistants at autocomplete. It is for operators with many repos who need to map, mine, verify, and reuse engineering knowledge before an agent mutates code.
+
+## Why A SWE Would Want This
+
+If you have a folder full of repos, CAM_CAM answers the questions that usually come before safe AI coding:
+
+| Question | CAM_CAM gives you |
+|---|---|
+| What do I actually have? | A local dashboard, inventory JSON, cluster map, graph, and mindmap exports. |
+| What is risky to touch? | Dirty-worktree, no-test, no-README, secret/API-key, security, medical/PII, and dependency-risk flags. |
+| What should I do next? | Ranked next actions with evidence, effort, risk, payoff, and a verification command. |
+| Did I already solve this somewhere? | Repo-to-repo reuse matches for auth, retry, and API/FastAPI patterns with repo/path provenance. |
+| Can an agent edit this safely? | A `preflight` gate that returns `allow`, `warn`, or `block` before mutation. |
+| Can I explain this to someone else? | A plain-English `executive_report.md` plus GraphRAG, Logseq, Markmap, and Freeplane artifacts. |
+
+Compared with current AI coding tools, CAM_CAM's defensible edge is not typing code faster. [GitHub Copilot Memory](https://docs.github.com/copilot/concepts/agents/copilot-memory), [Windsurf/Cascade memories](https://docs.windsurf.com/windsurf/cascade/memories), [Devin DeepWiki](https://docs.devin.ai/work-with-devin/deepwiki), and [Aider's repo map](https://aider.chat/docs/repomap.html) all provide useful memory, indexing, docs, or repo-context features. CAM_CAM is different because it starts one level earlier: it scans a **multi-repo local universe**, produces mutation-safety evidence, finds reuse candidates across repos, and turns the result into machine-readable planning artifacts before an agent edits code.
 
 ```bash
 git clone https://github.com/deesatzed/CAM_CAM.git
@@ -19,6 +34,33 @@ PYTHONPATH=src python -m claw.cli --help
 PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli --help
 ```
 
+Run the repo-universe workflow:
+
+```bash
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
+  --root /path/to/folder/containing/git/repos \
+  --out-dir tmp/repo_rescue_desk/latest
+
+open tmp/repo_rescue_desk/latest/repo_rescue_dashboard.html
+cat tmp/repo_rescue_desk/latest/executive_report.md
+```
+
+Ask deterministic follow-up questions from the saved scan:
+
+```bash
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli ask \
+  --report tmp/repo_rescue_desk/latest/repo_inventory.json \
+  --question "What should I do next?"
+```
+
+Preflight one repo before agent edits:
+
+```bash
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli preflight \
+  --repo /path/to/repo \
+  --json-out tmp/repo_rescue_desk/preflight.json
+```
+
 Optional browser UI:
 
 ```bash
@@ -27,6 +69,21 @@ cd forge-ui && npm ci && npm run dev
 ```
 
 CAM_Codx is a separate companion repo at `https://github.com/deesatzed/CAM_Codx.git`; it is not the CAM_CAM product repo. Its current new-user status is audited in the launch-refresh report.
+
+## What A First Run Produces
+
+Repo Rescue Desk now targets the six highest-probability user needs for a multi-repo operator:
+
+| Need | Output |
+|---|---|
+| One-command workspace audit dashboard | `repo_rescue_dashboard.html`, `repo_inventory.json` |
+| Actionable next-step recommendations | `next_actions.md`, `next_actions.json` |
+| Git-safe agent preflight gate | `preflight_results.json`, `preflight` CLI subcommand |
+| Repo-to-repo reuse finder | `reuse_matches.md`, `reuse_matches.json` |
+| Plain-English report export | `executive_report.md` |
+| Ask my repo universe | `ask_index.json`, `ask` CLI subcommand |
+
+The first run is intentionally local and deterministic. No API key is required for the workspace audit, dashboard, next actions, preflight gate, reuse finder, report, or deterministic ask mode.
 
 ## Repository Roles
 

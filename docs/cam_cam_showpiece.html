@@ -763,8 +763,9 @@
           <h1>Preflight your repo universe before AI agents touch it.</h1>
           <p class="lead">
             CAM_CAM scans a folder of real repos, finds reusable systems, flags risk before an agent edits code,
-            ranks what should be built or mined next, and exports machine-readable context for GraphRAG, Logseq,
-            Markmap, and Freeplane.
+            ranks what should be built or mined next, runs git-safe preflight checks, finds repo-to-repo reuse
+            candidates, answers deterministic follow-up questions, and exports machine-readable context for
+            GraphRAG, Logseq, Markmap, and Freeplane.
           </p>
           <div class="callout">
             A SWE would try this when they have a messy local repo collection, inherited code, experimental agent tools,
@@ -797,7 +798,7 @@
               <div class="metric"><strong>249</strong><span>GraphRAG nodes emitted</span></div>
               <div class="metric"><strong>244</strong><span>GraphRAG edges emitted</span></div>
               <div class="metric"><strong>6</strong><span>ranked app opportunities</span></div>
-              <div class="metric"><strong>239</strong><span>scan receipts written</span></div>
+              <div class="metric"><strong>6</strong><span>user-need outputs</span></div>
             </div>
             <p class="proof-run-note">Those numbers are from the proof run. The command above uses a normal example path; any folder whose direct children are git repos works.</p>
           </div>
@@ -829,6 +830,49 @@
             <div class="num">03</div>
             <h3>Export context CAM-PULSE can use</h3>
             <p>The output is not a slide deck. It is JSON inventory, graph JSON, GraphRAG chunks, Logseq pages, Markmap Markdown, Freeplane XML, risk reports, opportunities, and scan receipts.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>What you get after the first run</h2>
+          <p>
+            The point is not another chat window. The point is a local evidence packet a SWE can use before choosing what an agent should touch.
+          </p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <div class="num">01</div>
+            <h3>Workspace audit dashboard</h3>
+            <p>Open <code>repo_rescue_dashboard.html</code> to see repo count, clusters, risks, next actions, safe-to-edit status, and reuse candidates.</p>
+          </article>
+          <article class="card">
+            <div class="num">02</div>
+            <h3>Ranked next actions</h3>
+            <p><code>next_actions.md</code> explains what to do next, why now, which repos are involved, expected payoff, risk, effort, and how to verify it.</p>
+          </article>
+          <article class="card">
+            <div class="num">03</div>
+            <h3>Safe-to-edit preflight</h3>
+            <p>The <code>preflight</code> command returns <code>allow</code>, <code>warn</code>, or <code>block</code> before an agent mutates a repo.</p>
+          </article>
+          <article class="card">
+            <div class="num">04</div>
+            <h3>Reuse finder</h3>
+            <p><code>reuse_matches.md</code> points to auth, retry, and API/FastAPI patterns already sitting in nearby repos, with path-level provenance.</p>
+          </article>
+          <article class="card">
+            <div class="num">05</div>
+            <h3>Plain-English report</h3>
+            <p><code>executive_report.md</code> turns the scan into a shareable summary for a lead, client, teammate, or future maintainer.</p>
+          </article>
+          <article class="card">
+            <div class="num">06</div>
+            <h3>Ask the repo universe</h3>
+            <p>The deterministic <code>ask</code> command answers common follow-ups about dirty repos, missing tests, FastAPI apps, next actions, and reusable patterns.</p>
           </article>
         </div>
       </div>
@@ -1073,6 +1117,11 @@
 
         <div class="artifact-list" style="margin-top: 18px;">
             <div class="artifact"><code>repo_inventory.json</code><p>Full structured scan result: repos, git state, risks, clusters, opportunities, graph, and receipts.</p></div>
+            <div class="artifact"><code>next_actions.md</code><p>Ranked recommendations with why-now context, effort, risk, payoff, evidence, and verification commands.</p></div>
+            <div class="artifact"><code>reuse_matches.md</code><p>Repo-to-repo auth, retry, and API/FastAPI reuse candidates with repo/path provenance.</p></div>
+            <div class="artifact"><code>preflight_results.json</code><p>Per-repo mutation-readiness decisions: allow, warn, or block with remediation steps.</p></div>
+            <div class="artifact"><code>executive_report.md</code><p>Plain-English project report for leads, clients, teammates, or future maintainers.</p></div>
+            <div class="artifact"><code>ask_index.json</code><p>Deterministic answers for common follow-up questions over the saved scan.</p></div>
             <div class="artifact"><code>repo_graph.json</code><p>Node and edge graph suitable for visualization or GraphRAG ingestion.</p></div>
             <div class="artifact"><code>graphrag_context.md</code><p>Retrieval-friendly chunks listing clusters, supporting repos, opportunity evidence, and measurements.</p></div>
             <div class="artifact"><code>logseq/pages/*.md</code><p>Page-oriented Markdown with wikilinks for notebook workflows.</p></div>
@@ -1252,13 +1301,24 @@ git diff --check</pre>
       <div class="wrap">
         <div class="section-head">
           <h2>Run it locally</h2>
-          <p>Use this when you want a concrete answer to: what do I have, what is risky, what should CAM mine or build next?</p>
+          <p>Use this when you want concrete answers to: what do I have, what is risky, what can I reuse, what should I do next, and is this repo safe for an agent to edit?</p>
         </div>
         <pre class="codeblock">git clone https://github.com/deesatzed/CAM_CAM.git
 cd CAM_CAM
 PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli \
   --root /path/to/folder/containing/git/repos \
-  --out-dir tmp/repo_rescue_desk/latest</pre>
+  --out-dir tmp/repo_rescue_desk/latest
+
+open tmp/repo_rescue_desk/latest/repo_rescue_dashboard.html
+cat tmp/repo_rescue_desk/latest/executive_report.md
+
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli ask \
+  --report tmp/repo_rescue_desk/latest/repo_inventory.json \
+  --question "What should I do next?"
+
+PYTHONPATH=apps/repo_rescue_desk python -m repo_rescue_desk.cli preflight \
+  --repo /path/to/repo \
+  --json-out tmp/repo_rescue_desk/preflight.json</pre>
         <p class="small">
           Replace <code>--root</code> with any directory whose direct children are git repos, such as
           <code>~/Projects</code>, <code>~/work</code>, or a team checkout folder. The machine-specific proof path is only kept in the reproducibility notes; source repos are not modified.
