@@ -745,6 +745,7 @@
         <a href="#results">Results</a>
         <a href="#technical">Technical</a>
         <a href="#mcp-cortex">MCP-Cortex</a>
+        <a href="#myloc">MyLoc</a>
         <a href="#proof">Proof</a>
         <a href="#run">Run</a>
       </nav>
@@ -774,6 +775,7 @@
           <div class="button-row">
             <a class="button primary" href="#run">Run the showpiece</a>
             <a class="button" href="CAM_SHOWPIECE_REPO_RESCUE_DESK.html">Read proof note</a>
+            <a class="button" href="showpieces/repo_necromancer/MYLOC_SHOWPIECE.md">MyLoc proof</a>
             <a class="button" href="PROOF_POINT_INDEX.md">Proof index</a>
             <a class="button" href="../README.md">Current README</a>
           </div>
@@ -1261,6 +1263,50 @@
             </tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <section id="myloc">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>MyLoc: generated repo, then hardened by CAM</h2>
+          <p>
+            Repo Necromancer generated MyLoc from two read-only source repos.
+            CAM then evaluated, preflighted, camified, self-mined,
+            security-scanned, and hardened that generated product with
+            source-boundary verification plus JSON patch-plan output.
+          </p>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <div class="num">01</div>
+            <h3>Boundary proof</h3>
+            <p>
+              <code>python -m my_loc.cli verify-boundaries</code> compares
+              current source git heads, branches, and status receipts against
+              the captured evidence before a transplant proceeds.
+            </p>
+          </article>
+          <article class="card">
+            <div class="num">02</div>
+            <h3>Machine-readable plan</h3>
+            <p>
+              <code>python -m my_loc.cli plan --json</code> emits the
+              compatibility map, merge ledger, safe patch plan, and contract
+              validation errors for CAM or Codex to consume.
+            </p>
+          </article>
+          <article class="card">
+            <div class="num">03</div>
+            <h3>Dogfood loop</h3>
+            <p>
+              The showpiece uses CAM on CAM output: structural evaluation,
+              preflight, CAM-ify planning, quick self-mining, and a clean
+              security scan all point at the generated MyLoc repo.
+            </p>
+          </article>
+        </div>
+        <p><a href="showpieces/repo_necromancer/MYLOC_SHOWPIECE.md">Read the MyLoc Repo Necromancer proof</a>.</p>
       </div>
     </section>
 

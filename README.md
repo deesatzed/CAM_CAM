@@ -4,6 +4,8 @@ CAM_CAM is a local repo-intelligence and coding-memory system for people who ope
 
 The current flagship proof is [Repo Rescue Desk](docs/cam_cam_showpiece.html): a read-only triage layer that scans a local universe of repositories, classifies reusable systems, flags risk, ranks build opportunities, finds repo-to-repo reuse candidates, runs git-safe preflight checks, answers deterministic follow-up questions, and exports GraphRAG, Logseq, Markmap, Freeplane, dashboard, and executive-report artifacts. In the current showpiece run it scanned 238 git repos, found 8 capability clusters, emitted 249 GraphRAG nodes plus 244 edges, ranked 6 app opportunities, and made 0 source mutations.
 
+The current Repo Necromancer dogfood proof is [MyLoc](docs/showpieces/repo_necromancer/MYLOC_SHOWPIECE.md): CAM generated a standalone subsystem-transplant repo, then CAM evaluated, preflighted, camified, self-mined, security-scanned, and hardened it with source-boundary verification plus JSON patch-plan output.
+
 Under that surface is CAM-PULSE: the method engine that mines reusable engineering patterns from source, stores them in local SQLite with provenance, tracks lifecycle and fitness, verifies reuse through tests, and demotes methods that hurt outcomes.
 
 **Historical launch metrics recorded 2026-06-19:** 2,304 methodologies in the canonical local DB, 110 projects, 91 FastAPI routes, 20 Next.js page files, and a 257-test focused Python smoke suite passing. Treat these as a dated snapshot; use the quickstart and tests below for current clone-and-run proof.
@@ -82,6 +84,9 @@ and writes packets. CAM_Codx explains how Codex should use those packets and
 how to avoid counting packet demos as finished standalone products.
 
 See `docs/integrations/CAM_CODEX.md` for the packet handoff contract.
+
+See `docs/showpieces/repo_necromancer/MYLOC_SHOWPIECE.md` for the current
+generated-product dogfood proof.
 
 ## What A First Run Produces
 
