@@ -1,7 +1,8 @@
 # Repo Necromancer User Guide
 
 Repo Necromancer is a CAM_CAM showpiece workflow for turning two existing repos
-into a concrete "revived product" brief.
+into a concrete "revived product" brief or, when `--standalone-repo` is used, a
+separate generated product repo.
 
 It does not blindly copy files from one repo into another. It profiles two
 source repos read-only, records evidence, proposes a merged product, creates a
@@ -22,7 +23,10 @@ After running Repo Necromancer, the user gets:
 The important distinction is:
 
 - CAM_CAM runs the profiler and creates the packet.
-- CAM_Codx consumes the generated goal and builds the real merged app or repo.
+- CAM_Codx consumes the generated goal and builds or hardens the real merged app
+  or repo.
+- `--standalone-repo` is the line between a packet-only proof and a generated
+  product repo.
 
 ## Why the Script Lives in CAM_CAM
 
@@ -87,7 +91,7 @@ The resulting product promise is:
 
 ## Run the Generator
 
-Run from the CAM_CAM repo root:
+Run from the CAM_CAM repo root to create a packet:
 
 ```bash
 cd /Volumes/WS4TB/WS4TBr/CAM_Codx/CAM_CAM
@@ -97,6 +101,17 @@ python scripts/repo_necromancer.py \
   --repo-b /Volumes/WS4TB/WS4TBr/codescope \
   --out-dir docs/showpieces/repo_necromancer/codegraft_codescope \
   --product-name CodeGraftScope
+```
+
+Run with `--standalone-repo` when the goal is a product repo, not only a packet:
+
+```bash
+python scripts/repo_necromancer.py \
+  --repo-a /path/to/source-a \
+  --repo-b /path/to/source-b \
+  --out-dir docs/showpieces/repo_necromancer/my_pair \
+  --product-name MyProduct \
+  --standalone-repo /path/to/MyProduct
 ```
 
 Expected output:
@@ -150,7 +165,8 @@ open docs/showpieces/repo_necromancer/codegraft_codescope/fused_app/index.html
 ```
 
 The demo proves that the generated packet is runnable and understandable. It is
-not yet the final merged product.
+not the final merged product unless the standalone repo path also exists and
+passes its own tests and smoke command.
 
 ## Hand the Goal to CAM_Codx
 
@@ -170,8 +186,8 @@ execute that goal file. If your Codex environment supports slash goals, use:
 If slash goals are not available, open the file and paste its contents into the
 Codex session as the build contract.
 
-The CAM_Codx execution session should create a new output repo or app directory.
-It should not mutate either source repo.
+The CAM_Codx execution session should create or harden a new output repo or app
+directory. It should not mutate either source repo.
 
 ## Safety Rules
 

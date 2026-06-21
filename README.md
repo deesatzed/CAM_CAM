@@ -70,6 +70,19 @@ cd forge-ui && npm ci && npm run dev
 
 CAM_Codx is a separate companion repo at `https://github.com/deesatzed/CAM_Codx.git`; it is not the CAM_CAM product repo. Its current new-user status is audited in the launch-refresh report.
 
+## Use CAM_CAM From Codex
+
+CAM_CAM is the runtime engine. CAM_Codx is the Codex-native workflow hub. Start
+in CAM_Codx when you want Codex to consume CAM outputs, continue from a
+generated `CAM_CODEX_GOAL.md`, or harden a standalone product repo created from
+CAM evidence.
+
+Repo Necromancer stays in CAM_CAM because it profiles repos, records evidence,
+and writes packets. CAM_Codx explains how Codex should use those packets and
+how to avoid counting packet demos as finished standalone products.
+
+See `docs/integrations/CAM_CODEX.md` for the packet handoff contract.
+
 ## What A First Run Produces
 
 Repo Rescue Desk now targets the six highest-probability user needs for a multi-repo operator:
