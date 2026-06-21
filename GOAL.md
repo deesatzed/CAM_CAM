@@ -1,7 +1,8 @@
 # GOAL.md
 
-This file is the source of truth for the next autonomous CAM_CAM product
-enhancement run.
+This file records the 2026-06-19 CAM_CAM product enhancement run. That run is
+historical context for the current public repo; the active final public cleanup
+contract lives in `/Volumes/WS4TB/repo622sn/CAM_Codx/GOAL.md`.
 
 ## Outcome
 
@@ -59,8 +60,7 @@ Use these existing artifacts as baseline context:
 - `README.md`
 - `REPO_MAP.md`
 - `RISK_NOTES.md`
-- `docs/LAUNCH_METRICS_2026-06-19.md`
-- `docs/reports/CAM_CAM_LAUNCH_REFRESH_2026-06-19.md`
+- current runtime docs and showpieces under `docs/`
 - `docs/cam_cam_showpiece.html`
 - `apps/repo_rescue_desk/`
 - `src/claw/web/dashboard_server.py`
@@ -86,9 +86,8 @@ Allowed modification paths:
 - `forge-ui/package.json`
 - `forge-ui/package-lock.json`
 
-Allowed new artifacts:
+Historical artifacts from the original enhancement run:
 
-- `docs/reports/CAM_CAM_TOP6_FEATURES_2026-06-19.md`
 - `docs/reports/top6-smoke/` if screenshots or smoke outputs are generated
 - focused test fixtures under `tests/fixtures/` or `apps/repo_rescue_desk/tests/fixtures/`
 
@@ -263,9 +262,8 @@ Update:
 - `docs/cam_cam_showpiece.html` only if the new features are demonstrably
   runnable and should be reflected in the public launch page.
 - `forge-ui/README.md` if Forge UI routes or setup change.
-- Add `docs/reports/CAM_CAM_TOP6_FEATURES_2026-06-19.md` with:
-  changed files, user-facing behavior, commands, verification results, and
-  remaining gaps.
+- Historical top-six verification was recorded during the enhancement run. The
+  final public cleanup pass no longer keeps the stale dated report in CAM_CAM.
 
 ## Verification
 
@@ -298,7 +296,9 @@ This goal is complete only when all are true:
 - Plain-English report export exists and is documented.
 - Ask-my-repo deterministic queries answer at least five common intents.
 - README documents the top-six workflow.
-- Final report exists at `docs/reports/CAM_CAM_TOP6_FEATURES_2026-06-19.md`.
+- Final report existed during the enhancement run; the final public cleanup pass
+  now records cleanup provenance in CAM_Codx manifests instead of keeping stale
+  launch snapshots in CAM_CAM.
 - Required verification passes, except any documented npm audit advisory already
   accepted in the launch-refresh report.
 

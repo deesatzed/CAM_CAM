@@ -6,7 +6,7 @@ The current flagship proof is [Repo Rescue Desk](docs/cam_cam_showpiece.html): a
 
 Under that surface is CAM-PULSE: the method engine that mines reusable engineering patterns from source, stores them in local SQLite with provenance, tracks lifecycle and fitness, verifies reuse through tests, and demotes methods that hurt outcomes.
 
-**Launch metrics verified 2026-06-19:** 2,304 methodologies in the canonical local DB, 110 projects, 91 FastAPI routes, 20 Next.js page files, and a 257-test focused Python smoke suite passing. The metric source is [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md), using only `data/claw.db` from this repo.
+**Historical launch metrics recorded 2026-06-19:** 2,304 methodologies in the canonical local DB, 110 projects, 91 FastAPI routes, 20 Next.js page files, and a 257-test focused Python smoke suite passing. Treat these as a dated snapshot; use the quickstart and tests below for current clone-and-run proof.
 
 CAM_CAM is not trying to beat IDE assistants at autocomplete. It is for operators with many repos who need to map, mine, verify, and reuse engineering knowledge before an agent mutates code.
 
@@ -112,7 +112,7 @@ Migration plan: [CAM Repo Consolidation Plan](docs/CAM_REPO_CONSOLIDATION_PLAN_2
 
 ### Historical Proof Snapshot: 30-Project Batch Build
 
-The sections below preserve earlier proof runs and may mention historical counts. Use [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md) for current launch metrics.
+The sections below preserve earlier proof runs and may mention historical counts. Use the quickstart and test commands near the top of this README for current clone-and-run proof.
 
 CAM built 30 software projects autonomously using patterns mined from 266 repos. Every project was verified with real `python -c "import ..."` and `pytest` — no mock, no manual intervention. 6 initial bugs (1-5 line fixes each) were diagnosed and patched; the most common (missing `__init__.py` exports) was fixed systemically in CAM's verifier so future builds self-correct.
 
@@ -384,7 +384,7 @@ cam doctor routing   # Kelly weights per agent, with cold-start warnings
 cam doctor keycheck --live   # Real provider round-trip (OpenRouter + Gemini)
 ```
 
-Historical install verification has varied across snapshots. For the current launch-refresh evidence, use [docs/LAUNCH_METRICS_2026-06-19.md](docs/LAUNCH_METRICS_2026-06-19.md) and the focused smoke commands near the top of this README.
+Historical install verification has varied across snapshots. For the current public repo proof, use the focused smoke commands near the top of this README.
 
 **Web UI** (optional):
 

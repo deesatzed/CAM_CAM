@@ -70,3 +70,14 @@ Assumptions:
   3 tests; generated CLI help and demo run exited 0; full `python -m pytest -q`
   still fails in three pre-existing non-packet areas recorded in
   `docs/showpieces/repo_necromancer/moriah_careframe/TEST_RESULTS.md`.
+
+## 2026-06-21 Public Cleanup
+
+- Under the active CAM_Codx final public cleanup goal, classified stale CAM_CAM
+  launch snapshots, generated batch results, and the old coverage baseline for
+  removal from public Git tracking.
+- Removed only files listed in
+  `/Volumes/WS4TB/repo622sn/CAM_Codx/docs/repo_inventory/PUBLIC_REPO_CLEANUP_MANIFEST.json`.
+- Updated README/showpiece/GOAL references so no public doc points at the
+  removed launch snapshot files.
+- Left pre-existing untracked `CAM_Codx_last5291pm.txt` untouched.
