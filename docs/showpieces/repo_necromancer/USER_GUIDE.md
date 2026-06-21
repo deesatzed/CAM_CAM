@@ -114,6 +114,43 @@ python scripts/repo_necromancer.py \
   --standalone-repo /path/to/MyProduct
 ```
 
+Add merger guidance when you already know what the combined product should
+become:
+
+```bash
+python scripts/repo_necromancer.py \
+  --repo-a /path/to/source-a \
+  --repo-b /path/to/source-b \
+  --out-dir docs/showpieces/repo_necromancer/my_pair \
+  --product-name MyProduct \
+  --standalone-repo /path/to/MyProduct \
+  --merger-brief "Build a small, inspectable CLI first. The merged repo succeeds only when a user can see what was borrowed, why, and which files are safe to touch next."
+```
+
+For longer instructions, put the expectations in a file and pass
+`--merger-brief-file`:
+
+```bash
+cat > /tmp/myproduct-merger-brief.md <<'EOF'
+Build the smallest useful merged repo first.
+Preserve source repos as read-only evidence.
+Show a compatibility map, merge ledger, and safe merge plan before any copy step.
+Do not invent cloud services, accounts, or production deployment.
+EOF
+
+python scripts/repo_necromancer.py \
+  --repo-a /path/to/source-a \
+  --repo-b /path/to/source-b \
+  --out-dir docs/showpieces/repo_necromancer/my_pair \
+  --product-name MyProduct \
+  --standalone-repo /path/to/MyProduct \
+  --merger-brief-file /tmp/myproduct-merger-brief.md
+```
+
+The merger brief is copied into `evidence.json`, `NECROMANCER_SHOWPIECE.md`,
+`CAM_CODEX_GOAL.md`, and the standalone repo README. It becomes the product
+owner's expectation for the next Codex execution step.
+
 Expected output:
 
 ```text
@@ -144,6 +181,7 @@ The goal file is the handoff artifact. It tells CAM_Codx/Codex:
 
 - which two repos were analyzed,
 - what product to build,
+- any merger guidance or success expectations supplied by the user,
 - which source repos must remain read-only,
 - what MVP behaviors are required,
 - what acceptance checks must pass,

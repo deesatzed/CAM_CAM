@@ -26,8 +26,13 @@ python scripts/repo_necromancer.py \
   --repo-b /path/to/source-b \
   --out-dir docs/showpieces/repo_necromancer/my_pair \
   --product-name MyProduct \
-  --standalone-repo /path/to/MyProduct
+  --standalone-repo /path/to/MyProduct \
+  --merger-brief "Build a small, inspectable CLI first; show what was borrowed, why, and what is safe to touch next."
 ```
+
+Use `--merger-brief-file /path/to/brief.md` for longer product expectations.
+The brief is embedded in the packet and generated standalone repo so CAM_Codx
+does not have to infer the desired outcome from source profiles alone.
 
 ## Boundary Rules
 

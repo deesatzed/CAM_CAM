@@ -142,6 +142,59 @@ def test_repo_necromancer_records_merge_ledger_and_safe_plan(tmp_path: Path) -> 
     assert "## What was revived" in app_readme
 
 
+def test_repo_necromancer_carries_merger_guidance_into_packet_and_standalone_repo(tmp_path: Path) -> None:
+    repo_a = tmp_path / "source-a"
+    repo_b = tmp_path / "source-b"
+    init_repo(
+        repo_a,
+        "# Source A\n\nWorkspace scanner for old repos.",
+        {"scanner.py": "def scan():\n    return []\n"},
+    )
+    init_repo(
+        repo_b,
+        "# Source B\n\nPatch planner with rollback checks.",
+        {"planner.py": "def plan():\n    return []\n"},
+    )
+    out_dir = tmp_path / "packet"
+    standalone_repo = tmp_path / "GuidedMerge"
+    guidance = (
+        "Create a boring, inspectable CLI first. Do not invent cloud services. "
+        "The first pass succeeds only when a user can see what was borrowed, why, "
+        "and which files are safe to touch next."
+    )
+
+    exit_code = main([
+        "--repo-a",
+        str(repo_a),
+        "--repo-b",
+        str(repo_b),
+        "--out-dir",
+        str(out_dir),
+        "--product-name",
+        "GuidedMerge",
+        "--standalone-repo",
+        str(standalone_repo),
+        "--merger-brief",
+        guidance,
+    ])
+
+    assert exit_code == 0
+    packet_evidence = json.loads((out_dir / "evidence.json").read_text(encoding="utf-8"))
+    repo_evidence = json.loads((standalone_repo / "evidence" / "source_profiles.json").read_text(encoding="utf-8"))
+    showpiece = (out_dir / "NECROMANCER_SHOWPIECE.md").read_text(encoding="utf-8")
+    codex_goal = (out_dir / "CAM_CODEX_GOAL.md").read_text(encoding="utf-8")
+    standalone_readme = (standalone_repo / "README.md").read_text(encoding="utf-8")
+
+    assert packet_evidence["merger_brief"] == guidance
+    assert repo_evidence["merger_brief"] == guidance
+    assert "## Merger guidance" in showpiece
+    assert guidance in showpiece
+    assert "## Merger guidance" in codex_goal
+    assert guidance in codex_goal
+    assert "## Merger guidance" in standalone_readme
+    assert guidance in standalone_readme
+
+
 def test_repo_necromancer_report_includes_git_state_receipts(tmp_path: Path) -> None:
     repo_a = tmp_path / "filesystem-source"
     repo_a.mkdir()

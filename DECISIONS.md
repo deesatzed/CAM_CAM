@@ -35,3 +35,18 @@ creation-mode pattern.
 
 Reason: Creation-mode methodology for a different domain; not specific enough
 for source-repo transplant planning.
+
+## 2026-06-21: Carry merger guidance into Repo Necromancer packets
+
+Decision: Repo Necromancer accepts `--merger-brief` and
+`--merger-brief-file`, then embeds that guidance in packet evidence, showpiece
+docs, the Codex goal, and generated standalone repo docs.
+
+Reason: Source profiles can suggest a product direction, but the user often
+knows the intended merger outcome and constraints. Carrying those expectations
+inside the packet prevents the next Codex run from guessing, overbuilding, or
+counting a packet-only artifact as the merged product.
+
+Safety: The guidance is plain text and does not relax source read-only
+boundaries, test requirements, provenance requirements, or standalone repo
+acceptance checks.

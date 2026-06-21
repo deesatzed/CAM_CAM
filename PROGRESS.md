@@ -81,3 +81,14 @@ Assumptions:
 - Updated README/showpiece/GOAL references so no public doc points at the
   removed launch snapshot files.
 - Left pre-existing untracked `CAM_Codx_last5291pm.txt` untouched.
+
+## 2026-06-21 Repo Necromancer Merger Guidance
+
+- Added `--merger-brief` and `--merger-brief-file` to
+  `scripts/repo_necromancer.py` so users can supply product-owner expectations
+  for the merged output before the packet is handed to CAM_Codx.
+- The generator now writes the merger guidance into `evidence.json`,
+  `NECROMANCER_SHOWPIECE.md`, `CAM_CODEX_GOAL.md`, the fused app README, the
+  demo output, and the generated standalone repo README.
+- Added regression coverage proving the merger guidance survives packet and
+  standalone repo generation.
