@@ -1,0 +1,156 @@
+{
+  "combined_signals": [
+    "clinical",
+    "dashboard",
+    "graft",
+    "knowledge",
+    "safety",
+    "workspace"
+  ],
+  "generated_at": "2026-06-21T00:17:48.782313+00:00",
+  "merge_ledger": [
+    {
+      "provenance": [
+        "path=/Volumes/WS4TB/WS4TBr/MORIAH/moriah_omega",
+        "signals=clinical, dashboard, graft, knowledge, safety, workspace",
+        "git_head=not available"
+      ],
+      "revived_as": "A read-only scanner that turns source trees into evidence JSON before any graft.",
+      "source": "Source A",
+      "source_repo": "moriah_omega",
+      "subsystem": "Workspace inventory and repo signal profiler"
+    },
+    {
+      "provenance": [
+        "path=/Volumes/WS4TB/careframe/Proto_Dev_Req",
+        "signals=clinical, dashboard, graft, safety, workspace",
+        "git_head=194fc54"
+      ],
+      "revived_as": "A target-safety review that names warnings, required checks, and rollback steps.",
+      "source": "Source B",
+      "source_repo": "Proto_Dev_Req",
+      "subsystem": "Care-oriented preflight and rollback framing"
+    },
+    {
+      "provenance": [
+        "generated_by=CAM_CAM scripts/repo_necromancer.py",
+        "inputs=read-only source profiles"
+      ],
+      "revived_as": "A merged CLI/report packet that explains what to borrow before copying code.",
+      "source": "New glue",
+      "source_repo": "MoriahCareFrame",
+      "subsystem": "Transplant desk glue"
+    }
+  ],
+  "mvp_features": [
+    "Read-only source repo profiler with git state receipts.",
+    "Compatibility map showing which source repo contributes each subsystem.",
+    "Safe merge plan with target files, tests to add, and rollback notes.",
+    "Runnable demo app that explains the revived product in one command.",
+    "Codex-ready goal brief for turning the packet into a real merged repo."
+  ],
+  "product_name": "MoriahCareFrame",
+  "promise": "MoriahCareFrame turns workspace inventory plus code-grafting logic into a local subsystem transplant desk: find reusable modules, preflight the target, and produce a patch plan before copying code.",
+  "safe_merge_plan": [
+    {
+      "phase": "1. Freeze source receipts",
+      "risk": "Low. Fails only if source paths disappear or git commands time out.",
+      "rollback": "Delete generated receipts; no source repo rollback needed because inputs are read-only.",
+      "target_files": [
+        "docs/source_receipts.md",
+        "evidence/source_profiles.json"
+      ],
+      "tests_to_add": [
+        "tests/test_source_receipts.py"
+      ]
+    },
+    {
+      "phase": "2. Build transplant planner",
+      "risk": "Medium. Planner must label weak matches instead of implying safe copyability.",
+      "rollback": "Revert planner and CLI files; keep receipts for audit continuity.",
+      "target_files": [
+        "moriah_careframe/planner.py",
+        "moriah_careframe/cli.py"
+      ],
+      "tests_to_add": [
+        "tests/test_planner.py",
+        "tests/test_cli_demo.py"
+      ]
+    },
+    {
+      "phase": "3. Add reviewable patch output",
+      "risk": "Medium. Human review is required before any file copy into a real target repo.",
+      "rollback": "Discard generated patch plan and rerun from unchanged receipts.",
+      "target_files": [
+        "patch_plan.md",
+        "patches/README.md"
+      ],
+      "tests_to_add": [
+        "tests/test_patch_plan_contract.py"
+      ]
+    }
+  ],
+  "source_repos": [
+    {
+      "entrypoints": [],
+      "file_count": 56,
+      "git": {
+        "branch": "",
+        "dirty": false,
+        "head": "",
+        "is_repo": false,
+        "remote": "",
+        "status_receipt": ""
+      },
+      "has_tests": false,
+      "languages": {
+        "JSON": 2,
+        "JavaScript": 7,
+        "Markdown": 22,
+        "Python": 15,
+        "YAML": 1
+      },
+      "name": "moriah_omega",
+      "path": "/Volumes/WS4TB/WS4TBr/MORIAH/moriah_omega",
+      "signals": [
+        "clinical",
+        "dashboard",
+        "graft",
+        "knowledge",
+        "safety",
+        "workspace"
+      ],
+      "summary": "No README summary found.",
+      "title": "moriah_omega"
+    },
+    {
+      "entrypoints": [],
+      "file_count": 20,
+      "git": {
+        "branch": "main",
+        "dirty": true,
+        "head": "194fc54",
+        "is_repo": true,
+        "remote": "https://github.com/deesatzed/careframe.git",
+        "status_receipt": "M ../docs/qa/mobile-visual/report.json\n?? ../HANDOFF_2026-06-20.md\n?? ../HANDOFF_LATEST.md\n?? ../instances/"
+      },
+      "has_tests": false,
+      "languages": {
+        "JavaScript": 12,
+        "Markdown": 1
+      },
+      "name": "Proto_Dev_Req",
+      "path": "/Volumes/WS4TB/careframe/Proto_Dev_Req",
+      "signals": [
+        "clinical",
+        "dashboard",
+        "graft",
+        "safety",
+        "workspace"
+      ],
+      "summary": "No README summary found.",
+      "title": "Proto_Dev_Req"
+    }
+  ],
+  "standalone_repo": "/Volumes/WS4TB/WS4TBr/MoriahCareFrame"
+}

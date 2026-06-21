@@ -1,0 +1,77 @@
+{
+  "combined_signals": [
+    "dashboard",
+    "graft",
+    "knowledge",
+    "safety",
+    "workspace"
+  ],
+  "generated_at": "2026-06-20T15:02:34.943545+00:00",
+  "mvp_features": [
+    "Read-only source repo profiler with git state receipts.",
+    "Compatibility map showing which source repo contributes each subsystem.",
+    "Safe merge plan with target files, tests to add, and rollback notes.",
+    "Runnable demo app that explains the revived product in one command.",
+    "Codex-ready goal brief for turning the packet into a real merged repo."
+  ],
+  "product_name": "CodeGraftScope",
+  "promise": "CodeGraftScope turns workspace inventory plus code-grafting logic into a local subsystem transplant desk: find reusable modules, preflight the target, and produce a patch plan before copying code.",
+  "source_repos": [
+    {
+      "entrypoints": [
+        "codegraft.py"
+      ],
+      "file_count": 3,
+      "git": {
+        "branch": "main",
+        "dirty": true,
+        "head": "39fcf40",
+        "remote": "https://github.com/deesatzed/codegraft.git"
+      },
+      "has_tests": false,
+      "languages": {
+        "Markdown": 1,
+        "Python": 1
+      },
+      "name": "codegraft",
+      "path": "/Volumes/WS4TB/WS4TBr/codegraft",
+      "signals": [
+        "dashboard",
+        "graft",
+        "knowledge",
+        "workspace"
+      ],
+      "summary": "Improve your Python codebase by grafting valuable code from external sources.",
+      "title": "CodeGraft"
+    },
+    {
+      "entrypoints": [
+        "pyproject.toml"
+      ],
+      "file_count": 30,
+      "git": {
+        "branch": "main",
+        "dirty": false,
+        "head": "565d8e4",
+        "remote": "https://github.com/deesatzed/codescope.git"
+      },
+      "has_tests": true,
+      "languages": {
+        "Markdown": 1,
+        "Python": 20,
+        "TOML": 1
+      },
+      "name": "codescope",
+      "path": "/Volumes/WS4TB/WS4TBr/codescope",
+      "signals": [
+        "dashboard",
+        "graft",
+        "knowledge",
+        "safety",
+        "workspace"
+      ],
+      "summary": "No README summary found.",
+      "title": "codescope"
+    }
+  ]
+}
