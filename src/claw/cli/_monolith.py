@@ -44,6 +44,15 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from claw.premine import (
+    PreMineResult,
+    append_candidate_jsonl,
+    premine_url,
+    read_targets,
+    render_markdown_report,
+    results_to_json,
+)
+
 app = typer.Typer(
     name="cam",
     help="CAM — inspect repos, learn from repos, create from that learning, and validate outcomes",
@@ -5858,6 +5867,81 @@ async def _ideate_async(
 
     finally:
         await ctx.close()
+
+
+@app.command(name="premine")
+def premine(
+    target: str = typer.Argument(..., help="GitHub URL, owner/repo, or a file containing repo URLs"),
+    output_format: str = typer.Option(
+        "table",
+        "--format",
+        "-f",
+        help="Output format: table, json, or markdown",
+    ),
+    out: Optional[Path] = typer.Option(None, "--out", help="Write JSON results to this path"),
+    report: Optional[Path] = typer.Option(None, "--report", help="Write a Markdown report to this path"),
+    save_candidates: Optional[Path] = typer.Option(
+        None,
+        "--save-candidates",
+        help="Append JSONL candidate records for later CAM mining",
+    ),
+) -> None:
+    """Assess GitHub repos remotely before deciding whether to clone and CAM-mine them."""
+    fmt = output_format.lower().strip()
+    if fmt not in {"table", "json", "markdown"}:
+        console.print("[red]--format must be one of: table, json, markdown[/red]")
+        raise typer.Exit(1)
+
+    try:
+        targets = read_targets(target)
+        if not targets:
+            console.print("[red]No GitHub targets found.[/red]")
+            raise typer.Exit(1)
+        results = [premine_url(repo_url) for repo_url in targets]
+    except Exception as exc:
+        console.print(f"[red]CAM-preMine failed:[/red] {exc}")
+        raise typer.Exit(1) from exc
+
+    json_payload = results_to_json(results)
+    markdown_report = render_markdown_report(results)
+
+    if out:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json_payload + "\n", encoding="utf-8")
+    if report:
+        report.parent.mkdir(parents=True, exist_ok=True)
+        report.write_text(markdown_report, encoding="utf-8")
+    if save_candidates:
+        append_candidate_jsonl(save_candidates, results)
+
+    if fmt == "json":
+        typer.echo(json_payload)
+    elif fmt == "markdown":
+        typer.echo(markdown_report)
+    else:
+        _render_premine_table(results)
+
+
+def _render_premine_table(results: list[PreMineResult]) -> None:
+    table = Table(title="CAM-preMine Remote GitHub Triage", show_lines=False)
+    table.add_column("Repo", style="cyan")
+    table.add_column("Verdict", style="bold", no_wrap=True)
+    table.add_column("Score", justify="right")
+    table.add_column("Type")
+    table.add_column("Risk")
+    table.add_column("Next Step")
+
+    for result in results:
+        table.add_row(
+            result.repo,
+            result.verdict.value,
+            str(result.cam_value_score),
+            result.repo_type.value,
+            result.risk_gate.value,
+            result.recommended_next_step,
+        )
+
+    console.print(table)
 
 
 @app.command()

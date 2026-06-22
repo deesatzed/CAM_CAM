@@ -92,3 +92,18 @@ Assumptions:
   demo output, and the generated standalone repo README.
 - Added regression coverage proving the merger guidance survives packet and
   standalone repo generation.
+
+## 2026-06-22 CAM-preMine
+
+- Added `claw.premine`, a remote GitHub assessment module that scores candidate
+  repos before local clone/mining.
+- Added `cam premine` with table, JSON, Markdown report, JSON output, and JSONL
+  candidate-queue output modes.
+- Encoded the 2026-06-22 example repos as fixture-based regression tests:
+  `Understand-Anything`, `taste-skill`, `blockify-agentic-data-optimization`,
+  `GLOSSOPETRAE`, and `ST3GG`.
+- Added docs under `docs/plans/` and a README workflow for pre-clone triage.
+- Assumption: v1 is CLI-first. Forge/Dashboard UX, durable SQLite persistence,
+  watchlist scheduling, and remote safe-harvest ingestion are follow-up layers.
+- Verified `python -m pytest -q tests/test_premine.py` passed with 7 tests
+  after implementation.

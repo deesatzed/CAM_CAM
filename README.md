@@ -792,9 +792,34 @@ cam create /path/to/repo --execute \
 # Evaluate a repo before modifying it
 cam evaluate /path/to/repo --mode quick
 
+# Pre-screen a GitHub repo before cloning it
+cam premine https://github.com/owner/repo
+
 # Mine patterns from a folder of repos
 cam mine /path/to/repos --max-repos 10 --depth 2
 ```
+
+### PreMine Before Clone
+
+`cam premine` inspects a GitHub repo remotely before any local clone. It returns
+a CAM value score, repo type, clone cost, risk gate, and a verdict such as
+`CLONE_NOW`, `REMOTE_HARVEST`, `CONDITIONAL_CLONE`, or
+`RESTRICTED_REMOTE_HARVEST`.
+
+```bash
+# Single repo, table output
+cam premine https://github.com/Egonex-AI/Understand-Anything
+
+# Batch candidates from a file, save both operator and machine-readable outputs
+cam premine repos.txt --format markdown \
+  --report premine_report.md \
+  --out premine_report.json \
+  --save-candidates data/premine/candidates.jsonl
+```
+
+Use `CLONE_NOW` for normal local mining, `REMOTE_HARVEST` when value is mostly
+in skills/docs/examples, and `RESTRICTED_REMOTE_HARVEST` when safety-sensitive
+repos should stay defensive-only unless a human expands scope.
 
 ### Mine Your Own Code
 

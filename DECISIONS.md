@@ -50,3 +50,22 @@ counting a packet-only artifact as the merged product.
 Safety: The guidance is plain text and does not relax source read-only
 boundaries, test requirements, provenance requirements, or standalone repo
 acceptance checks.
+
+## 2026-06-22: Add CAM-preMine before clone/mining
+
+Decision: CAM_CAM now has a CLI-first `cam premine` workflow that inspects
+public GitHub metadata remotely before the operator clones a candidate repo.
+
+Reason: The operator often does not know whether a repo will add CAM value until
+after cloning and mining it. A remote preMine gate reduces wasted clones and
+makes license/safety scope explicit before candidate code enters the local
+workspace.
+
+UX: v1 returns a table by default and supports JSON, Markdown report output, and
+JSONL candidate queue output. The verdict set is `CLONE_NOW`,
+`CONDITIONAL_CLONE`, `REMOTE_HARVEST`, `RESTRICTED_REMOTE_HARVEST`,
+`WATCHLIST`, `SKIP`, and `NEEDS_HUMAN`.
+
+Safety: `cam premine` does not clone or execute candidate code. Dual-use
+security/steganography signals route to restricted remote harvest with
+defensive-only scope.
