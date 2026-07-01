@@ -1037,39 +1037,26 @@ def _estimate_preflight_complexity(
 
 
 def _time_estimate_for_complexity(complexity: str) -> dict[str, str]:
-    mapping = {
-        "low": {
-            "elapsed": "15-45 minutes",
-            "active": "10-30 minutes",
-            "phases": "1-2 phases",
-        },
-        "medium": {
-            "elapsed": "45-120 minutes",
-            "active": "30-90 minutes",
-            "phases": "2-4 phases",
-        },
-        "high": {
-            "elapsed": "2-6 hours",
-            "active": "90-240 minutes",
-            "phases": "4-6 phases",
-        },
-        "very_high": {
-            "elapsed": "1-3 days",
-            "active": "4-12 hours",
-            "phases": "6+ phases",
-        },
+    # Time estimates are intentionally NOT provided: fabricated timeframes are
+    # not valid and are disallowed by operator policy. Only the objective phase
+    # count (a structural property of the plan) is reported.
+    phases = {
+        "low": "1-2 phases",
+        "medium": "2-4 phases",
+        "high": "4-6 phases",
+        "very_high": "6+ phases",
     }
-    return mapping[complexity]
+    return {
+        "elapsed": "not estimated",
+        "active": "not estimated",
+        "phases": phases.get(complexity, "unknown"),
+    }
 
 
 def _budget_estimate_for_complexity(config: Any, complexity: str) -> dict[str, Any]:
-    ranges = {
-        "low": (0.25, 0.75),
-        "medium": (0.75, 2.5),
-        "high": (2.5, 8.0),
-        "very_high": (8.0, 20.0),
-    }
-    low, high = ranges[complexity]
+    # Dollar projections are intentionally NOT provided (fabricated cost ranges
+    # are disallowed by operator policy). We report only the OBJECTIVE, configured
+    # budget caps that will actually enforce spend — not a made-up range.
     caps = {
         "per_repo_default_usd": round(float(getattr(config.fleet, "max_cost_per_repo_usd", 5.0)), 2),
         "per_day_default_usd": round(float(getattr(config.fleet, "max_cost_per_day_usd", 50.0)), 2),
@@ -1079,8 +1066,8 @@ def _budget_estimate_for_complexity(config: Any, complexity: str) -> dict[str, A
         ),
     }
     return {
-        "usd_range": f"${low:.2f}-${high:.2f}",
-        "assumption": "Assumes a normal create/validate loop with 1-3 execution attempts.",
+        "usd_range": "not estimated",
+        "assumption": "No cost projection is made; actual spend is bounded by the configured caps below.",
         "config_caps": caps,
     }
 
@@ -1291,8 +1278,8 @@ def _build_preflight_prompt(
         '  "hard_blockers": [string],\n'
         '  "clarifying_questions": [{"priority":"must|should","question":string,"why_it_matters":string,"default_if_unanswered":string}],\n'
         '  "estimated_phases": [string],\n'
-        '  "time_estimate": {"elapsed": string, "active": string, "phases": string},\n'
-        '  "budget_estimate": {"usd_range": string, "assumption": string},\n'
+        '  "time_estimate": {"phases": string},\n'
+        '  "budget_estimate": {"assumption": string},\n'
         '  "recommended_mode": "proceed_now|proceed_after_answers|split_into_milestone_1|not_ready",\n'
         '  "proposed_first_milestone": string,\n'
         '  "confidence": "low|medium|high"\n'
@@ -5239,7 +5226,7 @@ def preflight(
     live: bool = typer.Option(False, "--live/--no-live", help="Use an LLM to enrich the preflight artifact"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
 ) -> None:
-    """Pre-examine a requested task, ask clarifying questions, and estimate time/budget."""
+    """Pre-examine a requested task, ask clarifying questions, and scope the work."""
     _setup_logging(False)
 
     repo_path = Path(repo).resolve()
