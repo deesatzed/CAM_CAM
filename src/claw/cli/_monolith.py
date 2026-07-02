@@ -7623,10 +7623,12 @@ async def _enrich_async(
                 for gdb_path in ganglion_dbs:
                     ganglion_name = gdb_path.parent.name
                     try:
+                        from claw.core.config import DatabaseConfig
                         from claw.db.engine import DatabaseEngine
                         from claw.db.repository import Repository
-                        g_engine = DatabaseEngine(str(gdb_path))
-                        await g_engine.initialize()
+                        g_engine = DatabaseEngine(DatabaseConfig(db_path=str(gdb_path)))
+                        await g_engine.connect()
+                        await g_engine.apply_migrations()
                         g_repo = Repository(g_engine)
 
                         g_unenriched = await g_repo.get_unenriched_methodologies(limit)
