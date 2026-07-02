@@ -40,6 +40,13 @@ APPROVED_MODEL_IDS = (
     "openai/gpt-mini-latest",
     "openai/gpt-4.1-mini",
     "x-ai/grok-4.3",
+    # Approved by operator 2026-07-02 (present in claw.toml fallback_models;
+    # cf. "route CAM mining through GLM and Kimi").
+    "moonshotai/kimi-k2.7-code",
+    "nvidia/nemotron-3-ultra-550b-a55b",
+    # Approved by operator 2026-07-02 — primary model for the active claude
+    # agent slot in claw.toml (the "GLM" in "route through GLM and Kimi").
+    "z-ai/glm-5.2",
 )
 CHAMPION_POINTER_FILENAME = "current_champion.json"
 
