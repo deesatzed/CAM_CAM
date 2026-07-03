@@ -118,6 +118,11 @@ cl/
 evidence/
 templates/
 
+# Corpus backups and runtime mining state (never version-controlled — see DB_REGISTRY.md)
+claw.db.bak-*
+*.db.bak-*
+mining_registry.json
+
 # Internal dev plans (removed from tracking)
 docs/CAM_FORGE_DECOUPLING_PLAN.md
 docs/CAM_SYMBOL_AWARE_ASSIMILATION_PLAN.md

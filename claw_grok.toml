@@ -1,3 +1,9 @@
+# ============================================================================
+# PROFILE: grok — Grok-oriented routing
+# Use when: Grok-weighted experiments
+# Models: deepseek/qwen family (grok variant)
+# Target DB: see [database].db_path below. Run: cam <cmd> --config claw_grok.toml
+# ============================================================================
 [database]
 db_path = "data/claw.db"
 

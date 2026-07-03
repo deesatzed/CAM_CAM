@@ -1,3 +1,9 @@
+# ============================================================================
+# PROFILE: dspro — DeepSeek-pro routing
+# Use when: DeepSeek-pro-weighted runs
+# Models: deepseek-v4-pro/flash, qwen3.6-flash
+# Target DB: see [database].db_path below. Run: cam <cmd> --config claw_dspro.toml
+# ============================================================================
 [database]
 db_path = "data/claw.db"
 

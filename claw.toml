@@ -1,5 +1,11 @@
+# ============================================================================
+# PROFILE: glm (ACTIVE/DEFAULT) — GLM + Kimi routing
+# Use when: default mining/enhance runs. This is the live profile.
+# Models: z-ai/glm-5.2 (primary), moonshotai/kimi-k2.7-code, gpt-4.1-mini, grok-4.3.
+# Target DB: claw.db (the LIVE corpus, see DB_REGISTRY.md). Run: cam <cmd> --config claw.toml
+# ============================================================================
 [database]
-db_path = "data/claw.db"
+db_path = "claw.db"
 
 [llm]
 base_url = "https://openrouter.ai/api/v1"
@@ -16,8 +22,8 @@ model_cooldown_seconds = 90
 # Leave empty to disable model-level fallback.
 fallback_models = [
     "moonshotai/kimi-k2.7-code",
-    "deepseek/deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
+    "deepseek/deepseek-v4-flash",
     "nvidia/nemotron-3-ultra-550b-a55b",
     "x-ai/grok-4.3",
     "openai/gpt-4.1-mini",
@@ -529,10 +535,16 @@ federation_max_results = 3                   # Max results per sibling ganglion 
 # db_path = "/path/to/quantum/data/claw.db"
 # description = "Quantum computing, qubits, gates, error correction, circuit optimization"
 #
-[[instances.siblings]]
-name = "drive-ops"
-db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/data/instances/drive-ops/claw.db"
-description = "Drive scanning, repo discovery, dedup, archival, code organization across /Volumes/WS4TB"
+# DISABLED 2026-06-29 (WS4): these sibling ganglia point at multiclaw/* DBs that
+# exist but have no `methodologies` table, so every federated command (kb/learn/
+# doctor) prints "Skipping <name>: no such table: methodologies" noise. (Note: the
+# commands still succeed — rc=0 when run directly; an earlier rc=2 reading was a
+# shell test-harness artifact, not a CLI failure.) Re-enable once the target DBs
+# are initialized, or repoint at live ganglia (e.g. repo622sn/instances/<brain>).
+# [[instances.siblings]]
+# name = "drive-ops"
+# db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/data/instances/drive-ops/claw.db"
+# description = "Drive scanning, repo discovery, dedup, archival, code organization across /Volumes/WS4TB"
 #
 # [[instances.siblings]]
 # name = "agentic-memory"
@@ -572,27 +584,28 @@ description = "Drive scanning, repo discovery, dedup, archival, code organizatio
 # max_concurrent = 1
 # timeout = 300
 
-[[instances.siblings]]
-name = "agentic-memory"
-db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/data/instances/agentic-memory/claw.db"
-description = "Specialist ganglion for agentic memory, RAG, knowledge retrieval, and multi-agent patterns"
-
-[[instances.siblings]]
-name = "typescript"
-db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/typescript/claw.db"
-description = "Typescript language patterns mined by CAM typescript brain"
-
-[[instances.siblings]]
-name = "rust"
-db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/rust/claw.db"
-description = "Rust language patterns: WASM, safety, CLI, systems programming"
-
-[[instances.siblings]]
-name = "go"
-db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/go/claw.db"
-description = "Go language patterns: concurrency, CLI, networking, cloud infrastructure"
-
-[[instances.siblings]]
-name = "misc"
-db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/misc/claw.db"
-description = "Misc language patterns mined by CAM misc brain"
+# DISABLED 2026-06-29 (WS4): empty multiclaw/* ganglia (no methodologies table).
+# [[instances.siblings]]
+# name = "agentic-memory"
+# db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/data/instances/agentic-memory/claw.db"
+# description = "Specialist ganglion for agentic memory, RAG, knowledge retrieval, and multi-agent patterns"
+#
+# [[instances.siblings]]
+# name = "typescript"
+# db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/typescript/claw.db"
+# description = "Typescript language patterns mined by CAM typescript brain"
+#
+# [[instances.siblings]]
+# name = "rust"
+# db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/rust/claw.db"
+# description = "Rust language patterns: WASM, safety, CLI, systems programming"
+#
+# [[instances.siblings]]
+# name = "go"
+# db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/go/claw.db"
+# description = "Go language patterns: concurrency, CLI, networking, cloud infrastructure"
+#
+# [[instances.siblings]]
+# name = "misc"
+# db_path = "/Volumes/WS4TB/a_aSatzClaw/multiclaw/instances/misc/claw.db"
+# description = "Misc language patterns mined by CAM misc brain"
