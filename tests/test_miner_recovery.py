@@ -39,6 +39,7 @@ from claw.db.engine import DatabaseEngine
 from claw.db.repository import Repository
 from claw.memory.hybrid_search import HybridSearch
 from claw.memory.semantic import SemanticMemory
+from claw.llm.client import LLMResponse
 from claw.miner import (
     MiningFinding,
     MiningModelSelector,
@@ -711,6 +712,57 @@ class TestRecoveryDisabled:
     def test_config_disabled(self):
         cfg = MiningRecoveryConfig(enabled=False)
         assert cfg.enabled is False
+
+    @pytest.mark.asyncio
+    async def test_mining_call_uses_configured_low_reasoning(self, tmp_path):
+        class RecordingLLM:
+            def __init__(self):
+                self.requests = []
+
+            async def complete(self, **kwargs):
+                self.requests.append(kwargs)
+                return LLMResponse(content="[]", model=kwargs["model"], finish_reason="stop")
+
+        class Selector:
+            async def select_best_model(self, estimated_tokens):
+                return "claude", "qwen/qwen3.8-max"
+
+        class OutcomeRepository:
+            async def record_mining_outcome(self, **kwargs):
+                return None
+
+            async def update_agent_score(self, **kwargs):
+                return None
+
+        config = ClawConfig()
+        config.mining.recovery.enabled = False
+        llm = RecordingLLM()
+        miner = RepoMiner(
+            repository=OutcomeRepository(),
+            llm_client=llm,
+            semantic_memory=None,
+            config=config,
+            scan_ledger_path=tmp_path / "ledger.json",
+        )
+
+        await miner._mine_with_recovery(
+            prompt="mine this repo",
+            token_budget=4096,
+            model_selector=Selector(),
+            estimated_tokens=100,
+            repo_name="fixture",
+            repo_path=tmp_path,
+            repo_content="source",
+            file_count=3,
+            brain="python",
+            brain_config=BrainConfig(),
+            domain_info={},
+            overlap=None,
+            secret_scan_files=set(),
+            start_time=0.0,
+        )
+
+        assert llm.requests[0]["reasoning"] == {"effort": "low", "exclude": True}
 
 
 # ===========================================================================

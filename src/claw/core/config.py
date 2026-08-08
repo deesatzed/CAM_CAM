@@ -269,6 +269,8 @@ class MiningRecoveryConfig(BaseModel):
     token_estimate_chars_per_token: float = 4.0
     min_context_headroom_pct: float = 0.20
     max_prompt_tokens: int = 80_000
+    reasoning_effort: str = "low"
+    reasoning_exclude: bool = True
 
 
 class DomainBrainConfig(BaseModel):

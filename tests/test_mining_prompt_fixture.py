@@ -65,6 +65,9 @@ async def test_prepare_mining_prompt_is_stable_and_read_only(tmp_path: Path) -> 
     assert first.source_manifest == ["README.md", "queue.py", "retry.py"]
     assert first.file_count == 3
     assert first.repo_bytes > 1024
+    assert '"findings": [' in first.prompt
+    assert "Maximum 5 findings per repo" in first.prompt
+    assert "aim for at least 3" in first.prompt
     assert repository.reads == 2
     assert not (tmp_path / "ledger.json").exists()
 

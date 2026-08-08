@@ -2414,6 +2414,17 @@ class RepoMiner:
             )
         self._quarantined_mining_models.add(model)
 
+    def _mining_reasoning(self) -> dict[str, Any] | None:
+        """Return the explicit low-cost reasoning policy for mining calls."""
+        recovery = self.config.mining.recovery
+        effort = recovery.reasoning_effort.strip()
+        if not effort:
+            return None
+        return {
+            "effort": effort,
+            "exclude": recovery.reasoning_exclude,
+        }
+
     # ------------------------------------------------------------------
     # Self-recovery mining loop
     # ------------------------------------------------------------------
@@ -2458,6 +2469,7 @@ class RepoMiner:
                     self.llm_client.complete(
                         messages=[LLMMessage(role="user", content=prompt)],
                         model=model, temperature=0.3, max_tokens=token_budget,
+                        reasoning=self._mining_reasoning(),
                     ),
                     timeout=_MINING_LLM_TIMEOUT_SECONDS,
                 )
@@ -2504,6 +2516,7 @@ class RepoMiner:
                     self.llm_client.complete(
                         messages=[LLMMessage(role="user", content=prompt)],
                         model=model, temperature=0.3, max_tokens=token_budget,
+                        reasoning=self._mining_reasoning(),
                     ),
                     timeout=_MINING_LLM_TIMEOUT_SECONDS,
                 )
@@ -2584,6 +2597,7 @@ class RepoMiner:
                             messages=[LLMMessage(role="user", content=reduced_prompt)],
                             model=best_model, temperature=0.3,
                             max_tokens=token_budget,
+                            reasoning=self._mining_reasoning(),
                         ),
                         timeout=_MINING_LLM_TIMEOUT_SECONDS,
                     )
@@ -2745,6 +2759,7 @@ class RepoMiner:
                     self.llm_client.complete(
                         messages=[LLMMessage(role="user", content=chunk_prompt)],
                         model=best_model, temperature=0.3, max_tokens=token_budget,
+                        reasoning=self._mining_reasoning(),
                     ),
                     timeout=_MINING_LLM_TIMEOUT_SECONDS,
                 )

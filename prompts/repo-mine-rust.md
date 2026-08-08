@@ -24,10 +24,10 @@ Analyze the repository source code below and extract findings. Look for:
 
 ## Output Format
 
-Return a JSON array of findings. Each finding must have these fields:
+Return a JSON object with exactly one `findings` array. Each finding must have these fields:
 
 ```json
-[
+{"findings": [
   {
     "title": "Short descriptive title (max 80 chars)",
     "description": "Detailed description of the pattern/feature/technique (2-4 sentences)",
@@ -45,13 +45,13 @@ Return a JSON array of findings. Each finding must have these fields:
     "relevance_score": 0.7,
     "language": "rust"
   }
-]
+]}
 ```
 
 ## Rules
 
-- Return ONLY the JSON array, no additional text before or after
-- Maximum 15 findings per repo; aim for at least 6 when the repo has diverse patterns
+- Return ONLY the JSON object, no additional text before or after
+- Maximum 5 findings per repo; aim for at least 3 when the repo has diverse patterns
 - Minimum relevance_score of 0.4 (skip trivial/irrelevant patterns)
 - relevance_score range: 0.4 (marginally useful) to 1.0 (directly applicable, high impact)
 - Focus on **transferable ideas**, not repo-specific business logic
