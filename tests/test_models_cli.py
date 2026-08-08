@@ -10,7 +10,7 @@ from claw.cli import app
 from claw.llm.client import LLMClient, LLMResponse
 from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
 from claw.models.catalog import ModelCatalog
-from claw.models.scoring import BenchmarkQualityReport
+from claw.models.scoring import BenchmarkQualityReport, ModelQualitySummary
 
 runner = CliRunner()
 
@@ -244,6 +244,120 @@ def test_benchmark_plan_is_no_spend_and_writes_hashed_manifest(tmp_path: Path) -
     plan_text = plan_path.read_text()
     assert "private prompt" not in plan_text
     assert "private source" not in plan_text
+
+
+def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
+    tmp_path: Path,
+) -> None:
+    suite_path = Path(__file__).parent.parent / "benchmarks" / "mining-v1.toml"
+    catalog_path = Path(__file__).parent / "fixtures" / "openrouter_models.json"
+    fixture_path = tmp_path / "fixtures.json"
+    first_output = tmp_path / "first"
+    heldout_output = tmp_path / "heldout"
+    fixtures = []
+    for name in ["Codx_LoopKit", "atomic-agent", "RedaktSafe", "OpenCLI", "OpenViking"]:
+        fixtures.append(
+            MiningPromptFixture(
+                repo_path=f"/private/{name}",
+                repo_name=name,
+                git_head="a" * 40,
+                dirty_paths=[],
+                brain="python",
+                prompt=f"private prompt for {name}",
+                prompt_sha256=f"prompt-{name}",
+                repo_content=f"private source for {name}",
+                repo_content_sha256=f"content-{name}",
+                source_manifest=["README.md", "main.py"],
+                repo_bytes=4096,
+                file_count=2,
+                estimated_tokens=1000,
+                token_budget=512,
+                domain_info={},
+                overlap={},
+            )
+        )
+    fixture_path.write_text(
+        json.dumps([fixture.model_dump(mode="json") for fixture in fixtures])
+    )
+
+    planned = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "plan",
+            str(suite_path),
+            "--stage",
+            "first-round",
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(catalog_path),
+            "--budget-usd",
+            "5",
+            "--prior-spend-usd",
+            "2",
+            "--output",
+            str(first_output),
+        ],
+    )
+
+    assert planned.exit_code == 0, planned.output
+    assert "NO PAID CALLS MADE" in planned.output
+    parent = json.loads((first_output / "plan.json").read_text())
+    assert parent["stage"] == "first-round"
+    assert parent["prior_spend_usd"] == 2
+    report = BenchmarkQualityReport(
+        run_id=parent["run_id"],
+        expected_fixtures=3,
+        actual_cost_usd=0.01,
+        calls=[],
+        models=[
+            ModelQualitySummary(
+                model_id="openai/gpt-5.6-luna",
+                completed_calls=3,
+                average_quality=95,
+                worst_quality=90,
+                total_cost_usd=0.01,
+                cost_per_finding_usd=0.001,
+                average_sync_latency_seconds=2,
+                finding_count=10,
+                hard_failures=[],
+                eligible=True,
+            )
+        ],
+    )
+    report_path = tmp_path / "quality-report.json"
+    report_path.write_text(report.model_dump_json())
+
+    advanced = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "advance",
+            str(first_output / "plan.json"),
+            "--report",
+            str(report_path),
+            "--stage",
+            "heldout",
+            "--suite",
+            str(suite_path),
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(catalog_path),
+            "--output",
+            str(heldout_output),
+        ],
+    )
+
+    assert advanced.exit_code == 0, advanced.output
+    assert "NO PAID CALLS MADE" in advanced.output
+    heldout = json.loads((heldout_output / "plan.json").read_text())
+    assert heldout["stage"] == "heldout"
+    assert heldout["parent_run_id"] == parent["run_id"]
+    assert heldout["selected_candidates"] == ["openai/gpt-5.6-luna"]
 
 
 def test_benchmark_fixtures_capture_production_prompts_without_model_calls(

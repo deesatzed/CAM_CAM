@@ -36,6 +36,7 @@ from claw.models.scoring import (
     load_existing_mining_titles,
     score_benchmark_run,
 )
+from claw.models.tournament import TournamentPlanner, TournamentStagePlan
 
 console = Console()
 models_app = typer.Typer(
@@ -126,12 +127,16 @@ def capture_benchmark_fixtures(
 @benchmark_app.command("plan")
 def plan_benchmark(
     suite: Path,
+    stage: str = typer.Option("first-round", "--stage"),
     fixtures: Path = typer.Option(..., "--fixtures"),
     catalog_snapshot: Path | None = typer.Option(None, "--catalog-snapshot"),
     budget_usd: float = typer.Option(5.0, "--budget-usd", min=0.01),
+    prior_spend_usd: float = typer.Option(0.0, "--prior-spend-usd", min=0.0),
     output: Path = typer.Option(Path("data/model_benchmarks/planned"), "--output"),
 ) -> None:
-    """Freeze a worst-case-cost benchmark plan without making paid calls."""
+    """Freeze one worst-case-cost tournament stage without making paid calls."""
+    if stage != "first-round":
+        raise typer.BadParameter("Initial planning requires --stage first-round")
     benchmark_suite = BenchmarkSuite.load(suite)
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
@@ -139,11 +144,12 @@ def plan_benchmark(
         catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
     else:
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
-    plan = BenchmarkPlanner().plan(
+    plan = TournamentPlanner().plan_first_round(
         benchmark_suite,
         prompt_fixtures,
         catalog,
-        budget_usd=budget_usd,
+        authorization_usd=budget_usd,
+        prior_spend_usd=prior_spend_usd,
     )
     output.mkdir(parents=True, exist_ok=True)
     plan_path = output / "plan.json"
@@ -151,7 +157,60 @@ def plan_benchmark(
     os.chmod(plan_path, 0o600)
     typer.echo("NO PAID CALLS MADE")
     typer.echo(f"Run ID: {plan.run_id}")
-    typer.echo(f"Worst-case reserved spend: ${plan.maximum_cost_usd:.4f} / ${budget_usd:.2f}")
+    typer.echo(f"Stage: {plan.stage}")
+    typer.echo(f"Stage maximum: ${plan.stage_maximum_cost_usd:.4f}")
+    typer.echo(
+        f"Cumulative maximum: ${plan.cumulative_maximum_cost_usd:.4f} / "
+        f"${plan.authorization_usd:.2f}"
+    )
+    typer.echo(f"Remaining after maximum: ${plan.remaining_after_maximum_usd:.4f}")
+    typer.echo(f"Plan: {plan_path}")
+
+
+@benchmark_app.command("advance")
+def advance_benchmark(
+    parent_plan: Path,
+    report: Path = typer.Option(..., "--report"),
+    stage: str = typer.Option(..., "--stage"),
+    suite: Path = typer.Option(..., "--suite"),
+    fixtures: Path = typer.Option(..., "--fixtures"),
+    catalog_snapshot: Path | None = typer.Option(None, "--catalog-snapshot"),
+    output: Path = typer.Option(..., "--output"),
+) -> None:
+    """Freeze the next eligible tournament stage without making paid calls."""
+    if stage not in {"heldout", "repeat"}:
+        raise typer.BadParameter("--stage must be heldout or repeat")
+    parent = TournamentStagePlan.model_validate_json(parent_plan.read_text())
+    quality_report = BenchmarkQualityReport.model_validate_json(report.read_text())
+    benchmark_suite = BenchmarkSuite.load(suite)
+    fixture_adapter = TypeAdapter(list[MiningPromptFixture])
+    prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
+    if catalog_snapshot is not None:
+        catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
+    else:
+        catalog = asyncio.run(OpenRouterCatalogClient().fetch())
+    plan = TournamentPlanner().plan_advance(
+        parent=parent,
+        report=quality_report,
+        suite=benchmark_suite,
+        fixtures=prompt_fixtures,
+        catalog=catalog,
+        next_stage=stage,
+    )
+    output.mkdir(parents=True, exist_ok=True)
+    plan_path = output / "plan.json"
+    plan_path.write_text(plan.model_dump_json(indent=2) + "\n")
+    os.chmod(plan_path, 0o600)
+    typer.echo("NO PAID CALLS MADE")
+    typer.echo(f"Run ID: {plan.run_id}")
+    typer.echo(f"Stage: {plan.stage}")
+    typer.echo(f"Candidates: {', '.join(plan.selected_candidates)}")
+    typer.echo(f"Stage maximum: ${plan.stage_maximum_cost_usd:.4f}")
+    typer.echo(
+        f"Cumulative maximum: ${plan.cumulative_maximum_cost_usd:.4f} / "
+        f"${plan.authorization_usd:.2f}"
+    )
+    typer.echo(f"Remaining after maximum: ${plan.remaining_after_maximum_usd:.4f}")
     typer.echo(f"Plan: {plan_path}")
 
 
@@ -167,16 +226,28 @@ def run_benchmark(
     limit: int | None = typer.Option(None, "--limit", min=1),
     model: list[str] | None = typer.Option(None, "--model"),
 ) -> None:
-    """Execute a frozen first round with exact models and per-call receipts."""
-    plan = BenchmarkPlan.model_validate_json(plan_path.read_text())
+    """Execute a frozen benchmark stage with exact models and call receipts."""
+    plan_payload = json.loads(plan_path.read_text())
+    tournament_plan = "authorization_usd" in plan_payload
+    plan = (
+        TournamentStagePlan.model_validate(plan_payload)
+        if tournament_plan
+        else BenchmarkPlan.model_validate(plan_payload)
+    )
     if not no_fallback or not plan.no_fallback:
         raise typer.BadParameter("Benchmark execution requires --no-fallback")
     if budget_usd is not None:
-        if plan.maximum_cost_usd > budget_usd:
+        frozen_maximum = (
+            plan.cumulative_maximum_cost_usd
+            if tournament_plan
+            else plan.maximum_cost_usd
+        )
+        if frozen_maximum > budget_usd:
             raise typer.BadParameter(
-                f"Frozen maximum ${plan.maximum_cost_usd:.4f} exceeds run cap ${budget_usd:.4f}"
+                f"Frozen maximum ${frozen_maximum:.4f} exceeds run cap ${budget_usd:.4f}"
             )
-        plan = plan.model_copy(update={"budget_usd": min(plan.budget_usd, budget_usd)})
+        if not tournament_plan:
+            plan = plan.model_copy(update={"budget_usd": min(plan.budget_usd, budget_usd)})
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
     if catalog_snapshot is not None:
@@ -197,6 +268,12 @@ def run_benchmark(
                 batch_client=batch_client,
                 run_dir=output,
             )
+            if tournament_plan:
+                return await runner.run_calls(
+                    plan.calls,
+                    limit=limit,
+                    models=set(model) if model else None,
+                )
             return await runner.run_first_round(
                 limit=limit,
                 models=set(model) if model else None,
@@ -205,6 +282,11 @@ def run_benchmark(
             await client.close()
             await batch_client.close()
 
+    output.mkdir(parents=True, exist_ok=True)
+    frozen_plan_path = output / "plan.json"
+    if not frozen_plan_path.exists():
+        frozen_plan_path.write_text(plan_path.read_text())
+        os.chmod(frozen_plan_path, 0o600)
     summary = asyncio.run(execute())
     typer.echo(f"Completed: {summary.completed}")
     typer.echo(f"Resumed/skipped: {summary.skipped}")
@@ -260,11 +342,16 @@ def report_benchmark(
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
     existing_titles = load_existing_mining_titles(db)
+    expected_fixtures = (
+        len(TournamentStagePlan.model_validate(plan_payload).fixtures)
+        if "authorization_usd" in plan_payload
+        else int(plan_payload["stage_policy"]["first_round_fixtures"])
+    )
     report = score_benchmark_run(
         run_id=str(plan_payload["run_id"]),
         run_dir=run_dir,
         fixtures=prompt_fixtures,
-        expected_fixtures=int(plan_payload["stage_policy"]["first_round_fixtures"]),
+        expected_fixtures=expected_fixtures,
         existing_titles=existing_titles,
     )
     content = (
