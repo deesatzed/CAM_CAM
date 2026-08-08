@@ -5,17 +5,16 @@ Loads config from claw.toml (TOML format), with environment variable overrides.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-import json
 import toml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
 from claw.core.exceptions import ConfigError
-
 
 # ---------------------------------------------------------------------------
 # Config schema
@@ -450,7 +449,8 @@ class SelfEnhanceConfig(BaseModel):
     ])
     # Trigger conditions — self-enhance when ANY of these thresholds are met
     min_new_methodologies: int = 10  # Trigger after N new methodologies since last enhance
-    min_avg_novelty_score: float = 0.75  # Trigger when avg novelty of new methodologies exceeds this
+    # Trigger when average novelty of new methodologies exceeds this value.
+    min_avg_novelty_score: float = 0.75
     trigger_after_mine: bool = False  # Auto-assess trigger after cam mine
     trigger_after_pulse_ingest: bool = False  # Auto-assess trigger after cam pulse ingest
     cooldown_hours: int = 24  # Minimum hours between self-enhance runs
@@ -665,7 +665,11 @@ def _resolve_evolution_champion_db(config_path: Path) -> Optional[str]:
     return str(path)
 
 
-def load_config(config_path: Optional[Path] = None) -> ClawConfig:
+def load_config(
+    config_path: Optional[Path] = None,
+    *,
+    model_profiles_path: Optional[Path] = None,
+) -> ClawConfig:
     """Load CLAW config from TOML file.
 
     Args:
@@ -725,4 +729,9 @@ def load_config(config_path: Optional[Path] = None) -> ClawConfig:
             raw.setdefault("feature_flags", {})[key] = value
 
     config = ClawConfig(**raw, agents=agents)
+    if model_profiles_path is not None:
+        from claw.models.profiles import load_model_profiles, resolve_effective_config
+
+        registry = load_model_profiles(model_profiles_path)
+        config = resolve_effective_config(config, registry)
     return config

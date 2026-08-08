@@ -1,0 +1,9 @@
+schema_version = 1
+active_profile = "legacy-import"
+
+[profiles.legacy-import.roles]
+mining-budget = "z-ai/glm-5.2"
+mining-quality = "z-ai/glm-5.2"
+mining-batch = ""
+verification = "x-ai/grok-4.3"
+fallback = "openai/gpt-4.1-mini"
