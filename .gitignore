@@ -122,6 +122,7 @@ templates/
 claw.db.bak-*
 *.db.bak-*
 mining_registry.json
+data/model_benchmarks/
 
 # Internal dev plans (removed from tracking)
 docs/CAM_FORGE_DECOUPLING_PLAN.md

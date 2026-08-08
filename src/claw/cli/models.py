@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import typer
+from pydantic import TypeAdapter
 from rich.console import Console
 from rich.table import Table
 
 from claw.core.config import load_config
-from claw.models.catalog import OpenRouterCatalogClient
+from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
+from claw.models.catalog import ModelCatalog, OpenRouterCatalogClient
 from claw.models.profiles import (
     PromotionReceipt,
     activate_profile,
@@ -42,6 +45,38 @@ models_app.add_typer(benchmark_app, name="benchmark")
 
 def _emit_json(value: object) -> None:
     typer.echo(json.dumps(value, indent=2, sort_keys=True))
+
+
+@benchmark_app.command("plan")
+def plan_benchmark(
+    suite: Path,
+    fixtures: Path = typer.Option(..., "--fixtures"),
+    catalog_snapshot: Path | None = typer.Option(None, "--catalog-snapshot"),
+    budget_usd: float = typer.Option(5.0, "--budget-usd", min=0.01),
+    output: Path = typer.Option(Path("data/model_benchmarks/planned"), "--output"),
+) -> None:
+    """Freeze a worst-case-cost benchmark plan without making paid calls."""
+    benchmark_suite = BenchmarkSuite.load(suite)
+    fixture_adapter = TypeAdapter(list[MiningPromptFixture])
+    prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
+    if catalog_snapshot is not None:
+        catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
+    else:
+        catalog = asyncio.run(OpenRouterCatalogClient().fetch())
+    plan = BenchmarkPlanner().plan(
+        benchmark_suite,
+        prompt_fixtures,
+        catalog,
+        budget_usd=budget_usd,
+    )
+    output.mkdir(parents=True, exist_ok=True)
+    plan_path = output / "plan.json"
+    plan_path.write_text(plan.model_dump_json(indent=2) + "\n")
+    os.chmod(plan_path, 0o600)
+    typer.echo("NO PAID CALLS MADE")
+    typer.echo(f"Run ID: {plan.run_id}")
+    typer.echo(f"Worst-case reserved spend: ${plan.maximum_cost_usd:.4f} / ${budget_usd:.2f}")
+    typer.echo(f"Plan: {plan_path}")
 
 
 @models_app.command("current")

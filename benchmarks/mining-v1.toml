@@ -1,6 +1,16 @@
 schema_version = 1
 name = "mining-v1"
 description = "Frozen production-prompt comparison for CAM repository mining"
+candidates = [
+  "google/gemini-3.6-flash:batch",
+  "qwen/qwen3.8-max",
+  "~deepseek/deepseek-v4-flash-latest",
+  "x-ai/grok-4.5",
+  "openai/gpt-5.6-terra",
+  "openai/gpt-5.6-luna",
+  "z-ai/glm-5.2",
+  "moonshotai/kimi-k3",
+]
 
 [[fixtures]]
 name = "Codx_LoopKit"

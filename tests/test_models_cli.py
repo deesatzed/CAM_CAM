@@ -6,6 +6,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from claw.cli import app
+from claw.models.benchmark import MiningPromptFixture
 
 runner = CliRunner()
 
@@ -183,3 +184,59 @@ def test_set_validates_live_catalog_and_rollback_restores_role(
     )
     assert rolled_back.exit_code == 0, rolled_back.output
     assert 'mining-budget = "openai/gpt-5.6-luna"' in profiles_path.read_text()
+
+
+def test_benchmark_plan_is_no_spend_and_writes_hashed_manifest(tmp_path: Path) -> None:
+    suite_path = Path(__file__).parent.parent / "benchmarks" / "mining-v1.toml"
+    catalog_path = Path(__file__).parent / "fixtures" / "openrouter_models.json"
+    fixture_path = tmp_path / "fixtures.json"
+    output_path = tmp_path / "run"
+    suite_names = ["Codx_LoopKit", "atomic-agent", "RedaktSafe", "OpenCLI", "OpenViking"]
+    fixtures = [
+        MiningPromptFixture(
+            repo_path=f"/private/{name}",
+            repo_name=name,
+            git_head="a" * 40,
+            dirty_paths=[],
+            brain="python",
+            prompt=f"private prompt for {name}",
+            prompt_sha256=f"prompt-{name}",
+            repo_content=f"private source for {name}",
+            repo_content_sha256=f"content-{name}",
+            source_manifest=["README.md", "main.py"],
+            repo_bytes=4096,
+            file_count=2,
+            estimated_tokens=1000,
+            token_budget=512,
+            domain_info={"complexity": "small"},
+            overlap={},
+        ).model_dump(mode="json")
+        for name in suite_names
+    ]
+    fixture_path.write_text(json.dumps(fixtures))
+
+    result = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "plan",
+            str(suite_path),
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(catalog_path),
+            "--budget-usd",
+            "5",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "NO PAID CALLS MADE" in result.output
+    plan_path = output_path / "plan.json"
+    assert plan_path.exists()
+    plan_text = plan_path.read_text()
+    assert "private prompt" not in plan_text
+    assert "private source" not in plan_text
