@@ -634,6 +634,20 @@ class TestParseFindings:
         results = parse_findings('{"title": "not an array"}', "test-repo")
         assert results == []
 
+    def test_normalizes_single_finding_object(self):
+        """A schema-valid single object is normalized to one finding."""
+        results = parse_findings(
+            json.dumps(self._make_finding_dict(title="Single object")),
+            "test-repo",
+        )
+        assert [finding.title for finding in results] == ["Single object"]
+
+    def test_normalizes_findings_wrapper_object(self):
+        """A common structured-output wrapper is normalized to its findings list."""
+        response = {"findings": [self._make_finding_dict(title="Wrapped object")]}
+        results = parse_findings(json.dumps(response), "test-repo")
+        assert [finding.title for finding in results] == ["Wrapped object"]
+
     def test_finds_json_array_not_at_start(self):
         """JSON array embedded in text is extracted and parsed."""
         prefix = "Here are the findings I discovered:\n\n"

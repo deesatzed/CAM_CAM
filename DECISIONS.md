@@ -69,3 +69,19 @@ JSONL candidate queue output. The verdict set is `CLONE_NOW`,
 Safety: `cam premine` does not clone or execute candidate code. Dual-use
 security/steganography signals route to restricted remote harvest with
 defensive-only scope.
+
+## 2026-08-08: Do not promote a mining model from partial benchmark evidence
+
+Decision: keep the active model profile unchanged after the first live
+comparison. Report Luna as the provisional budget leader and GLM 5.2 as the
+cost/speed leader, but require a corrected-prompt validation round with zero
+hard failures before either can be promoted.
+
+Reason: all eight candidates completed their exact calls, but every candidate
+had at least one truncated, malformed, or invalid-provenance result under the
+current production prompt. High average scores do not override hard failures.
+
+Safety: OpenRouter batch jobs use the provider's queued API and record its
+30-day input/result retention. Rolling aliases may resolve only within the
+same provider and model family. Benchmark execution never falls back, writes
+to `claw.db`, or changes a model profile automatically.

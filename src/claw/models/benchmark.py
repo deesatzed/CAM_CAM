@@ -13,7 +13,7 @@ from typing import Literal
 import toml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from claw.llm.client import LLMMessage, LLMResponse
+from claw.llm.client import LLMMessage
 from claw.models.catalog import ModelCatalog, ModelCatalogEntry
 
 
@@ -172,6 +172,8 @@ class CallReceipt(BaseModel):
     transport: str = "chat-completions"
     duration_seconds: float = 0.0
     response_path: str | None = None
+    batch_job_id: str | None = None
+    retention_days: int | None = None
     error: str | None = None
 
 
@@ -391,11 +393,13 @@ class BenchmarkRunner:
         catalog: ModelCatalog,
         client,
         run_dir: Path,
+        batch_client=None,
     ) -> None:
         self.plan = plan
         self.fixtures = {fixture.repo_name: fixture for fixture in fixtures}
         self.catalog = catalog
         self.client = client
+        self.batch_client = batch_client
         self.run_dir = run_dir
         self.ledger = BudgetLedger(budget_usd=plan.budget_usd)
 
@@ -416,8 +420,16 @@ class BenchmarkRunner:
         returned_model: str,
         entry: ModelCatalogEntry,
     ) -> None:
-        allowed = {requested_model, entry.canonical_slug}
-        if returned_model not in allowed:
+        allowed = {
+            requested_model,
+            requested_model.removesuffix(":batch"),
+            entry.canonical_slug,
+        }
+        rolling_alias_match = False
+        if requested_model.startswith("~") and requested_model.endswith("-latest"):
+            family = requested_model[1:].removesuffix("-latest")
+            rolling_alias_match = returned_model.startswith(f"{family}-")
+        if returned_model not in allowed and not rolling_alias_match:
             raise ValueError(
                 f"Returned model drift: requested {requested_model}, got {returned_model}"
             )
@@ -430,12 +442,23 @@ class BenchmarkRunner:
             return None
         return receipt
 
-    async def run_first_round(self, *, limit: int | None = None) -> BenchmarkRunSummary:
-        calls = (
-            self.plan.first_round_calls[:limit]
-            if limit is not None
-            else self.plan.first_round_calls
-        )
+    async def run_first_round(
+        self,
+        *,
+        limit: int | None = None,
+        models: set[str] | None = None,
+    ) -> BenchmarkRunSummary:
+        calls = self.plan.first_round_calls
+        if models is not None:
+            planned_models = {call.model_id for call in calls}
+            unknown = models - planned_models
+            if unknown:
+                raise ValueError(
+                    f"Models are not in frozen plan: {', '.join(sorted(unknown))}"
+                )
+            calls = [call for call in calls if call.model_id in models]
+        if limit is not None:
+            calls = calls[:limit]
         completed = 0
         failed = 0
         skipped = 0
@@ -452,21 +475,43 @@ class BenchmarkRunner:
             fixture = self._validate_call(call)
             self.ledger.authorize(call.maximum_cost_usd)
             started = time.monotonic()
+            response = None
+            response_path = None
+            batch_job_id = None
+            retention_days = None
+            actual_cost = 0.0
+            cost_source = "estimated"
+            reconciled = False
             try:
                 entry = self.catalog.require(call.model_id)
-                response: LLMResponse = await self.client.complete(
-                    messages=[LLMMessage(role="user", content=fixture.prompt)],
-                    model=call.model_id,
-                    temperature=0.3 if "temperature" in call.parameters else None,
-                    max_tokens=call.maximum_output_tokens,
-                    response_format=(
-                        {"type": "json_object"}
-                        if "structured_outputs" in call.parameters
-                        else None
-                    ),
-                    include_temperature="temperature" in call.parameters,
+                response_format = (
+                    {"type": "json_object"}
+                    if "structured_outputs" in call.parameters
+                    else None
                 )
-                self._validate_returned_model(call.model_id, response.model, entry)
+                if entry.is_batch:
+                    if self.batch_client is None:
+                        raise RuntimeError("Batch model requires an OpenRouter batch client")
+                    batch = await self.batch_client.complete(
+                        messages=[LLMMessage(role="user", content=fixture.prompt)],
+                        requested_model=call.model_id,
+                        custom_id=call.call_id,
+                        max_tokens=call.maximum_output_tokens,
+                        response_format=response_format,
+                        seed=0 if "seed" in call.parameters else None,
+                    )
+                    response = batch.response
+                    batch_job_id = batch.job_id
+                    retention_days = batch.compatibility.retention_days
+                else:
+                    response = await self.client.complete(
+                        messages=[LLMMessage(role="user", content=fixture.prompt)],
+                        model=call.model_id,
+                        temperature=0.3 if "temperature" in call.parameters else None,
+                        max_tokens=call.maximum_output_tokens,
+                        response_format=response_format,
+                        include_temperature="temperature" in call.parameters,
+                    )
                 if response.cost_usd is None:
                     actual_cost = _maximum_call_cost(
                         entry,
@@ -477,9 +522,11 @@ class BenchmarkRunner:
                 else:
                     actual_cost = response.cost_usd
                     cost_source = response.cost_source
-                self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
                 response_path = self.run_dir / "responses" / f"{call.call_id}.txt"
                 _atomic_write(response_path, response.content)
+                self._validate_returned_model(call.model_id, response.model, entry)
+                self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
+                reconciled = True
                 receipt = CallReceipt(
                     call_id=call.call_id,
                     status="completed",
@@ -495,24 +542,57 @@ class BenchmarkRunner:
                     cached_input_tokens=response.cached_input_tokens,
                     cost_usd=actual_cost,
                     cost_source=cost_source,
-                    transport=(
-                        "chat-completions-batch-variant"
-                        if entry.is_batch
-                        else "chat-completions"
-                    ),
+                    transport="queued-job" if entry.is_batch else "chat-completions",
                     duration_seconds=time.monotonic() - started,
                     response_path=str(response_path.relative_to(self.run_dir)),
+                    batch_job_id=batch_job_id,
+                    retention_days=retention_days,
                 )
                 completed += 1
             except Exception as exc:
-                self.ledger.reconcile(call.maximum_cost_usd, 0.0)
+                if response is not None and response_path is None:
+                    response_path = self.run_dir / "responses" / f"{call.call_id}.txt"
+                    _atomic_write(response_path, response.content)
+                if response is not None and response.cost_usd is not None:
+                    actual_cost = response.cost_usd
+                    cost_source = response.cost_source
+                elif response is not None:
+                    entry = self.catalog.require(call.model_id)
+                    actual_cost = _maximum_call_cost(
+                        entry,
+                        response.input_tokens,
+                        response.output_tokens,
+                    )
+                if not reconciled:
+                    self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
                 receipt = CallReceipt(
                     call_id=call.call_id,
                     status="failed",
                     requested_model=call.model_id,
+                    returned_model=response.model if response is not None else None,
                     fixture_name=fixture.repo_name,
                     prompt_sha256=fixture.prompt_sha256,
+                    request_id=response.request_id if response is not None else None,
+                    finish_reason=response.finish_reason if response is not None else None,
+                    input_tokens=response.input_tokens if response is not None else 0,
+                    output_tokens=response.output_tokens if response is not None else 0,
+                    reasoning_tokens=(
+                        response.reasoning_tokens if response is not None else 0
+                    ),
+                    cached_input_tokens=(
+                        response.cached_input_tokens if response is not None else 0
+                    ),
+                    cost_usd=actual_cost,
+                    cost_source=cost_source,
+                    transport=call.transport,
                     duration_seconds=time.monotonic() - started,
+                    response_path=(
+                        str(response_path.relative_to(self.run_dir))
+                        if response_path is not None
+                        else None
+                    ),
+                    batch_job_id=batch_job_id,
+                    retention_days=retention_days,
                     error=_redact_error(str(exc)),
                 )
                 failed += 1

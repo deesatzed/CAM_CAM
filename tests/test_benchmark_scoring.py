@@ -3,8 +3,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from claw.models.benchmark import MiningPromptFixture
-from claw.models.scoring import QUALITY_WEIGHTS, build_blinded_packet, score_candidate
+from claw.models.benchmark import CallReceipt, MiningPromptFixture
+from claw.models.scoring import (
+    QUALITY_WEIGHTS,
+    build_blinded_packet,
+    score_benchmark_run,
+    score_candidate,
+)
 
 
 def _fixture(repo: Path) -> MiningPromptFixture:
@@ -89,6 +94,20 @@ def test_invented_or_escaping_provenance_and_secret_output_are_hard_failures(
     assert "secret_like_output" in secret.hard_failures
 
 
+def test_grounding_accepts_class_qualified_method_symbols(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text(
+        "class Retryer:\n    def retry(self):\n        pass\n"
+    )
+    response = json.loads(_response())
+    response[0]["source_symbols"][0]["symbol_name"] = "Retryer.retry"
+
+    score = score_candidate(json.dumps(response), _fixture(repo), [])
+
+    assert "invalid_provenance" not in score.hard_failures
+
+
 def test_duplicates_reduce_novelty_and_malformed_output_reduces_reliability(
     tmp_path: Path,
 ) -> None:
@@ -116,3 +135,46 @@ def test_blinded_packet_contains_no_model_identity(tmp_path: Path) -> None:
     assert packet.candidate_code.startswith("candidate-")
     assert "openai" not in serialized
     assert "gpt-5.6-luna" not in serialized
+
+
+def test_score_run_aggregates_cost_quality_and_normalized_envelopes(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    run_dir = tmp_path / "run"
+    (run_dir / "receipts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    response_path = run_dir / "responses" / "call-1.txt"
+    response_path.write_text(json.dumps({"findings": json.loads(_response())}))
+    receipt = CallReceipt(
+        call_id="call-1",
+        status="completed",
+        requested_model="openai/gpt-5.6-luna",
+        returned_model="openai/gpt-5.6-luna",
+        fixture_name="fixture",
+        prompt_sha256=fixture.prompt_sha256,
+        finish_reason="stop",
+        input_tokens=100,
+        output_tokens=50,
+        cost_usd=0.001,
+        cost_source="provider",
+        duration_seconds=2.0,
+        response_path="responses/call-1.txt",
+    )
+    (run_dir / "receipts" / "call-1.json").write_text(receipt.model_dump_json())
+
+    report = score_benchmark_run(
+        run_id="run-1",
+        run_dir=run_dir,
+        fixtures=[fixture],
+        expected_fixtures=1,
+    )
+
+    assert report.actual_cost_usd == 0.001
+    assert report.calls[0].envelope == "findings-wrapper"
+    assert report.calls[0].hard_failures == []
+    assert report.models[0].eligible is True
+    assert report.models[0].average_quality > 80

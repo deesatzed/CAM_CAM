@@ -15,6 +15,7 @@ from rich.table import Table
 from claw.core.config import load_config
 from claw.llm.client import LLMClient
 from claw.miner import RepoMiner
+from claw.models.batch import OpenRouterBatchClient
 from claw.models.benchmark import (
     BenchmarkPlan,
     BenchmarkPlanner,
@@ -30,6 +31,7 @@ from claw.models.profiles import (
     promote_role,
     rollback_promotion,
 )
+from claw.models.scoring import BenchmarkQualityReport, score_benchmark_run
 
 console = Console()
 models_app = typer.Typer(
@@ -159,6 +161,7 @@ def run_benchmark(
     budget_usd: float | None = typer.Option(None, "--budget-usd", min=0.01),
     no_fallback: bool = typer.Option(True, "--no-fallback/--allow-fallback"),
     limit: int | None = typer.Option(None, "--limit", min=1),
+    model: list[str] | None = typer.Option(None, "--model"),
 ) -> None:
     """Execute a frozen first round with exact models and per-call receipts."""
     plan = BenchmarkPlan.model_validate_json(plan_path.read_text())
@@ -178,6 +181,7 @@ def run_benchmark(
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
     claw_config = load_config(config)
     client = LLMClient(config=claw_config.llm)
+    batch_client = OpenRouterBatchClient(api_key=client.api_key)
 
     async def execute():
         try:
@@ -186,11 +190,16 @@ def run_benchmark(
                 fixtures=prompt_fixtures,
                 catalog=catalog,
                 client=client,
+                batch_client=batch_client,
                 run_dir=output,
             )
-            return await runner.run_first_round(limit=limit)
+            return await runner.run_first_round(
+                limit=limit,
+                models=set(model) if model else None,
+            )
         finally:
             await client.close()
+            await batch_client.close()
 
     summary = asyncio.run(execute())
     typer.echo(f"Completed: {summary.completed}")
@@ -198,6 +207,63 @@ def run_benchmark(
     typer.echo(f"Failed: {summary.failed}")
     typer.echo(f"Actual recorded spend: ${summary.actual_cost_usd:.6f}")
     typer.echo(f"Receipts: {output / 'receipts'}")
+
+
+def _quality_report_markdown(report: BenchmarkQualityReport) -> str:
+    lines = [
+        f"# CAM mining model comparison: {report.run_id}",
+        "",
+        f"Recorded provider spend: ${report.actual_cost_usd:.6f}",
+        "",
+        "| Model | Quality | Calls | Findings | Cost | Sync latency | Eligible |",
+        "|---|---:|---:|---:|---:|---:|:---:|",
+    ]
+    for model in report.models:
+        latency = (
+            "batch"
+            if model.average_sync_latency_seconds is None
+            else f"{model.average_sync_latency_seconds:.2f}s"
+        )
+        lines.append(
+            f"| {model.model_id} | {model.average_quality:.2f} | "
+            f"{model.completed_calls} | {model.finding_count} | "
+            f"${model.total_cost_usd:.6f} | {latency} | "
+            f"{'yes' if model.eligible else 'no'} |"
+        )
+    return "\n".join(lines) + "\n"
+
+
+@benchmark_app.command("report")
+def report_benchmark(
+    run_dir: Path,
+    fixtures: Path = typer.Option(..., "--fixtures"),
+    output_format: str = typer.Option("markdown", "--format"),
+    output: Path | None = typer.Option(None, "--output"),
+) -> None:
+    """Score completed receipts and report comparable model evidence."""
+    if output_format not in {"json", "markdown"}:
+        raise typer.BadParameter("--format must be json or markdown")
+    plan_payload = json.loads((run_dir / "plan.json").read_text())
+    fixture_adapter = TypeAdapter(list[MiningPromptFixture])
+    prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
+    report = score_benchmark_run(
+        run_id=str(plan_payload["run_id"]),
+        run_dir=run_dir,
+        fixtures=prompt_fixtures,
+        expected_fixtures=int(plan_payload["stage_policy"]["first_round_fixtures"]),
+    )
+    content = (
+        report.model_dump_json(indent=2) + "\n"
+        if output_format == "json"
+        else _quality_report_markdown(report)
+    )
+    if output is None:
+        typer.echo(content, nl=False)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(content)
+    os.chmod(output, 0o600)
+    typer.echo(f"Report: {output}")
 
 
 @models_app.command("current")

@@ -69,6 +69,7 @@ class RecordingClient:
         temperature,
         max_tokens,
         response_format=None,
+        seed=None,
         include_temperature=True,
     ):
         self.models.append(model)
@@ -86,17 +87,59 @@ class RecordingClient:
         )
 
 
+class RecordingBatchClient:
+    def __init__(self, returned_model: str | None = None) -> None:
+        self.models: list[str] = []
+        self.returned_model = returned_model
+
+    async def complete(
+        self,
+        *,
+        messages,
+        requested_model,
+        custom_id,
+        max_tokens,
+        response_format=None,
+        seed=None,
+    ):
+        from claw.models.batch import BatchCompatibilityReceipt, BatchCompletion
+
+        self.models.append(requested_model)
+        return BatchCompletion(
+            response=LLMResponse(
+                content="[]",
+                model=self.returned_model or requested_model.removesuffix(":batch"),
+                input_tokens=100,
+                output_tokens=20,
+                cost_usd=0.0001,
+                cost_source="provider",
+                request_id=f"batch-gen-{len(self.models)}",
+                finish_reason="stop",
+            ),
+            job_id=f"batch-job-{len(self.models)}",
+            compatibility=BatchCompatibilityReceipt(
+                model_id=requested_model,
+                status="completed",
+                transport="queued-job",
+                job_id=f"batch-job-{len(self.models)}",
+                retention_days=30,
+            ),
+        )
+
+
 async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
     tmp_path: Path,
 ) -> None:
     fixtures = _fixtures()
     plan = _plan(fixtures)
     client = RecordingClient()
+    batch_client = RecordingBatchClient()
     runner = BenchmarkRunner(
         plan=plan,
         fixtures=fixtures,
         catalog=_catalog(),
         client=client,
+        batch_client=batch_client,
         run_dir=tmp_path,
     )
 
@@ -105,7 +148,16 @@ async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
     assert first.completed == len(plan.first_round_calls)
     assert first.failed == 0
     assert first.actual_cost_usd == pytest.approx(len(plan.first_round_calls) * 0.0001)
-    assert client.models == [call.model_id for call in plan.first_round_calls]
+    assert batch_client.models == [
+        call.model_id
+        for call in plan.first_round_calls
+        if call.transport == "batch-compatibility"
+    ]
+    assert client.models == [
+        call.model_id
+        for call in plan.first_round_calls
+        if call.transport != "batch-compatibility"
+    ]
     assert len(list((tmp_path / "receipts").glob("*.json"))) == len(plan.first_round_calls)
     assert all(not path.name.endswith(".tmp") for path in tmp_path.rglob("*"))
 
@@ -115,6 +167,7 @@ async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
         fixtures=fixtures,
         catalog=_catalog(),
         client=resumed_client,
+        batch_client=RecordingBatchClient(),
         run_dir=tmp_path,
     ).run_first_round()
     assert resumed.skipped == len(plan.first_round_calls)
@@ -129,11 +182,35 @@ async def test_runner_aborts_on_returned_model_drift(tmp_path: Path) -> None:
         fixtures=fixtures,
         catalog=_catalog(),
         client=RecordingClient(returned_model="unexpected/provider-model"),
+        batch_client=RecordingBatchClient(returned_model="unexpected/provider-model"),
         run_dir=tmp_path,
     )
 
     with pytest.raises(ValueError, match="Returned model drift"):
         await runner.run_first_round(limit=1)
+    failed = json.loads(next((tmp_path / "receipts").glob("*.json")).read_text())
+    assert failed["cost_usd"] == pytest.approx(0.0001)
+    assert failed["returned_model"] == "unexpected/provider-model"
+    assert (tmp_path / failed["response_path"]).is_file()
+
+
+async def test_runner_can_resume_a_selected_model_lane(tmp_path: Path) -> None:
+    fixtures = _fixtures()
+    plan = _plan(fixtures)
+    client = RecordingClient()
+    selected = "openai/gpt-5.6-luna"
+
+    summary = await BenchmarkRunner(
+        plan=plan,
+        fixtures=fixtures,
+        catalog=_catalog(),
+        client=client,
+        batch_client=RecordingBatchClient(),
+        run_dir=tmp_path,
+    ).run_first_round(models={selected})
+
+    assert summary.completed == 3
+    assert client.models == [selected, selected, selected]
 
 
 def test_budget_ledger_refuses_reservation_over_cap() -> None:
@@ -142,3 +219,27 @@ def test_budget_ledger_refuses_reservation_over_cap() -> None:
     ledger.reconcile(0.006, 0.004)
     with pytest.raises(ValueError, match="budget cap"):
         ledger.authorize(0.007)
+
+
+def test_returned_model_validation_accepts_only_same_family_rolling_alias() -> None:
+    catalog = _catalog()
+    requested = "~deepseek/deepseek-v4-flash-latest"
+    entry = catalog.require(requested)
+
+    BenchmarkRunner._validate_returned_model(
+        requested,
+        "deepseek/deepseek-v4-flash-0731",
+        entry,
+    )
+    with pytest.raises(ValueError, match="Returned model drift"):
+        BenchmarkRunner._validate_returned_model(
+            requested,
+            "other/deepseek-v4-flash-0731",
+            entry,
+        )
+    with pytest.raises(ValueError, match="Returned model drift"):
+        BenchmarkRunner._validate_returned_model(
+            requested,
+            "deepseek/unrelated-0731",
+            entry,
+        )

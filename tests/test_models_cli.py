@@ -9,6 +9,7 @@ from claw.cli import app
 from claw.llm.client import LLMClient, LLMResponse
 from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
 from claw.models.catalog import ModelCatalog
+from claw.models.scoring import BenchmarkQualityReport
 
 runner = CliRunner()
 
@@ -360,12 +361,61 @@ def test_benchmark_run_executes_frozen_plan_with_exact_model(
             str(catalog_path),
             "--output",
             str(run_path),
-            "--limit",
-            "1",
-        ],
+                "--limit",
+                "1",
+                "--model",
+                "openai/gpt-5.6-luna",
+            ],
         env={"OPENROUTER_API_KEY": "test-key"},
     )
 
     assert result.exit_code == 0, result.output
     assert "Completed: 1" in result.output
-    assert called == [plan.first_round_calls[0].model_id]
+    assert called == ["openai/gpt-5.6-luna"]
+
+
+def test_benchmark_report_emits_machine_readable_quality_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import claw.cli.models as models_cli
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "plan.json").write_text(
+        json.dumps(
+            {"run_id": "run-1", "stage_policy": {"first_round_fixtures": 3}}
+        )
+    )
+    fixture_path = tmp_path / "fixtures.json"
+    fixture_path.write_text("[]")
+    monkeypatch.setattr(
+        models_cli,
+        "score_benchmark_run",
+        lambda **kwargs: BenchmarkQualityReport(
+            run_id="run-1",
+            expected_fixtures=3,
+            actual_cost_usd=0.25,
+            calls=[],
+            models=[],
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "report",
+            str(run_dir),
+            "--fixtures",
+            str(fixture_path),
+            "--format",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.output)
+    assert payload["run_id"] == "run-1"
+    assert payload["actual_cost_usd"] == 0.25

@@ -107,3 +107,29 @@ Assumptions:
   watchlist scheduling, and remote safe-harvest ingestion are follow-up layers.
 - Verified `python -m pytest -q tests/test_premine.py` passed with 7 tests
   after implementation.
+
+## 2026-08-08 Mining-model benchmark execution and compatibility fixes
+
+- Executed run `20260808T172212Z-4ce70e93`: 24 exact-model calls across three
+  frozen production mining prompts, with no fallback and no corpus writes.
+- Recorded provider spend was `$1.9039158408`; a discarded DeepSeek rolling-
+  alias probe has a conservative maximum possible charge of `$0.0015407616`,
+  so the evidence-backed upper bound is `$1.9054566024` under the `$5` cap.
+- Fixed OpenRouter `:batch` routing to use queued `/api/beta/batches` jobs with
+  the base model ID, polling, job receipts, and explicit 30-day retention.
+- Fixed rolling `~...-latest` validation to accept only same-provider,
+  same-family dated resolutions while continuing to reject arbitrary model
+  drift. Failed identity checks now retain response text, tokens, and cost.
+- Added selected-model resume lanes, deterministic JSON/Markdown benchmark
+  reports, conservative spend receipts, and batch-aware latency reporting.
+- Normalized two safe mining envelopes (one valid finding object and a
+  `{"findings": [...]}` wrapper) and retained rejection of arbitrary text.
+- Corrected provenance scoring for class-qualified method names such as
+  `Class.method`; file existence and component identifiers remain mandatory.
+- No candidate passed the hard promotion gate. Luna had the strongest
+  cost/quality balance, GLM 5.2 was cheapest and fast, but both retained at
+  least one invalid-provenance result. No profile was promoted.
+- Focused verification passed: 206 tests. Full verification: 4,284 passed,
+  22 skipped, and four unrelated/baseline failures (LanceDB API mismatch,
+  committed `claw.db` versus stale `data/claw.db` assertion, and two live
+  ganglion tests unable to open external databases).

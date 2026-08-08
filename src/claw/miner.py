@@ -1488,26 +1488,36 @@ def parse_findings(llm_response: str, repo_name: str) -> list[MiningFinding]:
     if match:
         cleaned = match.group(1).strip()
 
-    # Try to find a JSON array in the response
-    if not cleaned.startswith("["):
-        # Look for array start in the response
-        arr_start = cleaned.find("[")
-        arr_end = cleaned.rfind("]")
-        if arr_start != -1 and arr_end != -1 and arr_end > arr_start:
-            cleaned = cleaned[arr_start:arr_end + 1]
-
     try:
         data = json.loads(cleaned)
     except json.JSONDecodeError as e:
+        candidate = cleaned
+        if not cleaned.startswith("["):
+            arr_start = cleaned.find("[")
+            arr_end = cleaned.rfind("]")
+            if arr_start != -1 and arr_end != -1 and arr_end > arr_start:
+                candidate = cleaned[arr_start:arr_end + 1]
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            data = None
         # Attempt JSON repair for common LLM errors
-        repaired = _repair_json(cleaned)
+        if data is None:
+            repaired = _repair_json(candidate)
+        else:
+            repaired = None
         if repaired is not None:
             data = repaired
             logger.info("Repaired malformed JSON from LLM (original error: %s)", e)
-        else:
+        elif data is None:
             logger.warning("Failed to parse mining findings JSON: %s", e)
             return []
 
+    if isinstance(data, dict):
+        if isinstance(data.get("findings"), list):
+            data = data["findings"]
+        elif data.get("title") and data.get("description"):
+            data = [data]
     if not isinstance(data, list):
         logger.warning("Mining findings response is not a JSON array")
         return []
