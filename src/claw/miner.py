@@ -1632,6 +1632,47 @@ def parse_findings(llm_response: str, repo_name: str) -> list[MiningFinding]:
     return findings
 
 
+def parse_complete_findings(
+    response: LLMResponse,
+    repo_name: str,
+) -> list[MiningFinding]:
+    """Parse findings only when the provider returned a complete JSON envelope."""
+    if response.finish_reason == "length" or not response.content:
+        logger.warning(
+            "Incomplete mining response for %s (finish_reason=%s)",
+            repo_name,
+            response.finish_reason,
+        )
+        return []
+
+    cleaned = response.content.strip()
+    fence_match = re.match(r"^```(?:json)?\s*\n?(.*?)\n?```$", cleaned, re.DOTALL)
+    if fence_match:
+        cleaned = fence_match.group(1).strip()
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        logger.warning("Rejecting repaired/partial mining response for %s", repo_name)
+        return []
+
+    supported_envelope = (
+        isinstance(payload, list)
+        or (
+            isinstance(payload, dict)
+            and isinstance(payload.get("findings"), list)
+        )
+        or (
+            isinstance(payload, dict)
+            and bool(payload.get("title"))
+            and bool(payload.get("description"))
+        )
+    )
+    if not supported_envelope:
+        logger.warning("Rejecting unsupported mining response envelope for %s", repo_name)
+        return []
+    return parse_findings(cleaned, repo_name)
+
+
 class RepoMiner:
     """Mines local repositories for patterns, features, and ideas.
 
@@ -2473,7 +2514,7 @@ class RepoMiner:
                     ),
                     timeout=_MINING_LLM_TIMEOUT_SECONDS,
                 )
-                findings = parse_findings(resp.content, repo_name)
+                findings = parse_complete_findings(resp, repo_name)
                 await self._record_mining_outcome(
                     model=model, agent_id=agent_name, brain=brain,
                     repo_name=repo_name, estimated_tokens=estimated_tokens,
@@ -2536,7 +2577,7 @@ class RepoMiner:
                 self._quarantine_model_if_hard_failure(model, e)
                 continue
 
-            findings = parse_findings(resp.content, repo_name)
+            findings = parse_complete_findings(resp, repo_name)
             success = bool(findings)
             await self._record_mining_outcome(
                 model=model, agent_id=agent_name, brain=brain,
@@ -2601,7 +2642,7 @@ class RepoMiner:
                         ),
                         timeout=_MINING_LLM_TIMEOUT_SECONDS,
                     )
-                    findings = parse_findings(resp.content, repo_name)
+                    findings = parse_complete_findings(resp, repo_name)
                     success = bool(findings)
                     await self._record_mining_outcome(
                         model=best_model, agent_id=best_agent, brain=brain,
@@ -2763,7 +2804,7 @@ class RepoMiner:
                     ),
                     timeout=_MINING_LLM_TIMEOUT_SECONDS,
                 )
-                chunk_findings = parse_findings(resp.content, repo_name)
+                chunk_findings = parse_complete_findings(resp, repo_name)
                 await self._record_mining_outcome(
                     model=best_model, agent_id=best_agent, brain=brain,
                     repo_name=repo_name, estimated_tokens=est,

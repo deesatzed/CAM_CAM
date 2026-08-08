@@ -764,6 +764,66 @@ class TestRecoveryDisabled:
 
         assert llm.requests[0]["reasoning"] == {"effort": "low", "exclude": True}
 
+    @pytest.mark.asyncio
+    async def test_truncated_repairable_response_is_recorded_unsuccessful(self, tmp_path):
+        class TruncatedLLM:
+            async def complete(self, **kwargs):
+                return LLMResponse(
+                    content=(
+                        '[{"title":"Complete object","description":"Useful",'
+                        '"category":"testing","relevance_score":0.9},'
+                        '{"title":"Cut off"'
+                    ),
+                    model=kwargs["model"],
+                    finish_reason="length",
+                )
+
+        class Selector:
+            async def select_best_model(self, estimated_tokens):
+                return "claude", "qwen/qwen3.8-max"
+
+        class OutcomeRepository:
+            def __init__(self):
+                self.outcomes = []
+
+            async def record_mining_outcome(self, **kwargs):
+                self.outcomes.append(kwargs)
+
+            async def update_agent_score(self, **kwargs):
+                return None
+
+        config = ClawConfig()
+        config.mining.recovery.enabled = False
+        repository = OutcomeRepository()
+        miner = RepoMiner(
+            repository=repository,
+            llm_client=TruncatedLLM(),
+            semantic_memory=None,
+            config=config,
+            scan_ledger_path=tmp_path / "ledger.json",
+        )
+
+        _response, findings, _attempts, _strategy = await miner._mine_with_recovery(
+            prompt="mine this repo",
+            token_budget=4096,
+            model_selector=Selector(),
+            estimated_tokens=100,
+            repo_name="fixture",
+            repo_path=tmp_path,
+            repo_content="source",
+            file_count=3,
+            brain="python",
+            brain_config=BrainConfig(),
+            domain_info={},
+            overlap=None,
+            secret_scan_files=set(),
+            start_time=0.0,
+        )
+
+        assert findings == []
+        assert repository.outcomes[0]["success"] is False
+        assert repository.outcomes[0]["findings_count"] == 0
+
 
 # ===========================================================================
 # 13. mining_outcomes table auto-created via migration

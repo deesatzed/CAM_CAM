@@ -25,12 +25,14 @@ import time
 import asyncio
 
 import pytest
+import claw.miner as miner_module
 
 from claw.core.config import AgentConfig, ClawConfig, load_config
 from claw.core.models import ActionTemplate, Methodology, Project, Task, TaskStatus
 from claw.db.embeddings import EmbeddingEngine
 from claw.memory.hybrid_search import HybridSearch
 from claw.memory.semantic import SemanticMemory
+from claw.llm.client import LLMResponse
 from claw.miner import (
     MiningFinding,
     MiningReport,
@@ -813,6 +815,48 @@ class TestRepairJson:
         assert len(results) >= 2
         assert results[0].title == "First"
         assert results[1].title == "Second"
+
+    def test_complete_findings_gate_rejects_repaired_or_truncated_output(self):
+        partial = (
+            '[{"title":"First","description":"Desc1",'
+            '"category":"testing","relevance_score":0.9},'
+            '{"title":"Second","description":"Inc"'
+        )
+
+        repaired = miner_module.parse_complete_findings(
+            LLMResponse(content=partial, model="test", finish_reason="stop"),
+            "test-repo",
+        )
+        truncated = miner_module.parse_complete_findings(
+            LLMResponse(content=partial, model="test", finish_reason="length"),
+            "test-repo",
+        )
+
+        assert repaired == []
+        assert truncated == []
+
+    def test_complete_findings_gate_accepts_complete_wrapper(self):
+        response = {
+            "findings": [
+                {
+                    "title": "Complete",
+                    "description": "A complete finding",
+                    "category": "testing",
+                    "relevance_score": 0.9,
+                }
+            ]
+        }
+
+        findings = miner_module.parse_complete_findings(
+            LLMResponse(
+                content=json.dumps(response),
+                model="test",
+                finish_reason="stop",
+            ),
+            "test-repo",
+        )
+
+        assert [finding.title for finding in findings] == ["Complete"]
 
 
 # ===========================================================================
