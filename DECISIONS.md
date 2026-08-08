@@ -155,3 +155,19 @@ compatibility and incorrectly excluded otherwise grounded candidates.
 Safety: incomplete fences, truncation, unsupported JSON shapes, secret-like
 output, and missing/escaping provenance remain hard failures. The envelope type
 stays visible in per-call evidence; no raw response or profile is rewritten.
+
+## 2026-08-08: Model profiles affect mining only when explicitly supplied
+
+Decision: `mine-workspace` accepts `--profiles PATH` and passes that registry
+through live key validation and `ClawFactory.create`. The selected profile is
+an explicit overlay on the pinned `claw.toml`; omitting the option retains the
+legacy config models.
+
+Reason: selecting a tournament winner must be able to change the subsequent
+mining runtime, but silently auto-discovering a profile would weaken operator
+control and make the effective model ambiguous.
+
+Safety: the profile overlay does not change the database path, authorization,
+or fallback policy beyond its declared roles. Promotion remains a separate,
+receipt-backed `cam models set` action, and the tournament itself never writes
+the profile.

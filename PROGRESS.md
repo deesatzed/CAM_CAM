@@ -176,10 +176,13 @@ Assumptions:
 - Provider costs that exceed the cap are reconciled exactly once and written to
   a failed receipt before the cap error propagates, preventing hidden spend or
   an automatic charged retry.
-- Current implementation verification: 78 focused tests and 452 tests in the
-  available broader mining/model gate pass. Static checks and `git diff
+- Current implementation verification: 224 focused tests and 455 tests in the
+  available broader mining/model gate pass. Targeted static checks and `git diff
   --check` pass. The broader gate retains one pre-existing aiosqlite event-loop
   cleanup warning.
+- The full repository suite reports 4,326 passed and 22 skipped with the same
+  four unrelated baseline failures: one LanceDB API mismatch, one local
+  `claw.toml` path expectation, and two unavailable Ganglia fixture databases.
 - The first execution attempt stopped before client execution because the
   frozen full-catalog digest changed across Python hash seeds. Root cause was
   unordered `frozenset` serialization inside the aggregate digest. Added a
@@ -205,3 +208,21 @@ Assumptions:
 - The zero-spend held-out plan advances Qwen and Grok for four calls with a
   `$0.68782` stage maximum and `$4.6255615154` cumulative maximum. Kimi was
   eligible but excluded because all three did not fit the remaining budget.
+- Held-out execution completed four calls for `$0.6904328`. Grok passed both
+  unseen repositories at `81.22` average quality with zero hard failures; Qwen
+  failed OpenCLI provenance and was excluded.
+- Grok's same-prompt repeat completed for `$0.014412`, remained valid, and
+  scored `87.20` versus `100.00` originally (`-12.80`). The final selector
+  assigns Grok to quality, budget, and synchronous-speed roles without changing
+  the active profile.
+- Tournament spend was `$2.607694338`; provider-recorded cumulative spend was
+  `$4.6425863154`. Reserving `$0.10069` for one ambiguous bounded Terra retry
+  yields an operator-conservative `$4.7432763154`, below the `$5` authorization.
+- Added explicit `mine-workspace --profiles` propagation through
+  `ClawFactory.create`, so a deliberate role promotion now controls the actual
+  mining runtime. Without it, `claw.toml` remains authoritative. Scan-only
+  workspace discovery now honors its explicit `--config` path.
+- A current no-spend `--changed-only --scan-only` pass over `repo622sn` and
+  `repos2mine` found 61 unique candidates and classified 59 as eligible after
+  two iteration deduplications. Paid mining did not start because those repos
+  require a separate budget beyond the comparison authorization.

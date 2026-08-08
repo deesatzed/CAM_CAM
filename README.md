@@ -1181,6 +1181,10 @@ budget, fast, and batch candidates plus explicit `cam models set` commands. It
 never changes `model_profiles.toml`; promotion remains a deliberate operator
 action.
 
+To make an explicitly selected profile control a workspace mining run, pass it
+to the command: `cam mine-workspace ... --profiles model_profiles.toml`. Without
+`--profiles`, mining continues to use the models pinned in `claw.toml`.
+
 ### Google Gemini Embeddings
 All semantic search uses `gemini-embedding-2-preview` (384 dimensions) via Google API. This powers novelty scoring, knowledge retrieval, and cross-domain synergy detection. For local-only mode, CAM falls back to sentence-transformers or MLX embeddings — no cloud needed.
 
