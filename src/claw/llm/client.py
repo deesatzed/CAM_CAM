@@ -52,12 +52,26 @@ class LLMResponse:
         raw: Optional[dict] = None,
         input_tokens: int = 0,
         output_tokens: int = 0,
+        reasoning_tokens: int = 0,
+        cached_input_tokens: int = 0,
+        cost_usd: float | None = None,
+        cost_source: str = "missing",
+        request_id: str | None = None,
+        finish_reason: str | None = None,
+        routing_metadata: Optional[dict] = None,
     ):
         self.content = content
         self.model = model
         self.tokens_used = tokens_used
         self.input_tokens = input_tokens
         self.output_tokens = output_tokens
+        self.reasoning_tokens = reasoning_tokens
+        self.cached_input_tokens = cached_input_tokens
+        self.cost_usd = cost_usd
+        self.cost_source = cost_source
+        self.request_id = request_id
+        self.finish_reason = finish_reason
+        self.routing_metadata = routing_metadata or {}
         self.raw = raw or {}
 
 
@@ -100,7 +114,9 @@ class LLMClient:
         payload: dict[str, Any] = {
             "model": model,
             "messages": [m.to_dict() for m in messages],
-            "temperature": temperature if temperature is not None else self.config.default_temperature,
+            "temperature": (
+                temperature if temperature is not None else self.config.default_temperature
+            ),
             "max_tokens": max_tokens or self.config.default_max_tokens,
         }
         if response_format:
@@ -211,7 +227,11 @@ class LLMClient:
                     raise ModelNotFoundError(f"Model not found: {payload.get('model')}")
                 if resp.status_code == 429:
                     delay = _backoff_delay(attempt, backoff_base_seconds)
-                    logger.warning("Rate limited. Waiting %.1fs before retry %d", delay, attempt + 1)
+                    logger.warning(
+                        "Rate limited. Waiting %.1fs before retry %d",
+                        delay,
+                        attempt + 1,
+                    )
                     await asyncio.sleep(delay)
                     continue
                 if resp.status_code >= 500:
@@ -253,11 +273,29 @@ class LLMClient:
                 tokens = usage.get("total_tokens", 0)
                 input_tokens = usage.get("prompt_tokens", 0)
                 output_tokens = usage.get("completion_tokens", 0)
+                prompt_details = usage.get("prompt_tokens_details") or {}
+                completion_details = usage.get("completion_tokens_details") or {}
+                cached_input_tokens = prompt_details.get("cached_tokens", 0) or 0
+                reasoning_tokens = completion_details.get("reasoning_tokens", 0) or 0
+                raw_cost = usage.get("cost")
+                cost_usd = float(raw_cost) if raw_cost not in (None, "") else None
+                choice = data["choices"][0]
 
                 logger.debug("LLM response: model=%s tokens=%d", model, tokens)
                 return LLMResponse(
                     content=content, model=model, tokens_used=tokens, raw=data,
                     input_tokens=input_tokens, output_tokens=output_tokens,
+                    reasoning_tokens=reasoning_tokens,
+                    cached_input_tokens=cached_input_tokens,
+                    cost_usd=cost_usd,
+                    cost_source="provider" if cost_usd is not None else "missing",
+                    request_id=data.get("id"),
+                    finish_reason=choice.get("finish_reason"),
+                    routing_metadata={
+                        key: data[key]
+                        for key in ("provider", "generation_id")
+                        if key in data
+                    },
                 )
 
             except (httpx.TimeoutException, httpx.ConnectError) as e:

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import re
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -10,6 +13,7 @@ from typing import Literal
 import toml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from claw.llm.client import LLMMessage, LLMResponse
 from claw.models.catalog import ModelCatalog, ModelCatalogEntry
 
 
@@ -123,6 +127,61 @@ class BenchmarkPlan(BaseModel):
     first_round_calls: list[PlannedCall]
     stage_policy: dict[str, int]
     no_fallback: bool = True
+
+
+class BudgetLedger(BaseModel):
+    """In-process authorization ledger that reserves worst-case cost before calls."""
+
+    budget_usd: float
+    reserved_usd: float = 0.0
+    actual_cost_usd: float = 0.0
+
+    def authorize(self, maximum_call_cost: float) -> None:
+        projected = self.actual_cost_usd + self.reserved_usd + maximum_call_cost
+        if projected > self.budget_usd + 1e-12:
+            raise ValueError(
+                f"Request would cross benchmark budget cap: ${projected:.6f} > "
+                f"${self.budget_usd:.6f}"
+            )
+        self.reserved_usd += maximum_call_cost
+
+    def reconcile(self, reserved_cost: float, actual_cost: float) -> None:
+        self.reserved_usd = max(0.0, self.reserved_usd - reserved_cost)
+        self.actual_cost_usd += actual_cost
+        if self.actual_cost_usd > self.budget_usd + 1e-12:
+            raise ValueError("Provider-reported cost exceeded benchmark budget cap")
+
+
+class CallReceipt(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    call_id: str
+    status: Literal["completed", "failed"]
+    requested_model: str
+    returned_model: str | None = None
+    fixture_name: str
+    prompt_sha256: str
+    request_id: str | None = None
+    finish_reason: str | None = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    reasoning_tokens: int = 0
+    cached_input_tokens: int = 0
+    cost_usd: float = 0.0
+    cost_source: str = "estimated"
+    duration_seconds: float = 0.0
+    response_path: str | None = None
+    error: str | None = None
+
+
+class BenchmarkRunSummary(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    completed: int
+    failed: int
+    skipped: int
+    actual_cost_usd: float
+    receipt_paths: list[str]
 
 
 def _price_for_tokens(entry: ModelCatalogEntry, prompt_tokens: int) -> tuple[float, float]:
@@ -305,3 +364,165 @@ class BenchmarkPlanner:
                 "repeat_fixtures": 1,
             },
         )
+
+
+def _atomic_write(path: Path, content: str, mode: int = 0o600) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(content)
+    os.chmod(temp_path, mode)
+    temp_path.replace(path)
+
+
+def _redact_error(message: str) -> str:
+    redacted = re.sub(r"sk-[A-Za-z0-9_-]{12,}", "[REDACTED_API_KEY]", message)
+    return re.sub(r"Bearer\s+\S+", "Bearer [REDACTED]", redacted, flags=re.IGNORECASE)
+
+
+class BenchmarkRunner:
+    """Run exact planned calls one at a time with resumable local receipts."""
+
+    def __init__(
+        self,
+        *,
+        plan: BenchmarkPlan,
+        fixtures: list[MiningPromptFixture],
+        catalog: ModelCatalog,
+        client,
+        run_dir: Path,
+    ) -> None:
+        self.plan = plan
+        self.fixtures = {fixture.repo_name: fixture for fixture in fixtures}
+        self.catalog = catalog
+        self.client = client
+        self.run_dir = run_dir
+        self.ledger = BudgetLedger(budget_usd=plan.budget_usd)
+
+    def _validate_call(self, call: PlannedCall) -> MiningPromptFixture:
+        fixture = self.fixtures[call.fixture_name]
+        if hashlib.sha256(fixture.prompt.encode()).hexdigest() != call.prompt_sha256:
+            raise ValueError(f"Prompt drift for fixture {fixture.repo_name}")
+        if hashlib.sha256(fixture.repo_content.encode()).hexdigest() != call.repo_content_sha256:
+            raise ValueError(f"Source drift for fixture {fixture.repo_name}")
+        entry = self.catalog.require(call.model_id)
+        if entry.catalog_digest != call.catalog_digest:
+            raise ValueError(f"Catalog drift for model {call.model_id}")
+        return fixture
+
+    @staticmethod
+    def _validate_returned_model(
+        requested_model: str,
+        returned_model: str,
+        entry: ModelCatalogEntry,
+    ) -> None:
+        allowed = {requested_model, entry.canonical_slug}
+        if returned_model not in allowed:
+            raise ValueError(
+                f"Returned model drift: requested {requested_model}, got {returned_model}"
+            )
+
+    def _load_existing_receipt(self, path: Path) -> CallReceipt | None:
+        if not path.exists():
+            return None
+        receipt = CallReceipt.model_validate_json(path.read_text())
+        if receipt.status != "completed":
+            return None
+        return receipt
+
+    async def run_first_round(self, *, limit: int | None = None) -> BenchmarkRunSummary:
+        calls = (
+            self.plan.first_round_calls[:limit]
+            if limit is not None
+            else self.plan.first_round_calls
+        )
+        completed = 0
+        failed = 0
+        skipped = 0
+        receipt_paths: list[str] = []
+        for call in calls:
+            receipt_path = self.run_dir / "receipts" / f"{call.call_id}.json"
+            existing = self._load_existing_receipt(receipt_path)
+            if existing is not None:
+                skipped += 1
+                self.ledger.actual_cost_usd += existing.cost_usd
+                receipt_paths.append(str(receipt_path))
+                continue
+
+            fixture = self._validate_call(call)
+            self.ledger.authorize(call.maximum_cost_usd)
+            started = time.monotonic()
+            try:
+                entry = self.catalog.require(call.model_id)
+                response: LLMResponse = await self.client.complete(
+                    messages=[LLMMessage(role="user", content=fixture.prompt)],
+                    model=call.model_id,
+                    temperature=0.3 if "temperature" in call.parameters else None,
+                    max_tokens=call.maximum_output_tokens,
+                    response_format=(
+                        {"type": "json_object"}
+                        if "structured_outputs" in call.parameters
+                        else None
+                    ),
+                )
+                self._validate_returned_model(call.model_id, response.model, entry)
+                if response.cost_usd is None:
+                    actual_cost = _maximum_call_cost(
+                        entry,
+                        response.input_tokens,
+                        response.output_tokens,
+                    )
+                    cost_source = "estimated"
+                else:
+                    actual_cost = response.cost_usd
+                    cost_source = response.cost_source
+                self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
+                response_path = self.run_dir / "responses" / f"{call.call_id}.txt"
+                _atomic_write(response_path, response.content)
+                receipt = CallReceipt(
+                    call_id=call.call_id,
+                    status="completed",
+                    requested_model=call.model_id,
+                    returned_model=response.model,
+                    fixture_name=fixture.repo_name,
+                    prompt_sha256=fixture.prompt_sha256,
+                    request_id=response.request_id,
+                    finish_reason=response.finish_reason,
+                    input_tokens=response.input_tokens,
+                    output_tokens=response.output_tokens,
+                    reasoning_tokens=response.reasoning_tokens,
+                    cached_input_tokens=response.cached_input_tokens,
+                    cost_usd=actual_cost,
+                    cost_source=cost_source,
+                    duration_seconds=time.monotonic() - started,
+                    response_path=str(response_path.relative_to(self.run_dir)),
+                )
+                completed += 1
+            except Exception as exc:
+                self.ledger.reconcile(call.maximum_cost_usd, 0.0)
+                receipt = CallReceipt(
+                    call_id=call.call_id,
+                    status="failed",
+                    requested_model=call.model_id,
+                    fixture_name=fixture.repo_name,
+                    prompt_sha256=fixture.prompt_sha256,
+                    duration_seconds=time.monotonic() - started,
+                    error=_redact_error(str(exc)),
+                )
+                failed += 1
+                _atomic_write(receipt_path, receipt.model_dump_json(indent=2) + "\n")
+                raise
+            _atomic_write(receipt_path, receipt.model_dump_json(indent=2) + "\n")
+            receipt_paths.append(str(receipt_path))
+
+        summary = BenchmarkRunSummary(
+            completed=completed,
+            failed=failed,
+            skipped=skipped,
+            actual_cost_usd=self.ledger.actual_cost_usd,
+            receipt_paths=receipt_paths,
+        )
+        _atomic_write(
+            self.run_dir / "run-summary.json",
+            summary.model_dump_json(indent=2) + "\n",
+        )
+        return summary

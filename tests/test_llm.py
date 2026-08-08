@@ -68,6 +68,50 @@ class TestParseJson:
 
 
 class TestLLMClientCooldown:
+    async def test_response_parses_openrouter_usage_and_cost_receipt(self):
+        class FakeHTTPClient:
+            is_closed = False
+
+            async def post(self, url, json, headers):
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-123",
+                        "model": "deepseek/deepseek-v4-flash-0731",
+                        "choices": [
+                            {
+                                "message": {"content": "[]"},
+                                "finish_reason": "stop",
+                            }
+                        ],
+                        "usage": {
+                            "prompt_tokens": 100,
+                            "completion_tokens": 20,
+                            "total_tokens": 120,
+                            "cost": 0.00123,
+                            "prompt_tokens_details": {"cached_tokens": 10},
+                            "completion_tokens_details": {"reasoning_tokens": 5},
+                        },
+                    },
+                )
+
+        client = LLMClient(api_key="test-key")
+        client._client = FakeHTTPClient()
+        response = await client.complete(
+            [LLMMessage("user", "hello")],
+            model="~deepseek/deepseek-v4-flash-latest",
+        )
+
+        assert response.input_tokens == 100
+        assert response.output_tokens == 20
+        assert response.reasoning_tokens == 5
+        assert response.cached_input_tokens == 10
+        assert response.cost_usd == 0.00123
+        assert response.cost_source == "provider"
+        assert response.request_id == "gen-123"
+        assert response.finish_reason == "stop"
+
     async def test_provider_400_is_non_retryable_model_rejection(self):
         class FakeHTTPClient:
             is_closed = False
