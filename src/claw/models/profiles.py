@@ -124,6 +124,16 @@ def _write_registry(path: Path, registry: ModelProfileRegistry) -> None:
     temp_path.replace(path)
 
 
+def activate_profile(path: Path, profile: str) -> ModelProfileRegistry:
+    """Atomically move the active pointer without changing any role assignments."""
+    registry = load_model_profiles(path)
+    if profile not in registry.profiles:
+        raise ValueError(f"Unknown model profile: {profile}")
+    registry.active_profile = profile
+    _write_registry(path, registry)
+    return registry
+
+
 def promote_role(
     path: Path,
     profile: str,

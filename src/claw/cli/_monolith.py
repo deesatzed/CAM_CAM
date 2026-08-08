@@ -44,6 +44,7 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
+from claw.cli.models import models_app
 from claw.premine import (
     PreMineResult,
     append_candidate_jsonl,
@@ -10100,6 +10101,7 @@ app.add_typer(ab_test_app, name="ab-test")
 app.add_typer(evolution_app, name="evolution")
 app.add_typer(security_app, name="security")
 app.add_typer(cag_app, name="cag")
+app.add_typer(models_app, name="models")
 
 
 # ---------------------------------------------------------------------------
