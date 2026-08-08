@@ -17,6 +17,7 @@ from claw.models.benchmark import (
     _maximum_call_cost,
 )
 from claw.models.catalog import ModelCatalog, ModelCatalogEntry
+from claw.models.scoring import BenchmarkQualityReport, ModelQualitySummary
 
 TournamentStage = Literal["first-round", "heldout", "repeat"]
 
@@ -217,3 +218,156 @@ class TournamentPlanner:
             calls=calls,
             selected_candidates=list(suite.candidates),
         )
+
+    def plan_advance(
+        self,
+        *,
+        parent: TournamentStagePlan,
+        report: BenchmarkQualityReport,
+        suite: BenchmarkSuite,
+        fixtures: list[MiningPromptFixture],
+        catalog: ModelCatalog,
+        next_stage: Literal["heldout", "repeat"],
+    ) -> TournamentStagePlan:
+        expected_next = {
+            "first-round": "heldout",
+            "heldout": "repeat",
+        }.get(parent.stage)
+        if expected_next != next_stage:
+            raise ValueError(
+                f"Invalid tournament transition: {parent.stage} -> {next_stage}"
+            )
+        if report.run_id != parent.run_id:
+            raise ValueError("Quality report run does not match the parent plan")
+
+        by_name = {fixture.repo_name: fixture for fixture in fixtures}
+        expected_names = {item.name for item in suite.fixtures}
+        if set(by_name) != expected_names:
+            raise ValueError("Prompt fixtures do not match the benchmark suite")
+        dirty = [fixture.repo_name for fixture in fixtures if fixture.dirty_paths]
+        if dirty:
+            raise ValueError(f"Benchmark fixtures must be clean: {', '.join(sorted(dirty))}")
+
+        report_by_model = {model.model_id: model for model in report.models}
+        excluded: dict[str, list[str]] = {}
+        for model_id in parent.selected_candidates:
+            summary = report_by_model.get(model_id)
+            if summary is None or summary.completed_calls != report.expected_fixtures:
+                excluded[model_id] = ["missing_expected_calls"]
+            elif not summary.eligible:
+                excluded[model_id] = list(
+                    summary.hard_failures or ["quality_below_gate"]
+                )
+
+        ranked = rank_eligible_models(
+            [
+                summary
+                for model_id, summary in report_by_model.items()
+                if model_id in parent.selected_candidates
+            ]
+        )
+        candidate_limit = 4 if next_stage == "heldout" else 2
+        ranked_prefix = ranked[:candidate_limit]
+        for summary in ranked[candidate_limit:]:
+            excluded[summary.model_id] = ["not_selected_for_stage"]
+        if not ranked_prefix:
+            raise ValueError("No eligible candidates are available for advancement")
+
+        if next_stage == "heldout":
+            stage_names = [
+                item.name for item in suite.fixtures if item.stage == "heldout"
+            ]
+        else:
+            stage_names = [
+                next(item.name for item in suite.fixtures if item.stage == "first-round")
+            ]
+        stage_fixtures = [by_name[name] for name in stage_names]
+        prior_spend = parent.prior_spend_usd + report.actual_cost_usd
+
+        selected: list[str] = []
+        calls: list[PlannedCall] = []
+        for count in range(len(ranked_prefix), 0, -1):
+            candidate_ids = [summary.model_id for summary in ranked_prefix[:count]]
+            candidate_calls = self._freeze_calls(
+                stage=next_stage,
+                candidates=candidate_ids,
+                fixtures=stage_fixtures,
+                catalog=catalog,
+            )
+            if (
+                prior_spend + sum(call.maximum_cost_usd for call in candidate_calls)
+                <= parent.authorization_usd + 1e-12
+            ):
+                selected = candidate_ids
+                calls = candidate_calls
+                break
+        if not selected:
+            raise ValueError(
+                f"No {next_stage} candidate fits the remaining tournament authorization"
+            )
+        for summary in ranked_prefix[len(selected) :]:
+            excluded[summary.model_id] = ["not_selected_within_remaining_budget"]
+
+        entries = {model_id: catalog.require(model_id) for model_id in selected}
+        now = datetime.now(UTC)
+        seed = (
+            f"{suite.name}|{next_stage}|{parent.run_id}|{catalog.digest}|"
+            + "|".join(fixture.prompt_sha256 for fixture in stage_fixtures)
+            + "|"
+            + "|".join(selected)
+        )
+        stage_maximum = sum(call.maximum_cost_usd for call in calls)
+        return TournamentStagePlan(
+            run_id=(
+                f"{now.strftime('%Y%m%dT%H%M%SZ')}-"
+                f"{hashlib.sha256(seed.encode()).hexdigest()[:8]}-{next_stage}"
+            ),
+            created_at=now.isoformat(),
+            suite_name=suite.name,
+            stage=next_stage,
+            authorization_usd=parent.authorization_usd,
+            prior_spend_usd=prior_spend,
+            stage_maximum_cost_usd=stage_maximum,
+            parent_run_id=parent.run_id,
+            catalog_receipt=CatalogReceipt(
+                digest=catalog.digest,
+                model_digests={
+                    model_id: entries[model_id].catalog_digest for model_id in selected
+                },
+            ),
+            fixtures=[
+                _fixture_receipt(fixture, next_stage) for fixture in stage_fixtures
+            ],
+            calls=calls,
+            selected_candidates=selected,
+            excluded_candidates=excluded,
+        )
+
+
+def rank_eligible_models(
+    summaries: list[ModelQualitySummary],
+) -> list[ModelQualitySummary]:
+    """Order eligible models by quality floor, value, and stable tie-breakers."""
+
+    eligible = [summary for summary in summaries if summary.eligible]
+
+    def rank_key(summary: ModelQualitySummary) -> tuple:
+        return (
+            -summary.worst_quality,
+            -summary.average_quality,
+            (
+                summary.cost_per_finding_usd
+                if summary.cost_per_finding_usd is not None
+                else float("inf")
+            ),
+            summary.total_cost_usd,
+            summary.average_sync_latency_seconds is None,
+            (
+                summary.average_sync_latency_seconds
+                if summary.average_sync_latency_seconds is not None
+                else float("inf")
+            ),
+            summary.model_id,
+        )
+
+    return sorted(eligible, key=rank_key)

@@ -197,6 +197,8 @@ def test_score_run_aggregates_cost_quality_and_normalized_envelopes(
     assert report.calls[0].hard_failures == []
     assert report.models[0].eligible is True
     assert report.models[0].average_quality > 80
+    assert report.models[0].worst_quality == report.models[0].average_quality
+    assert report.models[0].cost_per_finding_usd == 0.001
 
 
 def test_load_existing_titles_uses_immutable_read_only_corpus(tmp_path: Path) -> None:

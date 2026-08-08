@@ -83,7 +83,9 @@ class ModelQualitySummary(BaseModel):
     model_id: str
     completed_calls: int
     average_quality: float
+    worst_quality: float
     total_cost_usd: float
+    cost_per_finding_usd: float | None
     average_sync_latency_seconds: float | None
     finding_count: int
     hard_failures: list[str]
@@ -349,16 +351,22 @@ def score_benchmark_run(
             sum(call.quality for call in model_calls) / len(model_calls),
             2,
         )
+        finding_count = sum(call.finding_count for call in model_calls)
+        total_cost = sum(call.cost_usd for call in model_calls)
         models.append(
             ModelQualitySummary(
                 model_id=model_id,
                 completed_calls=len(model_calls),
                 average_quality=average_quality,
-                total_cost_usd=sum(call.cost_usd for call in model_calls),
+                worst_quality=min(call.quality for call in model_calls),
+                total_cost_usd=total_cost,
+                cost_per_finding_usd=(
+                    total_cost / finding_count if finding_count else None
+                ),
                 average_sync_latency_seconds=(
                     round(sum(latencies) / len(latencies), 3) if latencies else None
                 ),
-                finding_count=sum(call.finding_count for call in model_calls),
+                finding_count=finding_count,
                 hard_failures=failures,
                 eligible=(
                     len(model_calls) == expected_fixtures
