@@ -79,6 +79,12 @@ class ModelCatalogEntry(BaseModel):
         return parameter in self.supported_parameters
 
 
+def _entry_digest_payload(entry: ModelCatalogEntry) -> dict[str, Any]:
+    payload = entry.model_dump(mode="json", exclude={"catalog_digest"})
+    payload["supported_parameters"] = sorted(payload["supported_parameters"])
+    return payload
+
+
 class _RawCatalogEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -155,9 +161,9 @@ class ModelCatalog(BaseModel):
                 "reasoning": raw.reasoning,
                 "expiration_date": raw.expiration_date,
             }
-            entries[raw.id] = ModelCatalogEntry(
-                **normalized_entry,
-                catalog_digest=_digest(normalized_entry),
+            entry = ModelCatalogEntry(**normalized_entry, catalog_digest="")
+            entries[raw.id] = entry.model_copy(
+                update={"catalog_digest": _digest(_entry_digest_payload(entry))}
             )
 
         digest_payload = {
@@ -171,6 +177,20 @@ class ModelCatalog(BaseModel):
             return self.entries[model_id]
         except KeyError as exc:
             raise KeyError(f"Model not found in catalog: {model_id}") from exc
+
+    def verify_digests(self) -> None:
+        """Recompute normalized entry and full-catalog digests after deserialization."""
+
+        for model_id, entry in self.entries.items():
+            expected = _digest(_entry_digest_payload(entry))
+            if expected != entry.catalog_digest:
+                raise ValueError(f"Model catalog entry digest mismatch: {model_id}")
+        digest_payload = {
+            model_id: self.entries[model_id].model_dump(mode="json")
+            for model_id in sorted(self.entries)
+        }
+        if _digest(digest_payload) != self.digest:
+            raise ValueError("Model catalog digest mismatch")
 
 
 class OpenRouterCatalogClient:

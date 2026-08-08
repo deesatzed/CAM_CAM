@@ -13,7 +13,7 @@ from urllib.parse import quote
 from pydantic import BaseModel, ConfigDict, Field
 
 from claw.miner import MiningFinding, parse_findings
-from claw.models.benchmark import CallReceipt, MiningPromptFixture
+from claw.models.benchmark import CallReceipt, MiningPromptFixture, PlannedCall
 
 QUALITY_WEIGHTS = {
     "grounded_correctness": 35,
@@ -98,6 +98,7 @@ class BenchmarkQualityReport(BaseModel):
     run_id: str
     expected_fixtures: int
     actual_cost_usd: float
+    conservative_cost_usd: float | None = None
     calls: list[CallQualityReceipt]
     models: list[ModelQualitySummary]
 
@@ -131,19 +132,34 @@ def load_existing_mining_titles(db_path: Path) -> list[str]:
     return sorted(titles, key=str.casefold)
 
 
-def _safe_source_path(repo_root: Path, relative_path: str) -> Path | None:
+def _safe_relative_path(relative_path: str) -> str | None:
     pure = PurePosixPath(relative_path)
     if pure.is_absolute() or ".." in pure.parts or not pure.parts:
         return None
-    candidate = (repo_root / Path(*pure.parts)).resolve()
-    try:
-        candidate.relative_to(repo_root.resolve())
-    except ValueError:
-        return None
-    return candidate if candidate.is_file() else None
+    return pure.as_posix()
 
 
-def _provenance_fraction(findings: list[MiningFinding], repo_root: Path) -> tuple[float, bool]:
+def _fixture_sources(fixture: MiningPromptFixture) -> dict[str, str]:
+    marker = re.compile(r"^--- FILE: (.+) ---$", re.MULTILINE)
+    matches = list(marker.finditer(fixture.repo_content))
+    sources: dict[str, str] = {}
+    for index, match in enumerate(matches):
+        start = match.end()
+        if start < len(fixture.repo_content) and fixture.repo_content[start] == "\n":
+            start += 1
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(
+            fixture.repo_content
+        )
+        sources[match.group(1).strip()] = fixture.repo_content[start:end]
+    return sources
+
+
+def _provenance_fraction(
+    findings: list[MiningFinding],
+    fixture: MiningPromptFixture,
+) -> tuple[float, bool]:
+    sources = _fixture_sources(fixture)
+    manifest = set(fixture.source_manifest)
     checks = 0
     valid = 0
     invalid_file_provenance = False
@@ -154,18 +170,18 @@ def _provenance_fraction(findings: list[MiningFinding], repo_root: Path) -> tupl
             continue
         for relative_path in finding.source_files:
             checks += 1
-            source_path = _safe_source_path(repo_root, relative_path)
-            if source_path is None:
+            safe_path = _safe_relative_path(relative_path)
+            if safe_path is None or safe_path not in manifest:
                 invalid_file_provenance = True
                 continue
             valid += 1
         for symbol in finding.source_symbols:
             checks += 1
-            source_path = _safe_source_path(repo_root, symbol.get("file_path", ""))
+            source_path = _safe_relative_path(symbol.get("file_path", ""))
             symbol_name = symbol.get("symbol_name", "").strip()
-            if source_path is None or not symbol_name:
+            if source_path is None or source_path not in manifest or not symbol_name:
                 continue
-            source_text = source_path.read_text(encoding="utf-8", errors="replace")
+            source_text = sources.get(source_path, fixture.repo_content)
             qualified_parts = symbol_name.split(".")
             qualified_match = (
                 len(qualified_parts) > 1
@@ -219,10 +235,7 @@ def score_candidate(
             finding_count=0,
         )
 
-    grounded_fraction, invalid_file_provenance = _provenance_fraction(
-        findings,
-        Path(fixture.repo_path),
-    )
+    grounded_fraction, invalid_file_provenance = _provenance_fraction(findings, fixture)
     if invalid_file_provenance:
         hard_failures.append("invalid_provenance")
     grounded = QUALITY_WEIGHTS["grounded_correctness"] * grounded_fraction
@@ -290,12 +303,57 @@ def score_benchmark_run(
     fixtures: list[MiningPromptFixture],
     expected_fixtures: int,
     existing_titles: list[str],
+    planned_calls: list[PlannedCall] | None = None,
 ) -> BenchmarkQualityReport:
     """Score completed receipts and aggregate promotion eligibility by model."""
     fixture_by_name = {fixture.repo_name: fixture for fixture in fixtures}
     calls: list[CallQualityReceipt] = []
+    actual_cost_usd = 0.0
+    unresolved_reserve_usd = 0.0
+    planned_by_id = (
+        {call.call_id: call for call in planned_calls}
+        if planned_calls is not None
+        else None
+    )
+    if planned_calls is not None:
+        for planned in planned_calls:
+            fixture = fixture_by_name.get(planned.fixture_name)
+            if fixture is None:
+                raise ValueError(f"Missing frozen fixture {planned.fixture_name}")
+            if hashlib.sha256(fixture.prompt.encode()).hexdigest() != planned.prompt_sha256:
+                raise ValueError(f"Prompt drift for fixture {planned.fixture_name}")
+            if (
+                hashlib.sha256(fixture.repo_content.encode()).hexdigest()
+                != planned.repo_content_sha256
+            ):
+                raise ValueError(f"Source drift for fixture {planned.fixture_name}")
+    seen_receipts: set[str] = set()
     for receipt_path in sorted((run_dir / "receipts").glob("*.json")):
         receipt = CallReceipt.model_validate_json(receipt_path.read_text())
+        if receipt.call_id in seen_receipts:
+            raise ValueError(f"Duplicate receipt for frozen call {receipt.call_id}")
+        seen_receipts.add(receipt.call_id)
+        if receipt_path.stem != receipt.call_id:
+            raise ValueError(f"Receipt filename does not match call {receipt.call_id}")
+        if planned_by_id is not None:
+            planned = planned_by_id.get(receipt.call_id)
+            if planned is None:
+                raise ValueError(f"Receipt {receipt.call_id} is not in the frozen plan")
+            if (
+                receipt.requested_model != planned.model_id
+                or receipt.fixture_name != planned.fixture_name
+                or receipt.prompt_sha256 != planned.prompt_sha256
+            ):
+                raise ValueError(f"Receipt lineage drift for call {receipt.call_id}")
+            if (
+                receipt.status == "failed"
+                and (receipt.cost_source != "provider" or receipt.cost_usd <= 0)
+            ):
+                unresolved_reserve_usd += max(
+                    0.0,
+                    planned.maximum_cost_usd - receipt.cost_usd,
+                )
+        actual_cost_usd += receipt.cost_usd
         if receipt.status != "completed" or not receipt.response_path:
             continue
         fixture = fixture_by_name[receipt.fixture_name]
@@ -378,7 +436,8 @@ def score_benchmark_run(
     return BenchmarkQualityReport(
         run_id=run_id,
         expected_fixtures=expected_fixtures,
-        actual_cost_usd=sum(call.cost_usd for call in calls),
+        actual_cost_usd=actual_cost_usd,
+        conservative_cost_usd=actual_cost_usd + unresolved_reserve_usd,
         calls=sorted(calls, key=lambda call: (call.candidate_code, call.fixture_name)),
         models=models,
     )

@@ -16,7 +16,7 @@ from claw.models.benchmark import (
     PlannedCall,
     _maximum_call_cost,
 )
-from claw.models.catalog import ModelCatalog, ModelCatalogEntry
+from claw.models.catalog import ModelCatalog, ModelCatalogEntry, ModelPricing
 from claw.models.scoring import BenchmarkQualityReport, ModelQualitySummary
 
 TournamentStage = Literal["first-round", "heldout", "repeat"]
@@ -37,6 +37,7 @@ class TournamentStagePlan(BaseModel):
     stage_maximum_cost_usd: float
     parent_run_id: str | None = None
     catalog_receipt: CatalogReceipt
+    catalog_prices: dict[str, ModelPricing] = Field(default_factory=dict)
     fixtures: list[FixtureReceipt]
     calls: list[PlannedCall]
     selected_candidates: list[str]
@@ -214,6 +215,9 @@ class TournamentPlanner:
                     for model_id in suite.candidates
                 },
             ),
+            catalog_prices={
+                model_id: entries[model_id].pricing for model_id in suite.candidates
+            },
             fixtures=[_fixture_receipt(fixture, "first-round") for fixture in first_round],
             calls=calls,
             selected_candidates=list(suite.candidates),
@@ -223,6 +227,7 @@ class TournamentPlanner:
         self,
         *,
         parent: TournamentStagePlan,
+        root: TournamentStagePlan | None = None,
         report: BenchmarkQualityReport,
         suite: BenchmarkSuite,
         fixtures: list[MiningPromptFixture],
@@ -239,6 +244,11 @@ class TournamentPlanner:
             )
         if report.run_id != parent.run_id:
             raise ValueError("Quality report run does not match the parent plan")
+        if next_stage == "repeat":
+            if root is None or root.stage != "first-round":
+                raise ValueError("Repeat planning requires the root first-round plan")
+            if parent.parent_run_id != root.run_id:
+                raise ValueError("Repeat root plan does not match held-out lineage")
 
         by_name = {fixture.repo_name: fixture for fixture in fixtures}
         expected_names = {item.name for item in suite.fixtures}
@@ -264,6 +274,7 @@ class TournamentPlanner:
                 summary
                 for model_id, summary in report_by_model.items()
                 if model_id in parent.selected_candidates
+                and model_id not in excluded
             ]
         )
         candidate_limit = 4 if next_stage == "heldout" else 2
@@ -282,18 +293,32 @@ class TournamentPlanner:
                 next(item.name for item in suite.fixtures if item.stage == "first-round")
             ]
         stage_fixtures = [by_name[name] for name in stage_names]
-        prior_spend = parent.prior_spend_usd + report.actual_cost_usd
+        prior_spend = parent.prior_spend_usd + (
+            report.conservative_cost_usd
+            if report.conservative_cost_usd is not None
+            else report.actual_cost_usd
+        )
 
         selected: list[str] = []
         calls: list[PlannedCall] = []
         for count in range(len(ranked_prefix), 0, -1):
             candidate_ids = [summary.model_id for summary in ranked_prefix[:count]]
-            candidate_calls = self._freeze_calls(
-                stage=next_stage,
-                candidates=candidate_ids,
-                fixtures=stage_fixtures,
-                catalog=catalog,
-            )
+            if next_stage == "repeat":
+                assert root is not None
+                candidate_calls = self._freeze_repeat_calls(
+                    root=root,
+                    parent=parent,
+                    candidates=candidate_ids,
+                    fixture=stage_fixtures[0],
+                    catalog=catalog,
+                )
+            else:
+                candidate_calls = self._freeze_calls(
+                    stage=next_stage,
+                    candidates=candidate_ids,
+                    fixtures=stage_fixtures,
+                    catalog=catalog,
+                )
             if (
                 prior_spend + sum(call.maximum_cost_usd for call in candidate_calls)
                 <= parent.authorization_usd + 1e-12
@@ -335,6 +360,7 @@ class TournamentPlanner:
                     model_id: entries[model_id].catalog_digest for model_id in selected
                 },
             ),
+            catalog_prices={model_id: entries[model_id].pricing for model_id in selected},
             fixtures=[
                 _fixture_receipt(fixture, next_stage) for fixture in stage_fixtures
             ],
@@ -342,6 +368,47 @@ class TournamentPlanner:
             selected_candidates=selected,
             excluded_candidates=excluded,
         )
+
+    def _freeze_repeat_calls(
+        self,
+        *,
+        root: TournamentStagePlan,
+        parent: TournamentStagePlan,
+        candidates: list[str],
+        fixture: MiningPromptFixture,
+        catalog: ModelCatalog,
+    ) -> list[PlannedCall]:
+        originals = {
+            (call.model_id, call.fixture_name): call for call in root.calls
+        }
+        repeated: list[PlannedCall] = []
+        for model_id in candidates:
+            try:
+                original = originals[(model_id, fixture.repo_name)]
+            except KeyError as exc:
+                raise ValueError(
+                    f"Root plan lacks repeat baseline for {model_id} / {fixture.repo_name}"
+                ) from exc
+            if (
+                fixture.prompt_sha256 != original.prompt_sha256
+                or fixture.repo_content_sha256 != original.repo_content_sha256
+            ):
+                raise ValueError(
+                    f"Repeat fixture drift for {model_id} / {fixture.repo_name}"
+                )
+            entry = catalog.require(model_id)
+            if entry.catalog_digest != original.catalog_digest:
+                raise ValueError(f"Repeat catalog drift for model {model_id}")
+            seed = f"repeat|{parent.run_id}|{original.call_id}"
+            repeated.append(
+                original.model_copy(
+                    update={
+                        "call_id": hashlib.sha256(seed.encode()).hexdigest()[:20],
+                        "stage": "repeat",
+                    }
+                )
+            )
+        return repeated
 
 
 def rank_eligible_models(
@@ -397,8 +464,14 @@ class TournamentSelectionReport(BaseModel):
     prior_spend_usd: float
     tournament_spend_usd: float
     cumulative_spend_usd: float
+    conservative_cumulative_maximum_usd: float
+    remaining_after_conservative_maximum_usd: float
+    catalog_receipts: dict[str, CatalogReceipt]
+    catalog_prices: dict[str, dict[str, ModelPricing]]
+    stage_maximum_costs_usd: dict[str, float]
     roles: dict[str, RoleCandidate]
     exclusions: dict[str, list[str]] = Field(default_factory=dict)
+    stability: dict[str, dict[str, Any]] = Field(default_factory=dict)
     stage_runs: list[str]
 
 
@@ -424,19 +497,50 @@ def select_tournament_roles(
 
     report_by_stage = {plan.stage: report for plan, report in zip(plans, reports, strict=True)}
     evaluation = report_by_stage.get("heldout", reports[0])
-    evaluation_by_model = {model.model_id: model for model in evaluation.models}
     exclusions: dict[str, list[str]] = {}
+    stability: dict[str, dict[str, Any]] = {}
     for plan in plans:
         for model_id, reasons in plan.excluded_candidates.items():
             exclusions.setdefault(model_id, []).extend(reasons)
 
     repeat = report_by_stage.get("repeat")
     if repeat is not None:
+        first_report = report_by_stage.get("first-round")
+        repeat_plan = next(plan for plan in plans if plan.stage == "repeat")
+        repeat_fixture = (
+            repeat_plan.fixtures[0].repo_name if repeat_plan.fixtures else None
+        )
+        original_calls = {
+            (call.model_id, call.fixture_name): call
+            for call in (first_report.calls if first_report is not None else [])
+        }
+        repeated_calls = {
+            (call.model_id, call.fixture_name): call for call in repeat.calls
+        }
         for repeated in repeat.models:
-            baseline = evaluation_by_model.get(repeated.model_id)
             if not repeated.eligible:
                 exclusions[repeated.model_id] = ["repeat_hard_failure"]
-            elif baseline is not None and baseline.average_quality - repeated.average_quality > 20:
+            if repeat_fixture is None:
+                continue
+            original_call = original_calls.get((repeated.model_id, repeat_fixture))
+            repeated_call = repeated_calls.get((repeated.model_id, repeat_fixture))
+            if original_call is None or repeated_call is None:
+                continue
+            quality_delta = round(repeated_call.quality - original_call.quality, 2)
+            stability[repeated.model_id] = {
+                "fixture_name": repeat_fixture,
+                "quality_delta": quality_delta,
+                "finding_count_delta": (
+                    repeated_call.finding_count - original_call.finding_count
+                ),
+                "cost_delta_usd": round(
+                    repeated_call.cost_usd - original_call.cost_usd,
+                    12,
+                ),
+                "validity_match": bool(repeated_call.hard_failures)
+                == bool(original_call.hard_failures),
+            }
+            if repeated.eligible and quality_delta < -20:
                 exclusions[repeated.model_id] = ["repeat_instability"]
 
     eligible = [
@@ -534,7 +638,20 @@ def select_tournament_roles(
         batch = _empty_role("batch", "no eligible queued-batch model")
 
     tournament_spend = round(sum(report.actual_cost_usd for report in reports), 12)
+    conservative_tournament_spend = round(
+        sum(
+            report.conservative_cost_usd
+            if report.conservative_cost_usd is not None
+            else report.actual_cost_usd
+            for report in reports
+        ),
+        12,
+    )
     prior_spend = plans[0].prior_spend_usd
+    conservative_cumulative = round(
+        prior_spend + conservative_tournament_spend,
+        12,
+    )
     return TournamentSelectionReport(
         root_run_id=plans[0].run_id,
         final_run_id=plans[-1].run_id,
@@ -542,6 +659,16 @@ def select_tournament_roles(
         prior_spend_usd=prior_spend,
         tournament_spend_usd=tournament_spend,
         cumulative_spend_usd=round(prior_spend + tournament_spend, 12),
+        conservative_cumulative_maximum_usd=conservative_cumulative,
+        remaining_after_conservative_maximum_usd=round(
+            plans[0].authorization_usd - conservative_cumulative,
+            12,
+        ),
+        catalog_receipts={plan.stage: plan.catalog_receipt for plan in plans},
+        catalog_prices={plan.stage: plan.catalog_prices for plan in plans},
+        stage_maximum_costs_usd={
+            plan.stage: plan.stage_maximum_cost_usd for plan in plans
+        },
         roles={
             "quality": quality,
             "budget": budget,
@@ -551,5 +678,6 @@ def select_tournament_roles(
         exclusions={
             model_id: sorted(set(reasons)) for model_id, reasons in sorted(exclusions.items())
         },
+        stability=stability,
         stage_runs=[plan.run_id for plan in plans],
     )

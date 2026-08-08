@@ -155,7 +155,25 @@ Assumptions:
   a profile.
 - Persisted the normalized catalog snapshot beside each plan so execution uses
   the exact availability, capabilities, and prices that were authorized.
-- Current implementation verification: 34 focused tournament, CLI, scoring,
-  and runner tests pass. No paid tournament calls have been made yet.
+- Independent review initially blocked paid execution on charged-failure resume,
+  repeat-control identity, exact receipt/catalog binding, and conservative-cost
+  gaps. Added regression tests and mitigated every Critical and Important
+  pre-spend finding.
+- Failed receipts are now non-retriable during normal resume, their actual cost
+  is counted, and unreconciled failures reserve their frozen maximum. Submitted
+  batch job IDs survive timeout and terminal-failure receipts.
+- Repeat plans now require the root first-round plan, copy its prompt, source,
+  token, reasoning, seed, transport, price, and catalog controls, and report
+  same-fixture quality, finding-count, validity, and cost deltas.
+- Reports now reject extraneous/stale receipt IDs and prompt/source lineage
+  drift. Provenance is scored from the content-addressed frozen fixture rather
+  than a repository that may have changed after execution.
+- Normalized catalog snapshots recompute entry and full-catalog digests before
+  execution. Tournament runs use the sibling frozen catalog by default and
+  refuse output directories bound to another plan.
+- Current implementation verification: 73 focused tests pass; the broader
+  mining/model gate passes 462 tests with two pre-existing aiosqlite event-loop
+  cleanup warnings. Static checks and `git diff --check` pass. No paid
+  tournament calls have been made yet.
 - The hard cumulative authorization remains `$5.00`; conservative prior spend
   is `$2.0348919774`, leaving `$2.9651080226` before the corrected tournament.

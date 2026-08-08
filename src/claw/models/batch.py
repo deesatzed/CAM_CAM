@@ -49,6 +49,15 @@ class BatchCompletion:
     compatibility: BatchCompatibilityReceipt
 
 
+class BatchJobError(RuntimeError):
+    """A submitted batch that did not yield a usable completion."""
+
+    def __init__(self, message: str, *, job_id: str, status: str) -> None:
+        super().__init__(message)
+        self.job_id = job_id
+        self.status = status
+
+
 class OpenRouterBatchClient:
     """Submit one chat request through OpenRouter's asynchronous Batch API."""
 
@@ -133,7 +142,11 @@ class OpenRouterBatchClient:
         batch = created
         while str(batch.get("status")) not in self._TERMINAL:
             if loop.time() >= deadline:
-                raise TimeoutError(f"OpenRouter batch {job_id} timed out")
+                raise BatchJobError(
+                    f"OpenRouter batch {job_id} timed out",
+                    job_id=job_id,
+                    status="timed_out",
+                )
             if self.poll_interval_seconds:
                 await asyncio.sleep(self.poll_interval_seconds)
             response = await self.client.get(
@@ -146,8 +159,19 @@ class OpenRouterBatchClient:
         status = str(batch.get("status"))
         if status != "completed":
             detail = batch.get("errors") or batch.get("error") or "no provider detail"
-            raise RuntimeError(f"OpenRouter batch {job_id} ended {status}: {detail}")
-        response = _parse_batch_result(batch, custom_id=custom_id)
+            raise BatchJobError(
+                f"OpenRouter batch {job_id} ended {status}: {detail}",
+                job_id=job_id,
+                status=status,
+            )
+        try:
+            response = _parse_batch_result(batch, custom_id=custom_id)
+        except Exception as exc:
+            raise BatchJobError(
+                str(exc),
+                job_id=job_id,
+                status="failed",
+            ) from exc
         compatibility = BatchCompatibilityReceipt(
             model_id=requested_model,
             status="completed",

@@ -4,9 +4,10 @@ import json
 import sqlite3
 from pathlib import Path
 
-import claw.models.scoring as scoring_module
+import pytest
 
-from claw.models.benchmark import CallReceipt, MiningPromptFixture
+import claw.models.scoring as scoring_module
+from claw.models.benchmark import CallReceipt, MiningPromptFixture, PlannedCall
 from claw.models.scoring import (
     QUALITY_WEIGHTS,
     build_blinded_packet,
@@ -124,6 +125,20 @@ def test_imprecise_symbol_lowers_grounding_without_hard_failing_valid_file(
 
     assert "invalid_provenance" not in score.hard_failures
     assert 0 < score.grounded_correctness < QUALITY_WEIGHTS["grounded_correctness"]
+
+
+def test_provenance_scoring_uses_frozen_fixture_content_not_mutated_repo(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    (repo / "src" / "retry.py").write_text("def unrelated():\n    pass\n")
+
+    score = score_candidate(_response(), fixture, [])
+
+    assert score.grounded_correctness == QUALITY_WEIGHTS["grounded_correctness"]
 
 
 def test_duplicates_reduce_novelty_and_malformed_output_reduces_reliability(
@@ -270,3 +285,106 @@ def test_truncated_or_repaired_call_reports_zero_quality(tmp_path: Path) -> None
     assert "truncated_response" in report.calls[0].hard_failures
     assert report.calls[0].quality == 0
     assert report.models[0].eligible is False
+
+
+def test_failed_charged_receipt_counts_toward_report_spend(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "receipts").mkdir(parents=True)
+    failed = CallReceipt(
+        call_id="failed-call",
+        status="failed",
+        requested_model="openai/gpt-5.6-luna",
+        returned_model="unexpected/model",
+        fixture_name="fixture",
+        prompt_sha256="prompt",
+        cost_usd=0.02,
+        cost_source="provider",
+        error="returned model drift",
+    )
+    (run_dir / "receipts" / "failed-call.json").write_text(failed.model_dump_json())
+
+    report = score_benchmark_run(
+        run_id="failed-run",
+        run_dir=run_dir,
+        fixtures=[],
+        expected_fixtures=1,
+        existing_titles=[],
+    )
+
+    assert report.actual_cost_usd == 0.02
+    assert report.conservative_cost_usd == 0.02
+    assert report.calls == []
+    assert report.models == []
+
+
+def test_scoring_rejects_receipts_outside_the_frozen_call_set(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "receipts").mkdir(parents=True)
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    stale = CallReceipt(
+        call_id="stale-call",
+        status="failed",
+        requested_model="openai/gpt-5.6-luna",
+        fixture_name=fixture.repo_name,
+        prompt_sha256=fixture.prompt_sha256,
+        cost_usd=0.01,
+        error="stale",
+    )
+    (run_dir / "receipts" / "stale-call.json").write_text(stale.model_dump_json())
+    planned = PlannedCall(
+        call_id="expected-call",
+        stage="first-round",
+        model_id="openai/gpt-5.6-luna",
+        fixture_name=fixture.repo_name,
+        prompt_sha256=fixture.prompt_sha256,
+        repo_content_sha256=fixture.repo_content_sha256,
+        catalog_digest="catalog",
+        maximum_input_tokens=100,
+        maximum_output_tokens=100,
+        maximum_cost_usd=0.02,
+        parameters=[],
+    )
+
+    with pytest.raises(ValueError, match="not in the frozen plan"):
+        score_benchmark_run(
+            run_id="run",
+            run_dir=run_dir,
+            fixtures=[fixture],
+            expected_fixtures=1,
+            existing_titles=[],
+            planned_calls=[planned],
+        )
+
+
+def test_scoring_rejects_fixture_content_drift_from_frozen_plan(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    planned = PlannedCall(
+        call_id="expected-call",
+        stage="first-round",
+        model_id="openai/gpt-5.6-luna",
+        fixture_name=fixture.repo_name,
+        prompt_sha256=fixture.prompt_sha256,
+        repo_content_sha256=fixture.repo_content_sha256,
+        catalog_digest="catalog",
+        maximum_input_tokens=100,
+        maximum_output_tokens=100,
+        maximum_cost_usd=0.02,
+        parameters=[],
+    )
+    drifted = fixture.model_copy(update={"repo_content": "tampered content"})
+
+    with pytest.raises(ValueError, match="Source drift"):
+        score_benchmark_run(
+            run_id="run",
+            run_dir=tmp_path / "run",
+            fixtures=[drifted],
+            expected_fixtures=1,
+            existing_titles=[],
+            planned_calls=[planned],
+        )

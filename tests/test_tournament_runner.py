@@ -135,3 +135,32 @@ async def test_runner_executes_and_resumes_an_arbitrary_tournament_stage(
     assert resumed.actual_cost_usd == pytest.approx(0.0001)
     assert repeated.actual_cost_usd == pytest.approx(0.0001)
     assert resumed_client.models == []
+
+
+def test_runner_rejects_full_catalog_digest_drift_before_calls(tmp_path: Path) -> None:
+    plan = _plan()
+    catalog = _catalog().model_copy(update={"digest": "tampered"})
+
+    with pytest.raises(ValueError, match="catalog digest mismatch"):
+        BenchmarkRunner(
+            plan=plan,
+            fixtures=[_fixture()],
+            catalog=catalog,
+            client=RecordingClient(),
+            run_dir=tmp_path,
+        )
+
+
+def test_runner_applies_a_lower_runtime_authorization_cap(tmp_path: Path) -> None:
+    plan = _plan()
+
+    runner = BenchmarkRunner(
+        plan=plan,
+        fixtures=[_fixture()],
+        catalog=_catalog(),
+        client=RecordingClient(),
+        run_dir=tmp_path,
+        budget_usd=4.95,
+    )
+
+    assert runner.ledger.budget_usd == pytest.approx(0.05)

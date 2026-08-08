@@ -69,8 +69,11 @@ def _emit_json(value: object) -> None:
 def _load_catalog_snapshot(path: Path) -> ModelCatalog:
     payload = json.loads(path.read_text())
     if "entries" in payload and "digest" in payload:
-        return ModelCatalog.model_validate(payload)
-    return ModelCatalog.from_payload(payload)
+        catalog = ModelCatalog.model_validate(payload)
+    else:
+        catalog = ModelCatalog.from_payload(payload)
+    catalog.verify_digests()
+    return catalog
 
 
 def _write_catalog_snapshot(path: Path, catalog: ModelCatalog) -> None:
@@ -167,6 +170,8 @@ def plan_benchmark(
         authorization_usd=budget_usd,
         prior_spend_usd=prior_spend_usd,
     )
+    if output.exists() and any(output.iterdir()):
+        raise typer.BadParameter("Output directory already contains frozen evidence")
     output.mkdir(parents=True, exist_ok=True)
     plan_path = output / "plan.json"
     plan_path.write_text(plan.model_dump_json(indent=2) + "\n")
@@ -187,6 +192,7 @@ def plan_benchmark(
 @benchmark_app.command("advance")
 def advance_benchmark(
     parent_plan: Path,
+    root_plan: Path | None = typer.Option(None, "--root-plan"),
     report: Path = typer.Option(..., "--report"),
     stage: str = typer.Option(..., "--stage"),
     suite: Path = typer.Option(..., "--suite"),
@@ -198,6 +204,11 @@ def advance_benchmark(
     if stage not in {"heldout", "repeat"}:
         raise typer.BadParameter("--stage must be heldout or repeat")
     parent = TournamentStagePlan.model_validate_json(parent_plan.read_text())
+    root = (
+        TournamentStagePlan.model_validate_json(root_plan.read_text())
+        if root_plan is not None
+        else None
+    )
     quality_report = BenchmarkQualityReport.model_validate_json(report.read_text())
     benchmark_suite = BenchmarkSuite.load(suite)
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
@@ -208,12 +219,15 @@ def advance_benchmark(
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
     plan = TournamentPlanner().plan_advance(
         parent=parent,
+        root=root,
         report=quality_report,
         suite=benchmark_suite,
         fixtures=prompt_fixtures,
         catalog=catalog,
         next_stage=stage,
     )
+    if output.exists() and any(output.iterdir()):
+        raise typer.BadParameter("Output directory already contains frozen evidence")
     output.mkdir(parents=True, exist_ok=True)
     plan_path = output / "plan.json"
     plan_path.write_text(plan.model_dump_json(indent=2) + "\n")
@@ -270,8 +284,27 @@ def run_benchmark(
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
     if catalog_snapshot is not None:
         catalog = _load_catalog_snapshot(catalog_snapshot)
+    elif tournament_plan:
+        sibling_catalog = plan_path.parent / "catalog.json"
+        if not sibling_catalog.is_file():
+            raise typer.BadParameter(
+                "Tournament execution requires its frozen sibling catalog.json"
+            )
+        catalog = _load_catalog_snapshot(sibling_catalog)
     else:
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
+    output.mkdir(parents=True, exist_ok=True)
+    frozen_plan_path = output / "plan.json"
+    if frozen_plan_path.exists():
+        if json.loads(frozen_plan_path.read_text()) != plan_payload:
+            raise typer.BadParameter("Output directory contains a different frozen plan")
+    else:
+        if any(output.iterdir()):
+            raise typer.BadParameter(
+                "Nonempty output directory has no matching frozen plan"
+            )
+        frozen_plan_path.write_text(plan_path.read_text())
+        os.chmod(frozen_plan_path, 0o600)
     claw_config = load_config(config)
     client = LLMClient(config=claw_config.llm)
     batch_client = OpenRouterBatchClient(api_key=client.api_key)
@@ -285,6 +318,7 @@ def run_benchmark(
                 client=client,
                 batch_client=batch_client,
                 run_dir=output,
+                budget_usd=budget_usd,
             )
             if tournament_plan:
                 return await runner.run_calls(
@@ -300,11 +334,6 @@ def run_benchmark(
             await client.close()
             await batch_client.close()
 
-    output.mkdir(parents=True, exist_ok=True)
-    frozen_plan_path = output / "plan.json"
-    if not frozen_plan_path.exists():
-        frozen_plan_path.write_text(plan_path.read_text())
-        os.chmod(frozen_plan_path, 0o600)
     summary = asyncio.run(execute())
     typer.echo(f"Completed: {summary.completed}")
     typer.echo(f"Resumed/skipped: {summary.skipped}")
@@ -371,6 +400,15 @@ def report_benchmark(
         fixtures=prompt_fixtures,
         expected_fixtures=expected_fixtures,
         existing_titles=existing_titles,
+        planned_calls=(
+            TournamentStagePlan.model_validate(plan_payload).calls
+            if "authorization_usd" in plan_payload
+            else (
+                BenchmarkPlan.model_validate(plan_payload).first_round_calls
+                if "first_round_calls" in plan_payload
+                else None
+            )
+        ),
     )
     content = (
         report.model_dump_json(indent=2) + "\n"
@@ -391,7 +429,9 @@ def _selection_report_markdown(report: TournamentSelectionReport) -> str:
         f"# CAM mining-model tournament: {report.final_run_id}",
         "",
         f"Tournament spend: ${report.tournament_spend_usd:.6f}",
-        f"Cumulative authorized spend: ${report.cumulative_spend_usd:.6f} / "
+        f"Cumulative actual spend: ${report.cumulative_spend_usd:.6f}",
+        f"Conservative cumulative maximum: "
+        f"${report.conservative_cumulative_maximum_usd:.6f} / "
         f"${report.authorization_usd:.2f}",
         "",
         "| Role | Candidate | Reason | Promotion command |",

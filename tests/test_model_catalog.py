@@ -99,6 +99,19 @@ def test_catalog_digest_is_stable_and_changes_with_material_data(payload: dict) 
     assert third.digest != first.digest
 
 
+def test_normalized_catalog_rejects_tampered_entry_or_full_digest(payload: dict) -> None:
+    catalog = ModelCatalog.from_payload(payload)
+    catalog.verify_digests()
+    model_id = "openai/gpt-5.6-luna"
+    entries = dict(catalog.entries)
+    entries[model_id] = entries[model_id].model_copy(update={"name": "tampered"})
+
+    with pytest.raises(ValueError, match="entry digest mismatch"):
+        catalog.model_copy(update={"entries": entries}).verify_digests()
+    with pytest.raises(ValueError, match="catalog digest mismatch"):
+        catalog.model_copy(update={"digest": "tampered"}).verify_digests()
+
+
 def test_catalog_rejects_malformed_payloads_and_unknown_models(payload: dict) -> None:
     with pytest.raises(ValidationError):
         ModelCatalog.from_payload({"not_data": []})

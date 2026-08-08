@@ -73,6 +73,8 @@ def test_first_round_plan_prices_only_executable_calls_and_prior_spend() -> None
         plan.authorization_usd - plan.cumulative_maximum_cost_usd
     )
     assert plan.cumulative_maximum_cost_usd <= 5.0
+    assert set(plan.catalog_prices) == set(suite.candidates)
+    assert plan.catalog_prices["openai/gpt-5.6-luna"].completion_per_million > 0
     assert {call.stage for call in plan.calls} == {"first-round"}
     serialized = plan.model_dump_json()
     assert "private source" not in serialized
@@ -238,3 +240,115 @@ def test_heldout_advance_uses_eligible_rank_and_actual_parent_spend() -> None:
     assert heldout.excluded_candidates["moonshotai/kimi-k3"] == [
         "truncated_response"
     ]
+
+
+def test_advance_never_ranks_an_eligible_flag_with_missing_calls() -> None:
+    suite = BenchmarkSuite.load(Path("benchmarks/mining-v1.toml"))
+    parent = TournamentPlanner().plan_first_round(
+        suite,
+        _fixtures(),
+        _catalog(),
+        authorization_usd=5.0,
+        prior_spend_usd=2.0,
+    )
+    valid = _model_summary(
+        "openai/gpt-5.6-luna", floor=90, average=92, cost=0.02, findings=5
+    )
+    contradictory = _model_summary(
+        "moonshotai/kimi-k3", floor=100, average=100, cost=0.01, findings=5
+    ).model_copy(update={"completed_calls": 2, "eligible": True})
+    report = BenchmarkQualityReport(
+        run_id=parent.run_id,
+        expected_fixtures=3,
+        actual_cost_usd=0.1,
+        calls=[],
+        models=[valid, contradictory],
+    )
+
+    heldout = TournamentPlanner().plan_advance(
+        parent=parent,
+        report=report,
+        suite=suite,
+        fixtures=_fixtures(),
+        catalog=_catalog(),
+        next_stage="heldout",
+    )
+
+    assert heldout.selected_candidates == ["openai/gpt-5.6-luna"]
+    assert heldout.excluded_candidates["moonshotai/kimi-k3"] == [
+        "missing_expected_calls"
+    ]
+
+
+def test_repeat_advance_reuses_original_first_round_request_controls() -> None:
+    suite = BenchmarkSuite.load(Path("benchmarks/mining-v1.toml"))
+    fixtures = _fixtures()
+    catalog = _catalog()
+    first = TournamentPlanner().plan_first_round(
+        suite,
+        fixtures,
+        catalog,
+        authorization_usd=5.0,
+        prior_spend_usd=2.0,
+    )
+    finalists = [
+        _model_summary(
+            "openai/gpt-5.6-luna", floor=92, average=94, cost=0.02, findings=8
+        ),
+        _model_summary(
+            "z-ai/glm-5.2", floor=90, average=93, cost=0.01, findings=8
+        ),
+    ]
+    first_report = BenchmarkQualityReport(
+        run_id=first.run_id,
+        expected_fixtures=3,
+        actual_cost_usd=0.1,
+        calls=[],
+        models=finalists,
+    )
+    heldout = TournamentPlanner().plan_advance(
+        parent=first,
+        report=first_report,
+        suite=suite,
+        fixtures=fixtures,
+        catalog=catalog,
+        next_stage="heldout",
+    )
+    heldout_report = BenchmarkQualityReport(
+        run_id=heldout.run_id,
+        expected_fixtures=2,
+        actual_cost_usd=0.1,
+        calls=[],
+        models=[
+            summary.model_copy(update={"completed_calls": 2}) for summary in finalists
+        ],
+    )
+
+    repeat = TournamentPlanner().plan_advance(
+        parent=heldout,
+        root=first,
+        report=heldout_report,
+        suite=suite,
+        fixtures=fixtures,
+        catalog=catalog,
+        next_stage="repeat",
+    )
+
+    assert repeat.stage == "repeat"
+    assert {call.fixture_name for call in repeat.calls} == {"Codx_LoopKit"}
+    originals = {
+        (call.model_id, call.fixture_name): call for call in first.calls
+    }
+    for repeated in repeat.calls:
+        original = originals[(repeated.model_id, repeated.fixture_name)]
+        assert repeated.call_id != original.call_id
+        assert repeated.stage == "repeat"
+        assert repeated.prompt_sha256 == original.prompt_sha256
+        assert repeated.repo_content_sha256 == original.repo_content_sha256
+        assert repeated.catalog_digest == original.catalog_digest
+        assert repeated.maximum_input_tokens == original.maximum_input_tokens
+        assert repeated.maximum_output_tokens == original.maximum_output_tokens
+        assert repeated.maximum_cost_usd == original.maximum_cost_usd
+        assert repeated.parameters == original.parameters
+        assert repeated.reasoning_effort == original.reasoning_effort
+        assert repeated.transport == original.transport

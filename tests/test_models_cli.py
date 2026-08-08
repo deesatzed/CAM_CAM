@@ -255,6 +255,7 @@ def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     fixture_path = tmp_path / "fixtures.json"
     first_output = tmp_path / "first"
     heldout_output = tmp_path / "heldout"
+    repeat_output = tmp_path / "repeat"
     fixtures = []
     for name in ["Codx_LoopKit", "atomic-agent", "RedaktSafe", "OpenCLI", "OpenViking"]:
         fixtures.append(
@@ -311,6 +312,29 @@ def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     frozen_catalog = json.loads((first_output / "catalog.json").read_text())
     assert frozen_catalog["digest"] == parent["catalog_receipt"]["digest"]
     assert "openai/gpt-5.6-luna" in frozen_catalog["entries"]
+    duplicate_plan = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "plan",
+            str(suite_path),
+            "--stage",
+            "first-round",
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(catalog_path),
+            "--budget-usd",
+            "5",
+            "--prior-spend-usd",
+            "2",
+            "--output",
+            str(first_output),
+        ],
+    )
+    assert duplicate_plan.exit_code != 0
+    assert "already contains frozen evidence" in duplicate_plan.output
     report = BenchmarkQualityReport(
         run_id=parent["run_id"],
         expected_fixtures=3,
@@ -362,6 +386,54 @@ def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     assert heldout["stage"] == "heldout"
     assert heldout["parent_run_id"] == parent["run_id"]
     assert heldout["selected_candidates"] == ["openai/gpt-5.6-luna"]
+    heldout_report = report.model_copy(
+        update={
+            "run_id": heldout["run_id"],
+            "expected_fixtures": 2,
+            "actual_cost_usd": 0.01,
+            "models": [
+                report.models[0].model_copy(update={"completed_calls": 2})
+            ],
+        }
+    )
+    heldout_report_path = tmp_path / "heldout-quality-report.json"
+    heldout_report_path.write_text(heldout_report.model_dump_json())
+
+    repeated = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "advance",
+            str(heldout_output / "plan.json"),
+            "--root-plan",
+            str(first_output / "plan.json"),
+            "--report",
+            str(heldout_report_path),
+            "--stage",
+            "repeat",
+            "--suite",
+            str(suite_path),
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(first_output / "catalog.json"),
+            "--output",
+            str(repeat_output),
+        ],
+    )
+
+    assert repeated.exit_code == 0, repeated.output
+    repeat_plan = json.loads((repeat_output / "plan.json").read_text())
+    assert repeat_plan["stage"] == "repeat"
+    original = next(
+        call
+        for call in parent["calls"]
+        if call["model_id"] == "openai/gpt-5.6-luna"
+        and call["fixture_name"] == "Codx_LoopKit"
+    )
+    assert repeat_plan["calls"][0]["prompt_sha256"] == original["prompt_sha256"]
+    assert repeat_plan["calls"][0]["parameters"] == original["parameters"]
 
 
 def test_benchmark_fixtures_capture_production_prompts_without_model_calls(
@@ -491,6 +563,33 @@ def test_benchmark_run_executes_frozen_plan_with_exact_model(
     assert result.exit_code == 0, result.output
     assert "Completed: 1" in result.output
     assert called == ["openai/gpt-5.6-luna"]
+
+    different_plan = plan.model_copy(update={"run_id": "different-run"})
+    different_plan_path = tmp_path / "different-plan.json"
+    different_plan_path.write_text(different_plan.model_dump_json())
+    reused = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "run",
+            str(different_plan_path),
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(catalog_path),
+            "--output",
+            str(run_path),
+            "--limit",
+            "1",
+            "--model",
+            "openai/gpt-5.6-luna",
+        ],
+        env={"OPENROUTER_API_KEY": "test-key"},
+    )
+
+    assert reused.exit_code != 0
+    assert "different frozen plan" in reused.output
 
 
 def test_benchmark_report_emits_machine_readable_quality_summary(

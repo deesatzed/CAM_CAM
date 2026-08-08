@@ -106,3 +106,19 @@ Safety: every stage freezes exact prompt and catalog digests, persists the
 normalized catalog used for pricing, disables fallback, resumes completed
 receipts without double charging, reads the novelty corpus immutably, and never
 writes to `claw.db` or `model_profiles.toml`.
+
+## 2026-08-08: Failed benchmark calls are evidence, not automatic retries
+
+Decision: a normal resume never resubmits a call that already has either a
+completed or failed receipt. Provider-reported failed-call cost counts toward
+actual and cumulative spend. A failed call without a reconciled provider cost
+retains its entire frozen maximum as a conservative reserve.
+
+Reason: overwriting a failed receipt could both double charge a provider call
+and understate the remaining budget. Queued batches are especially sensitive
+because submission may succeed before polling times out.
+
+Safety: batch failures persist the submitted job ID and 30-day retention fact;
+exact planned call IDs, fixture hashes, catalog digests, and output-plan identity
+are validated before execution or scoring. Repeat trials must copy their root
+first-round call controls and are compared with that same model/fixture call.

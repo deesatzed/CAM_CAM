@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from claw.llm.client import LLMResponse
+from claw.models.batch import BatchJobError
 from claw.models.benchmark import (
     BenchmarkPlan,
     BenchmarkPlanner,
@@ -147,6 +148,15 @@ class RecordingBatchClient:
         )
 
 
+class FailedSubmittedBatchClient:
+    async def complete(self, **kwargs):
+        raise BatchJobError(
+            "submitted batch timed out",
+            job_id="batch-preserved",
+            status="timed_out",
+        )
+
+
 async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
     tmp_path: Path,
 ) -> None:
@@ -203,6 +213,43 @@ async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
     assert resumed_client.models == []
 
 
+async def test_runner_persists_failed_submitted_batch_id_without_retry(
+    tmp_path: Path,
+) -> None:
+    fixtures = _fixtures()
+    plan = _plan(fixtures)
+    first_batch_call = next(
+        call for call in plan.first_round_calls if call.transport == "batch-compatibility"
+    )
+    runner = BenchmarkRunner(
+        plan=plan,
+        fixtures=fixtures,
+        catalog=_catalog(),
+        client=RecordingClient(),
+        batch_client=FailedSubmittedBatchClient(),
+        run_dir=tmp_path,
+    )
+
+    with pytest.raises(BatchJobError):
+        await runner.run_first_round(limit=1)
+    receipt = json.loads(
+        (tmp_path / "receipts" / f"{first_batch_call.call_id}.json").read_text()
+    )
+
+    assert receipt["status"] == "failed"
+    assert receipt["batch_job_id"] == "batch-preserved"
+
+    resumed = await BenchmarkRunner(
+        plan=plan,
+        fixtures=fixtures,
+        catalog=_catalog(),
+        client=RecordingClient(),
+        batch_client=FailedSubmittedBatchClient(),
+        run_dir=tmp_path,
+    ).run_first_round(limit=1)
+    assert resumed.failed == 1
+
+
 async def test_runner_aborts_on_returned_model_drift(tmp_path: Path) -> None:
     fixtures = _fixtures()
     plan = _plan(fixtures)
@@ -221,6 +268,21 @@ async def test_runner_aborts_on_returned_model_drift(tmp_path: Path) -> None:
     assert failed["cost_usd"] == pytest.approx(0.0001)
     assert failed["returned_model"] == "unexpected/provider-model"
     assert (tmp_path / failed["response_path"]).is_file()
+
+    resumed_client = RecordingClient()
+    resumed = await BenchmarkRunner(
+        plan=plan,
+        fixtures=fixtures,
+        catalog=_catalog(),
+        client=resumed_client,
+        batch_client=RecordingBatchClient(),
+        run_dir=tmp_path,
+    ).run_first_round(limit=1)
+
+    assert resumed.completed == 0
+    assert resumed.failed == 1
+    assert resumed.actual_cost_usd == pytest.approx(0.0001)
+    assert resumed_client.models == []
 
 
 async def test_runner_can_resume_a_selected_model_lane(tmp_path: Path) -> None:

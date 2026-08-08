@@ -404,6 +404,7 @@ class BenchmarkRunner:
         client,
         run_dir: Path,
         batch_client=None,
+        budget_usd: float | None = None,
     ) -> None:
         self.plan = plan
         self.fixtures = {fixture.repo_name: fixture for fixture in fixtures}
@@ -411,11 +412,25 @@ class BenchmarkRunner:
         self.client = client
         self.batch_client = batch_client
         self.run_dir = run_dir
-        self._stage_budget_usd = (
-            plan.authorization_usd - plan.prior_spend_usd
-            if hasattr(plan, "authorization_usd")
-            else plan.budget_usd
-        )
+        if hasattr(plan, "authorization_usd"):
+            effective_authorization = min(
+                plan.authorization_usd,
+                budget_usd if budget_usd is not None else plan.authorization_usd,
+            )
+            self._stage_budget_usd = effective_authorization - plan.prior_spend_usd
+        else:
+            self._stage_budget_usd = min(
+                plan.budget_usd,
+                budget_usd if budget_usd is not None else plan.budget_usd,
+            )
+        if self._stage_budget_usd < 0:
+            raise ValueError("Prior spend already exceeds the runtime budget cap")
+        self.catalog.verify_digests()
+        if self.catalog.digest != plan.catalog_receipt.digest:
+            raise ValueError("Full catalog drift from the frozen plan")
+        for model_id, digest in plan.catalog_receipt.model_digests.items():
+            if self.catalog.require(model_id).catalog_digest != digest:
+                raise ValueError(f"Catalog drift for model {model_id}")
         self.ledger = BudgetLedger(budget_usd=self._stage_budget_usd)
 
     def _validate_call(self, call: PlannedCall) -> MiningPromptFixture:
@@ -452,10 +467,7 @@ class BenchmarkRunner:
     def _load_existing_receipt(self, path: Path) -> CallReceipt | None:
         if not path.exists():
             return None
-        receipt = CallReceipt.model_validate_json(path.read_text())
-        if receipt.status != "completed":
-            return None
-        return receipt
+        return CallReceipt.model_validate_json(path.read_text())
 
     async def run_calls(
         self,
@@ -491,9 +503,12 @@ class BenchmarkRunner:
                     or existing.prompt_sha256 != call.prompt_sha256
                 ):
                     raise ValueError(f"Receipt drift for call {call.call_id}")
-                skipped += 1
                 self.ledger.actual_cost_usd += existing.cost_usd
                 receipt_paths.append(str(receipt_path))
+                if existing.status == "completed":
+                    skipped += 1
+                else:
+                    failed += 1
                 continue
 
             self.ledger.authorize(call.maximum_cost_usd)
@@ -576,6 +591,9 @@ class BenchmarkRunner:
                 )
                 completed += 1
             except Exception as exc:
+                batch_job_id = getattr(exc, "job_id", batch_job_id)
+                if batch_job_id is not None and retention_days is None:
+                    retention_days = 30
                 if response is not None and response_path is None:
                     response_path = self.run_dir / "responses" / f"{call.call_id}.txt"
                     _atomic_write(response_path, response.content)

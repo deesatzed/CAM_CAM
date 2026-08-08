@@ -1161,11 +1161,25 @@ cam models benchmark report data/model_benchmarks/current/first-round \
   --output data/model_benchmarks/current/first-round/quality-report.json
 ```
 
-If eligible models remain, use `cam models benchmark advance --stage heldout`,
-run/report that frozen plan, then repeat with `--stage repeat`. Finally,
-`cam models benchmark select` produces separate quality, budget, fast, and
-batch candidates plus explicit `cam models set` commands. It never changes
-`model_profiles.toml`; promotion remains a deliberate operator action.
+If eligible models remain, freeze the held-out stage without spending:
+
+```bash
+cam models benchmark advance data/model_benchmarks/current/first-round/plan.json \
+  --report data/model_benchmarks/current/first-round/quality-report.json \
+  --stage heldout \
+  --suite benchmarks/mining-v1.toml \
+  --fixtures data/model_benchmarks/current/fixtures.json \
+  --output data/model_benchmarks/current/heldout
+```
+
+Run and report that plan exactly as above, using its sibling `catalog.json`.
+For the repeat stage, advance the held-out plan with `--stage repeat` and add
+`--root-plan data/model_benchmarks/current/first-round/plan.json`; use the
+first-round `catalog.json` so the original request controls and prices remain
+identical. Finally, `cam models benchmark select` produces separate quality,
+budget, fast, and batch candidates plus explicit `cam models set` commands. It
+never changes `model_profiles.toml`; promotion remains a deliberate operator
+action.
 
 ### Google Gemini Embeddings
 All semantic search uses `gemini-embedding-2-preview` (384 dimensions) via Google API. This powers novelty scoring, knowledge retrieval, and cross-domain synergy detection. For local-only mode, CAM falls back to sentence-transformers or MLX embeddings — no cloud needed.

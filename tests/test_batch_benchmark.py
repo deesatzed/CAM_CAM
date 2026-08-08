@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from claw.llm.client import LLMMessage
 from claw.models.batch import (
     BatchCompatibilityReceipt,
+    BatchJobError,
     OpenRouterBatchClient,
     _parse_batch_result,
 )
@@ -180,3 +181,26 @@ async def test_openrouter_batch_client_reports_terminal_failure(status: str) -> 
                 custom_id="call-bad",
                 max_tokens=100,
             )
+
+
+async def test_batch_timeout_preserves_submitted_job_id() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"id": "batch-timeout", "status": "validating"})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = OpenRouterBatchClient(
+            api_key="test-key",
+            http_client=http_client,
+            poll_interval_seconds=0,
+            timeout_seconds=-1,
+        )
+        with pytest.raises(BatchJobError) as captured:
+            await client.complete(
+                messages=[LLMMessage(role="user", content="mine")],
+                requested_model="google/gemini-3.6-flash:batch",
+                custom_id="call-timeout",
+                max_tokens=100,
+            )
+
+    assert captured.value.job_id == "batch-timeout"
+    assert captured.value.status == "timed_out"
