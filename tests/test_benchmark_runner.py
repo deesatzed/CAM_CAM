@@ -62,7 +62,15 @@ class RecordingClient:
         self.models: list[str] = []
         self.returned_model = returned_model
 
-    async def complete(self, messages, model, temperature, max_tokens, response_format=None):
+    async def complete(
+        self,
+        messages,
+        model,
+        temperature,
+        max_tokens,
+        response_format=None,
+        include_temperature=True,
+    ):
         self.models.append(model)
         return LLMResponse(
             content="[]",

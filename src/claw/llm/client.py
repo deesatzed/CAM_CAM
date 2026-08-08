@@ -106,6 +106,7 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         response_format: Optional[dict] = None,
+        include_temperature: bool = True,
     ) -> LLMResponse:
         """Send a chat completion request to OpenRouter."""
         if not self.api_key:
@@ -114,11 +115,12 @@ class LLMClient:
         payload: dict[str, Any] = {
             "model": model,
             "messages": [m.to_dict() for m in messages],
-            "temperature": (
-                temperature if temperature is not None else self.config.default_temperature
-            ),
             "max_tokens": max_tokens or self.config.default_max_tokens,
         }
+        if include_temperature:
+            payload["temperature"] = (
+                temperature if temperature is not None else self.config.default_temperature
+            )
         if response_format:
             payload["response_format"] = response_format
 

@@ -68,6 +68,37 @@ class TestParseJson:
 
 
 class TestLLMClientCooldown:
+    async def test_complete_can_omit_unsupported_temperature_parameter(self):
+        class FakeHTTPClient:
+            is_closed = False
+
+            def __init__(self):
+                self.payload = None
+
+            async def post(self, url, json, headers):
+                self.payload = json
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-batch",
+                        "model": "google/gemini-3.6-flash:batch",
+                        "choices": [{"message": {"content": "[]"}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12},
+                    },
+                )
+
+        fake = FakeHTTPClient()
+        client = LLMClient(api_key="test-key")
+        client._client = fake
+        await client.complete(
+            [LLMMessage("user", "hello")],
+            model="google/gemini-3.6-flash:batch",
+            include_temperature=False,
+        )
+
+        assert "temperature" not in fake.payload
+
     async def test_response_parses_openrouter_usage_and_cost_receipt(self):
         class FakeHTTPClient:
             is_closed = False

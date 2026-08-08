@@ -169,6 +169,7 @@ class CallReceipt(BaseModel):
     cached_input_tokens: int = 0
     cost_usd: float = 0.0
     cost_source: str = "estimated"
+    transport: str = "chat-completions"
     duration_seconds: float = 0.0
     response_path: str | None = None
     error: str | None = None
@@ -463,6 +464,7 @@ class BenchmarkRunner:
                         if "structured_outputs" in call.parameters
                         else None
                     ),
+                    include_temperature="temperature" in call.parameters,
                 )
                 self._validate_returned_model(call.model_id, response.model, entry)
                 if response.cost_usd is None:
@@ -493,6 +495,11 @@ class BenchmarkRunner:
                     cached_input_tokens=response.cached_input_tokens,
                     cost_usd=actual_cost,
                     cost_source=cost_source,
+                    transport=(
+                        "chat-completions-batch-variant"
+                        if entry.is_batch
+                        else "chat-completions"
+                    ),
                     duration_seconds=time.monotonic() - started,
                     response_path=str(response_path.relative_to(self.run_dir)),
                 )
