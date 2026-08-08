@@ -6,7 +6,9 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from claw.cli import app
-from claw.models.benchmark import MiningPromptFixture
+from claw.llm.client import LLMClient, LLMResponse
+from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
+from claw.models.catalog import ModelCatalog
 
 runner = CliRunner()
 
@@ -240,3 +242,130 @@ def test_benchmark_plan_is_no_spend_and_writes_hashed_manifest(tmp_path: Path) -
     plan_text = plan_path.read_text()
     assert "private prompt" not in plan_text
     assert "private source" not in plan_text
+
+
+def test_benchmark_fixtures_capture_production_prompts_without_model_calls(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path / "repos"
+    repo_root.mkdir()
+    names = ["Codx_LoopKit", "atomic-agent", "RedaktSafe", "OpenCLI", "OpenViking"]
+    for name in names:
+        repo = repo_root / name
+        repo.mkdir()
+        (repo / "README.md").write_text(f"# {name}\n\nRetry queue agent architecture.\n")
+        (repo / "main.py").write_text("def run():\n    return True\n" + "# padding\n" * 100)
+        (repo / "test_main.py").write_text(
+            "def test_run():\n    assert True\n" + "# test padding\n" * 100
+        )
+    output_path = tmp_path / "fixtures.json"
+    suite_path = Path(__file__).parent.parent / "benchmarks" / "mining-v1.toml"
+    config_path = Path(__file__).parent.parent / "claw.toml"
+
+    result = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "fixtures",
+            str(suite_path),
+            "--repo-root",
+            str(repo_root),
+            "--config",
+            str(config_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "NO MODEL CALLS MADE" in result.output
+    fixtures = json.loads(output_path.read_text())
+    assert {item["repo_name"] for item in fixtures} == set(names)
+    assert all(item["prompt_sha256"] for item in fixtures)
+
+
+def test_benchmark_run_executes_frozen_plan_with_exact_model(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    import hashlib
+
+    suite_path = Path(__file__).parent.parent / "benchmarks" / "mining-v1.toml"
+    catalog_path = Path(__file__).parent / "fixtures" / "openrouter_models.json"
+    catalog_payload = json.loads(catalog_path.read_text())
+    catalog = ModelCatalog.from_payload(catalog_payload)
+    fixtures = []
+    for name in ["Codx_LoopKit", "atomic-agent", "RedaktSafe", "OpenCLI", "OpenViking"]:
+        prompt = f"mine {name}"
+        content = f"content {name}"
+        fixtures.append(
+            MiningPromptFixture(
+                repo_path=f"/repo/{name}",
+                repo_name=name,
+                git_head="a" * 40,
+                dirty_paths=[],
+                brain="python",
+                prompt=prompt,
+                prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
+                repo_content=content,
+                repo_content_sha256=hashlib.sha256(content.encode()).hexdigest(),
+                source_manifest=["README.md", "main.py"],
+                repo_bytes=2000,
+                file_count=2,
+                estimated_tokens=100,
+                token_budget=100,
+                domain_info={"complexity": "small"},
+                overlap={},
+            )
+        )
+    plan = BenchmarkPlanner().plan(
+        BenchmarkSuite.load(suite_path),
+        fixtures,
+        catalog,
+        budget_usd=5.0,
+    )
+    plan_path = tmp_path / "plan.json"
+    fixture_path = tmp_path / "fixtures.json"
+    run_path = tmp_path / "run"
+    plan_path.write_text(plan.model_dump_json())
+    fixture_path.write_text(
+        json.dumps([fixture.model_dump(mode="json") for fixture in fixtures])
+    )
+    called: list[str] = []
+
+    async def fake_complete(self: LLMClient, messages, model, **kwargs) -> LLMResponse:
+        called.append(model)
+        return LLMResponse(
+            content="[]",
+            model=model,
+            input_tokens=10,
+            output_tokens=2,
+            tokens_used=12,
+            cost_usd=0.00001,
+            cost_source="provider",
+        )
+
+    monkeypatch.setattr(LLMClient, "complete", fake_complete)
+    result = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "run",
+            str(plan_path),
+            "--fixtures",
+            str(fixture_path),
+            "--catalog-snapshot",
+            str(catalog_path),
+            "--output",
+            str(run_path),
+            "--limit",
+            "1",
+        ],
+        env={"OPENROUTER_API_KEY": "test-key"},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Completed: 1" in result.output
+    assert called == [plan.first_round_calls[0].model_id]

@@ -13,7 +13,15 @@ from rich.console import Console
 from rich.table import Table
 
 from claw.core.config import load_config
-from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
+from claw.llm.client import LLMClient
+from claw.miner import RepoMiner
+from claw.models.benchmark import (
+    BenchmarkPlan,
+    BenchmarkPlanner,
+    BenchmarkRunner,
+    BenchmarkSuite,
+    MiningPromptFixture,
+)
 from claw.models.catalog import ModelCatalog, OpenRouterCatalogClient
 from claw.models.profiles import (
     PromotionReceipt,
@@ -47,6 +55,68 @@ def _emit_json(value: object) -> None:
     typer.echo(json.dumps(value, indent=2, sort_keys=True))
 
 
+class _ReadOnlyPromptRepository:
+    """Minimal read-only repository surface for neutral benchmark prompt capture."""
+
+    async def get_methodologies_by_tag(self, _tag: str, limit: int = 50) -> list:
+        return []
+
+
+@benchmark_app.command("fixtures")
+def capture_benchmark_fixtures(
+    suite: Path,
+    repo_root: list[Path] = typer.Option(..., "--repo-root"),
+    config: Path = typer.Option(Path("claw.toml"), "--config", "-c"),
+    output: Path = typer.Option(..., "--output"),
+) -> None:
+    """Capture exact production prompts with neutral KB overlap and no model calls."""
+    benchmark_suite = BenchmarkSuite.load(suite)
+    claw_config = load_config(config)
+
+    async def capture() -> list[MiningPromptFixture]:
+        miner = RepoMiner(
+            repository=_ReadOnlyPromptRepository(),
+            llm_client=None,
+            semantic_memory=None,
+            config=claw_config,
+            scan_ledger_path=output.parent / ".benchmark-fixture-ledger.json",
+        )
+        captured: list[MiningPromptFixture] = []
+        for specification in benchmark_suite.fixtures:
+            matches = [
+                root / specification.name
+                for root in repo_root
+                if (root / specification.name).is_dir()
+            ]
+            if len(matches) != 1:
+                raise ValueError(
+                    f"Expected exactly one repo named {specification.name}, found {len(matches)}"
+                )
+            captured.append(
+                await miner.prepare_mining_prompt(
+                    matches[0],
+                    specification.name,
+                    specification.language,
+                    set(),
+                )
+            )
+        return captured
+
+    fixtures = asyncio.run(capture())
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps(
+            [fixture.model_dump(mode="json") for fixture in fixtures],
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    os.chmod(output, 0o600)
+    typer.echo("NO MODEL CALLS MADE")
+    typer.echo(f"Captured {len(fixtures)} frozen mining prompts: {output}")
+
+
 @benchmark_app.command("plan")
 def plan_benchmark(
     suite: Path,
@@ -77,6 +147,57 @@ def plan_benchmark(
     typer.echo(f"Run ID: {plan.run_id}")
     typer.echo(f"Worst-case reserved spend: ${plan.maximum_cost_usd:.4f} / ${budget_usd:.2f}")
     typer.echo(f"Plan: {plan_path}")
+
+
+@benchmark_app.command("run")
+def run_benchmark(
+    plan_path: Path,
+    fixtures: Path = typer.Option(..., "--fixtures"),
+    catalog_snapshot: Path | None = typer.Option(None, "--catalog-snapshot"),
+    output: Path = typer.Option(..., "--output"),
+    config: Path = typer.Option(Path("claw.toml"), "--config", "-c"),
+    budget_usd: float | None = typer.Option(None, "--budget-usd", min=0.01),
+    no_fallback: bool = typer.Option(True, "--no-fallback/--allow-fallback"),
+    limit: int | None = typer.Option(None, "--limit", min=1),
+) -> None:
+    """Execute a frozen first round with exact models and per-call receipts."""
+    plan = BenchmarkPlan.model_validate_json(plan_path.read_text())
+    if not no_fallback or not plan.no_fallback:
+        raise typer.BadParameter("Benchmark execution requires --no-fallback")
+    if budget_usd is not None:
+        if plan.maximum_cost_usd > budget_usd:
+            raise typer.BadParameter(
+                f"Frozen maximum ${plan.maximum_cost_usd:.4f} exceeds run cap ${budget_usd:.4f}"
+            )
+        plan = plan.model_copy(update={"budget_usd": min(plan.budget_usd, budget_usd)})
+    fixture_adapter = TypeAdapter(list[MiningPromptFixture])
+    prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
+    if catalog_snapshot is not None:
+        catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
+    else:
+        catalog = asyncio.run(OpenRouterCatalogClient().fetch())
+    claw_config = load_config(config)
+    client = LLMClient(config=claw_config.llm)
+
+    async def execute():
+        try:
+            runner = BenchmarkRunner(
+                plan=plan,
+                fixtures=prompt_fixtures,
+                catalog=catalog,
+                client=client,
+                run_dir=output,
+            )
+            return await runner.run_first_round(limit=limit)
+        finally:
+            await client.close()
+
+    summary = asyncio.run(execute())
+    typer.echo(f"Completed: {summary.completed}")
+    typer.echo(f"Resumed/skipped: {summary.skipped}")
+    typer.echo(f"Failed: {summary.failed}")
+    typer.echo(f"Actual recorded spend: ${summary.actual_cost_usd:.6f}")
+    typer.echo(f"Receipts: {output / 'receipts'}")
 
 
 @models_app.command("current")
