@@ -67,6 +67,18 @@ def _emit_json(value: object) -> None:
     typer.echo(json.dumps(value, indent=2, sort_keys=True))
 
 
+def _load_catalog_snapshot(path: Path) -> ModelCatalog:
+    payload = json.loads(path.read_text())
+    if "entries" in payload and "digest" in payload:
+        return ModelCatalog.model_validate(payload)
+    return ModelCatalog.from_payload(payload)
+
+
+def _write_catalog_snapshot(path: Path, catalog: ModelCatalog) -> None:
+    path.write_text(catalog.model_dump_json(indent=2) + "\n")
+    os.chmod(path, 0o600)
+
+
 class _ReadOnlyPromptRepository:
     """Minimal read-only repository surface for neutral benchmark prompt capture."""
 
@@ -146,7 +158,7 @@ def plan_benchmark(
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
     if catalog_snapshot is not None:
-        catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
+        catalog = _load_catalog_snapshot(catalog_snapshot)
     else:
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
     plan = TournamentPlanner().plan_first_round(
@@ -160,6 +172,7 @@ def plan_benchmark(
     plan_path = output / "plan.json"
     plan_path.write_text(plan.model_dump_json(indent=2) + "\n")
     os.chmod(plan_path, 0o600)
+    _write_catalog_snapshot(output / "catalog.json", catalog)
     typer.echo("NO PAID CALLS MADE")
     typer.echo(f"Run ID: {plan.run_id}")
     typer.echo(f"Stage: {plan.stage}")
@@ -191,7 +204,7 @@ def advance_benchmark(
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
     if catalog_snapshot is not None:
-        catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
+        catalog = _load_catalog_snapshot(catalog_snapshot)
     else:
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
     plan = TournamentPlanner().plan_advance(
@@ -206,6 +219,7 @@ def advance_benchmark(
     plan_path = output / "plan.json"
     plan_path.write_text(plan.model_dump_json(indent=2) + "\n")
     os.chmod(plan_path, 0o600)
+    _write_catalog_snapshot(output / "catalog.json", catalog)
     typer.echo("NO PAID CALLS MADE")
     typer.echo(f"Run ID: {plan.run_id}")
     typer.echo(f"Stage: {plan.stage}")
@@ -256,7 +270,7 @@ def run_benchmark(
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
     if catalog_snapshot is not None:
-        catalog = ModelCatalog.from_payload(json.loads(catalog_snapshot.read_text()))
+        catalog = _load_catalog_snapshot(catalog_snapshot)
     else:
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
     claw_config = load_config(config)

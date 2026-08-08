@@ -308,6 +308,9 @@ def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     parent = json.loads((first_output / "plan.json").read_text())
     assert parent["stage"] == "first-round"
     assert parent["prior_spend_usd"] == 2
+    frozen_catalog = json.loads((first_output / "catalog.json").read_text())
+    assert frozen_catalog["digest"] == parent["catalog_receipt"]["digest"]
+    assert "openai/gpt-5.6-luna" in frozen_catalog["entries"]
     report = BenchmarkQualityReport(
         run_id=parent["run_id"],
         expected_fixtures=3,
