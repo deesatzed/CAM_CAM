@@ -133,3 +133,29 @@ Assumptions:
   22 skipped, and four unrelated/baseline failures (LanceDB API mismatch,
   committed `claw.db` versus stale `data/claw.db` assertion, and two live
   ganglion tests unable to open external databases).
+
+## 2026-08-08 Adaptive mining-model tournament harness
+
+- Added immutable stage plans for `first-round`, `heldout`, and `repeat`
+  execution under one cumulative authorization.
+- Changed new tournament planning to price only executable calls in the current
+  stage. Existing historical `BenchmarkPlan` artifacts remain readable.
+- Added deterministic advancement using zero-hard-failure eligibility, quality
+  floor, average quality, cost per accepted finding, total cost, and stable
+  tie-breakers.
+- Added adaptive candidate contraction when fewer finalists fit the remaining
+  budget; the planner never increases the authorization.
+- Generalized execution to run any frozen stage with exact models, no fallback,
+  returned-model validation, redacted receipts, and resume accounting that does
+  not double charge completed calls.
+- Added `cam models benchmark advance` and stage-aware `plan`, `run`, and
+  `report` behavior.
+- Added `cam models benchmark select`, which emits distinct quality, budget,
+  fast, and batch candidates and explicit promotion commands without changing
+  a profile.
+- Persisted the normalized catalog snapshot beside each plan so execution uses
+  the exact availability, capabilities, and prices that were authorized.
+- Current implementation verification: 34 focused tournament, CLI, scoring,
+  and runner tests pass. No paid tournament calls have been made yet.
+- The hard cumulative authorization remains `$5.00`; conservative prior spend
+  is `$2.0348919774`, leaving `$2.9651080226` before the corrected tournament.

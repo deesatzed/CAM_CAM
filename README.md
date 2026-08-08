@@ -1126,6 +1126,47 @@ CAM_MODEL_GEMINI=google/gemini-2.5-flash           # Repo comprehension
 CAM_MODEL_GROK=x-ai/grok-4-1-fast-non-reasoning   # Quick fixes, web lookup
 ```
 
+#### Compare current mining models safely
+
+CAM's adaptive tournament uses current OpenRouter availability and prices,
+production mining prompts, held-out repositories, and repeat trials. Planning
+and advancement make no paid calls. Running a stage uses exact models with no
+fallback and stops before the cumulative authorization can be exceeded.
+
+```bash
+# 1. Capture the five production prompts without calling a model.
+cam models benchmark fixtures benchmarks/mining-v1.toml \
+  --repo-root /Volumes/WS4TB/repo622sn \
+  --repo-root /Volumes/WS4TB/waswiki/repos2mine \
+  --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml \
+  --output data/model_benchmarks/current/fixtures.json
+
+# 2. Freeze current models/prices and the first-round budget. No paid calls.
+cam models benchmark plan benchmarks/mining-v1.toml \
+  --fixtures data/model_benchmarks/current/fixtures.json \
+  --budget-usd 5 \
+  --prior-spend-usd 2.0348919774 \
+  --output data/model_benchmarks/current/first-round
+
+# 3. Execute the frozen stage, then score it against the live corpus read-only.
+cam models benchmark run data/model_benchmarks/current/first-round/plan.json \
+  --fixtures data/model_benchmarks/current/fixtures.json \
+  --catalog-snapshot data/model_benchmarks/current/first-round/catalog.json \
+  --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml \
+  --output data/model_benchmarks/current/first-round
+cam models benchmark report data/model_benchmarks/current/first-round \
+  --fixtures data/model_benchmarks/current/fixtures.json \
+  --db /Volumes/WS4TB/repo622sn/CAM_CAM/claw.db \
+  --format json \
+  --output data/model_benchmarks/current/first-round/quality-report.json
+```
+
+If eligible models remain, use `cam models benchmark advance --stage heldout`,
+run/report that frozen plan, then repeat with `--stage repeat`. Finally,
+`cam models benchmark select` produces separate quality, budget, fast, and
+batch candidates plus explicit `cam models set` commands. It never changes
+`model_profiles.toml`; promotion remains a deliberate operator action.
+
 ### Google Gemini Embeddings
 All semantic search uses `gemini-embedding-2-preview` (384 dimensions) via Google API. This powers novelty scoring, knowledge retrieval, and cross-domain synergy detection. For local-only mode, CAM falls back to sentence-transformers or MLX embeddings — no cloud needed.
 

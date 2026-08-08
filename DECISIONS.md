@@ -85,3 +85,24 @@ Safety: OpenRouter batch jobs use the provider's queued API and record its
 30-day input/result retention. Rolling aliases may resolve only within the
 same provider and model family. Benchmark execution never falls back, writes
 to `claw.db`, or changes a model profile automatically.
+
+## 2026-08-08: Authorize mining-model comparisons one stage at a time
+
+Decision: replace the all-future-stages reserve with an adaptive tournament.
+The first round compares every configured candidate. Only eligible models may
+advance to held-out and repeat stages, and every later plan must fit the
+original cumulative authorization after provider-reported prior spend.
+
+Reason: the earlier planner reserved the most expensive possible top four and
+top two before knowing which models were viable. That prevented a corrected
+first round from running inside the remaining authorization even though later
+spend could be selected safely from first-round evidence.
+
+Selection: reports expose separate quality, budget, synchronous-speed, and
+queued-batch candidates. They do not collapse different operator priorities
+into one opaque winner. `cam models set` remains the only promotion boundary.
+
+Safety: every stage freezes exact prompt and catalog digests, persists the
+normalized catalog used for pricing, disables fallback, resumes completed
+receipts without double charging, reads the novelty corpus immutably, and never
+writes to `claw.db` or `model_profiles.toml`.

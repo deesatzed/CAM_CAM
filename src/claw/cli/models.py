@@ -18,7 +18,6 @@ from claw.miner import RepoMiner
 from claw.models.batch import OpenRouterBatchClient
 from claw.models.benchmark import (
     BenchmarkPlan,
-    BenchmarkPlanner,
     BenchmarkRunner,
     BenchmarkSuite,
     MiningPromptFixture,
