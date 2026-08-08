@@ -106,6 +106,7 @@ class PlannedCall(BaseModel):
     maximum_output_tokens: int
     maximum_cost_usd: float
     parameters: list[str]
+    reasoning_effort: str | None = None
     transport: str = "chat-completions"
 
 
@@ -215,7 +216,7 @@ class BenchmarkPlanner:
     """Create a no-spend comparison plan with a conservative hard cost bound."""
 
     _REQUESTED_PARAMETERS = frozenset(
-        {"max_tokens", "temperature", "seed", "structured_outputs"}
+        {"max_tokens", "temperature", "seed", "reasoning"}
     )
 
     def plan(
@@ -281,6 +282,12 @@ class BenchmarkPlanner:
                         maximum_cost_usd=cost,
                         parameters=sorted(
                             self._REQUESTED_PARAMETERS & entry.supported_parameters
+                        ),
+                        reasoning_effort=(
+                            entry.reasoning.lowest_supported_effort()
+                            if entry.reasoning is not None
+                            and "reasoning" in entry.supported_parameters
+                            else None
                         ),
                         transport=(
                             "batch-compatibility" if entry.is_batch else "chat-completions"
@@ -484,9 +491,9 @@ class BenchmarkRunner:
             reconciled = False
             try:
                 entry = self.catalog.require(call.model_id)
-                response_format = (
-                    {"type": "json_object"}
-                    if "structured_outputs" in call.parameters
+                reasoning = (
+                    {"effort": call.reasoning_effort, "exclude": True}
+                    if call.reasoning_effort is not None
                     else None
                 )
                 if entry.is_batch:
@@ -497,7 +504,8 @@ class BenchmarkRunner:
                         requested_model=call.model_id,
                         custom_id=call.call_id,
                         max_tokens=call.maximum_output_tokens,
-                        response_format=response_format,
+                        response_format=None,
+                        reasoning=reasoning,
                         seed=0 if "seed" in call.parameters else None,
                     )
                     response = batch.response
@@ -509,8 +517,10 @@ class BenchmarkRunner:
                         model=call.model_id,
                         temperature=0.3 if "temperature" in call.parameters else None,
                         max_tokens=call.maximum_output_tokens,
-                        response_format=response_format,
+                        response_format=None,
                         include_temperature="temperature" in call.parameters,
+                        reasoning=reasoning,
+                        seed=0 if "seed" in call.parameters else None,
                     )
                 if response.cost_usd is None:
                     actual_cost = _maximum_call_cost(

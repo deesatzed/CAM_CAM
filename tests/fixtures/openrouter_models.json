@@ -12,7 +12,8 @@
         "input_cache_read": "0.00000001",
         "overrides": [{"min_prompt_tokens": 272000, "prompt": "0.0000002", "completion": "0.0000009"}]
       },
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs"],
+      "reasoning": {"mandatory": false, "default_enabled": true, "supported_efforts": ["max", "xhigh", "high", "medium", "low", "none"], "default_effort": "medium"},
       "expiration_date": null
     },
     {
@@ -22,7 +23,8 @@
       "context_length": 1050000,
       "top_provider": {"max_completion_tokens": 128000},
       "pricing": {"prompt": "0.000001", "completion": "0.000006"},
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs"],
+      "reasoning": {"mandatory": false, "default_enabled": true, "supported_efforts": ["max", "xhigh", "high", "medium", "low", "none"], "default_effort": "medium"},
       "expiration_date": null
     },
     {
@@ -32,7 +34,8 @@
       "context_length": 1048576,
       "top_provider": {"max_completion_tokens": 128000},
       "pricing": {"prompt": "0.0000002058", "completion": "0.0000006468"},
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs", "temperature"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs", "temperature"],
+      "reasoning": {"mandatory": false, "default_enabled": true, "supported_efforts": ["xhigh", "high"], "default_effort": "high"},
       "expiration_date": null
     },
     {
@@ -42,7 +45,8 @@
       "context_length": 1048576,
       "top_provider": {"max_completion_tokens": null},
       "pricing": {"prompt": "0.000003", "completion": "0.000015"},
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs", "temperature"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs", "temperature"],
+      "reasoning": {"mandatory": false, "default_enabled": true, "supported_efforts": ["max", "high", "low"], "default_effort": "max"},
       "expiration_date": null
     },
     {
@@ -52,7 +56,8 @@
       "context_length": 1048576,
       "top_provider": {"max_completion_tokens": 65536},
       "pricing": {"prompt": "0.00000075", "completion": "0.00000375"},
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs"],
+      "reasoning": {"mandatory": true, "default_enabled": true, "supported_efforts": ["high", "medium", "low", "minimal"], "default_effort": "medium"},
       "expiration_date": null
     },
     {
@@ -62,7 +67,8 @@
       "context_length": 1000000,
       "top_provider": {"max_completion_tokens": 131072},
       "pricing": {"prompt": "0.000002", "completion": "0.000006"},
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs", "temperature"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs", "temperature"],
+      "reasoning": {"mandatory": true, "default_enabled": true, "supported_efforts": ["xhigh", "high", "medium", "low", "minimal"], "default_effort": "xhigh"},
       "expiration_date": null
     },
     {
@@ -72,7 +78,8 @@
       "context_length": 1048576,
       "top_provider": {"max_completion_tokens": 131072},
       "pricing": {"prompt": "0.0000000896", "completion": "0.0000001792"},
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs", "temperature"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs", "temperature"],
+      "reasoning": {"mandatory": false, "default_enabled": true, "supported_efforts": ["max", "high", "low"], "default_effort": "high"},
       "expiration_date": null
     },
     {
@@ -86,7 +93,8 @@
         "completion": "0.000006",
         "overrides": [{"min_prompt_tokens": 200000, "prompt": "0.000004", "completion": "0.000012"}]
       },
-      "supported_parameters": ["max_tokens", "seed", "structured_outputs", "temperature"],
+      "supported_parameters": ["max_tokens", "reasoning", "reasoning_effort", "seed", "structured_outputs", "temperature"],
+      "reasoning": {"mandatory": true, "default_enabled": true, "supported_efforts": ["high", "medium", "low"], "default_effort": "high"},
       "expiration_date": null
     }
   ]

@@ -60,6 +60,7 @@ def _plan(fixtures: list[MiningPromptFixture]) -> BenchmarkPlan:
 class RecordingClient:
     def __init__(self, returned_model: str | None = None) -> None:
         self.models: list[str] = []
+        self.requests: list[dict] = []
         self.returned_model = returned_model
 
     async def complete(
@@ -71,8 +72,17 @@ class RecordingClient:
         response_format=None,
         seed=None,
         include_temperature=True,
+        reasoning=None,
     ):
         self.models.append(model)
+        self.requests.append(
+            {
+                "model": model,
+                "response_format": response_format,
+                "reasoning": reasoning,
+                "seed": seed,
+            }
+        )
         return LLMResponse(
             content="[]",
             model=self.returned_model or model,
@@ -90,6 +100,7 @@ class RecordingClient:
 class RecordingBatchClient:
     def __init__(self, returned_model: str | None = None) -> None:
         self.models: list[str] = []
+        self.requests: list[dict] = []
         self.returned_model = returned_model
 
     async def complete(
@@ -100,11 +111,20 @@ class RecordingBatchClient:
         custom_id,
         max_tokens,
         response_format=None,
+        reasoning=None,
         seed=None,
     ):
         from claw.models.batch import BatchCompatibilityReceipt, BatchCompletion
 
         self.models.append(requested_model)
+        self.requests.append(
+            {
+                "model": requested_model,
+                "response_format": response_format,
+                "reasoning": reasoning,
+                "seed": seed,
+            }
+        )
         return BatchCompletion(
             response=LLMResponse(
                 content="[]",
@@ -158,6 +178,15 @@ async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
         for call in plan.first_round_calls
         if call.transport != "batch-compatibility"
     ]
+    requests = [*client.requests, *batch_client.requests]
+    assert requests
+    assert all(request["response_format"] is None for request in requests)
+    assert all(request["seed"] == 0 for request in requests)
+    assert all(request["reasoning"]["exclude"] is True for request in requests)
+    assert all(
+        request["reasoning"]["effort"] in {"minimal", "low", "high"}
+        for request in requests
+    )
     assert len(list((tmp_path / "receipts").glob("*.json"))) == len(plan.first_round_calls)
     assert all(not path.name.endswith(".tmp") for path in tmp_path.rglob("*"))
 

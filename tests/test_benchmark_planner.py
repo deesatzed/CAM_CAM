@@ -66,6 +66,21 @@ def test_plan_freezes_all_candidates_stages_and_hides_raw_prompts() -> None:
     }
     assert {call.model_id for call in plan.first_round_calls} == set(suite.candidates)
     assert all(call.catalog_digest for call in plan.first_round_calls)
+    assert all("structured_outputs" not in call.parameters for call in plan.first_round_calls)
+    qwen_calls = [
+        call for call in plan.first_round_calls if call.model_id == "qwen/qwen3.8-max"
+    ]
+    deepseek_calls = [
+        call
+        for call in plan.first_round_calls
+        if call.model_id == "~deepseek/deepseek-v4-flash-latest"
+    ]
+    glm_calls = [
+        call for call in plan.first_round_calls if call.model_id == "z-ai/glm-5.2"
+    ]
+    assert {call.reasoning_effort for call in qwen_calls} == {"minimal"}
+    assert {call.reasoning_effort for call in deepseek_calls} == {"low"}
+    assert {call.reasoning_effort for call in glm_calls} == {"high"}
     serialized = plan.model_dump_json()
     assert "private source must not enter plan" not in serialized
     assert "Mine Codx_LoopKit" not in serialized
@@ -104,5 +119,6 @@ def test_plan_rejects_prompt_or_catalog_drift_and_batch_parameter_mismatch() -> 
     ]
     assert gemini_calls
     assert all("temperature" not in call.parameters for call in gemini_calls)
+    assert all(call.reasoning_effort == "minimal" for call in gemini_calls)
     assert all(call.transport == "batch-compatibility" for call in gemini_calls)
     assert plan.catalog_receipt.digest == _catalog().digest
