@@ -7,7 +7,11 @@ import pytest
 from pydantic import ValidationError
 
 from claw.llm.client import LLMMessage
-from claw.models.batch import BatchCompatibilityReceipt, OpenRouterBatchClient
+from claw.models.batch import (
+    BatchCompatibilityReceipt,
+    OpenRouterBatchClient,
+    _parse_batch_result,
+)
 
 
 @pytest.mark.parametrize(
@@ -93,6 +97,8 @@ async def test_openrouter_batch_client_uses_base_model_and_polls_inline_result()
             custom_id="call-123",
             max_tokens=4096,
             response_format={"type": "json_object"},
+            reasoning={"effort": "minimal", "exclude": True},
+            seed=0,
         )
 
     submitted = json.loads(requests[0].content)
@@ -103,6 +109,11 @@ async def test_openrouter_batch_client_uses_base_model_and_polls_inline_result()
     assert submitted["requests"][0]["body"]["response_format"] == {
         "type": "json_object"
     }
+    assert submitted["requests"][0]["body"]["reasoning"] == {
+        "effort": "minimal",
+        "exclude": True,
+    }
+    assert submitted["requests"][0]["body"]["seed"] == 0
     assert "temperature" not in submitted["requests"][0]["body"]
     assert result.job_id == "batch-123"
     assert result.response.content == "[]"
@@ -110,6 +121,40 @@ async def test_openrouter_batch_client_uses_base_model_and_polls_inline_result()
     assert result.compatibility.transport == "queued-job"
     assert result.compatibility.synchronous_latency_seconds is None
     assert result.compatibility.retention_days == 30
+
+
+def test_batch_result_does_not_promote_reasoning_to_final_answer() -> None:
+    result = _parse_batch_result(
+        {
+            "id": "batch-reasoning-only",
+            "results": [
+                {
+                    "custom_id": "call-reasoning-only",
+                    "response": {
+                        "status_code": 200,
+                        "body": {
+                            "id": "gen-reasoning-only",
+                            "model": "qwen/qwen3.8-max",
+                            "choices": [
+                                {
+                                    "message": {
+                                        "content": None,
+                                        "reasoning": "analysis without a final answer",
+                                    },
+                                    "finish_reason": "length",
+                                }
+                            ],
+                            "usage": {},
+                        },
+                    },
+                }
+            ],
+        },
+        custom_id="call-reasoning-only",
+    )
+
+    assert result.content == ""
+    assert result.finish_reason == "length"
 
 
 @pytest.mark.parametrize("status", ["failed", "cancelled", "expired"])

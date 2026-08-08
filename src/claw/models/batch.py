@@ -94,6 +94,7 @@ class OpenRouterBatchClient:
         custom_id: str,
         max_tokens: int,
         response_format: dict | None = None,
+        reasoning: dict | None = None,
         seed: int | None = None,
     ) -> BatchCompletion:
         """Submit, poll, and parse one inlined Batch API result."""
@@ -107,6 +108,8 @@ class OpenRouterBatchClient:
         }
         if response_format is not None:
             body["response_format"] = response_format
+        if reasoning is not None:
+            body["reasoning"] = reasoning
         if seed is not None:
             body["seed"] = seed
         payload = {
@@ -188,7 +191,7 @@ def _parse_batch_result(batch: dict[str, Any], *, custom_id: str) -> LLMResponse
     message = choice.get("message") or {}
     content = message.get("content")
     if content is None:
-        content = message.get("reasoning") or ""
+        content = ""
     usage = body.get("usage") or {}
     prompt_details = usage.get("prompt_tokens_details") or {}
     completion_details = usage.get("completion_tokens_details") or {}

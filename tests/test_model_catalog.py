@@ -60,6 +60,33 @@ def test_catalog_preserves_alias_batch_and_threshold_override(payload: dict) -> 
     ]
 
 
+def test_catalog_preserves_reasoning_capabilities_and_selects_lowest_effort(
+    payload: dict,
+) -> None:
+    qwen = next(item for item in payload["data"] if item["id"] == "qwen/qwen3.8-max")
+    qwen["supported_parameters"].extend(["reasoning", "reasoning_effort"])
+    qwen["reasoning"] = {
+        "mandatory": True,
+        "default_enabled": True,
+        "supported_efforts": ["xhigh", "high", "medium", "low", "minimal"],
+        "default_effort": "xhigh",
+    }
+
+    entry = ModelCatalog.from_payload(payload).require("qwen/qwen3.8-max")
+
+    assert entry.reasoning is not None
+    assert entry.reasoning.mandatory is True
+    assert entry.reasoning.default_effort == "xhigh"
+    assert entry.reasoning.supported_efforts == (
+        "xhigh",
+        "high",
+        "medium",
+        "low",
+        "minimal",
+    )
+    assert entry.reasoning.lowest_supported_effort() == "minimal"
+
+
 def test_catalog_digest_is_stable_and_changes_with_material_data(payload: dict) -> None:
     first = ModelCatalog.from_payload(payload)
     reordered = {"data": list(reversed(payload["data"]))}

@@ -35,6 +35,26 @@ class ModelPricing(BaseModel):
     overrides: list[dict[str, Any]] = Field(default_factory=list)
 
 
+class ModelReasoning(BaseModel):
+    """Normalized reasoning controls advertised by an OpenRouter model."""
+
+    model_config = ConfigDict(frozen=True)
+
+    mandatory: bool = False
+    default_enabled: bool | None = None
+    supported_efforts: tuple[str, ...] = ()
+    default_effort: str | None = None
+    supports_max_tokens: bool | None = None
+
+    def lowest_supported_effort(self) -> str | None:
+        """Choose the least expensive non-disabled effort the model accepts."""
+        supported = set(self.supported_efforts)
+        for effort in ("minimal", "low", "medium", "high", "max", "xhigh"):
+            if effort in supported:
+                return effort
+        return self.default_effort
+
+
 class ModelCatalogEntry(BaseModel):
     """Normalized facts for one OpenRouter model identifier."""
 
@@ -47,6 +67,7 @@ class ModelCatalogEntry(BaseModel):
     max_completion_tokens: int | None = None
     supported_parameters: frozenset[str] = Field(default_factory=frozenset)
     pricing: ModelPricing
+    reasoning: ModelReasoning | None = None
     expiration_date: str | None = None
     catalog_digest: str
 
@@ -68,6 +89,7 @@ class _RawCatalogEntry(BaseModel):
     top_provider: dict[str, Any] = Field(default_factory=dict)
     pricing: dict[str, Any]
     supported_parameters: list[str] = Field(default_factory=list)
+    reasoning: dict[str, Any] | None = None
     expiration_date: str | None = None
 
 
@@ -130,6 +152,7 @@ class ModelCatalog(BaseModel):
                     ),
                     "overrides": overrides,
                 },
+                "reasoning": raw.reasoning,
                 "expiration_date": raw.expiration_date,
             }
             entries[raw.id] = ModelCatalogEntry(

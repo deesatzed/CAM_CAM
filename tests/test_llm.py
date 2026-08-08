@@ -68,6 +68,75 @@ class TestParseJson:
 
 
 class TestLLMClientCooldown:
+    async def test_complete_sends_explicit_reasoning_and_seed(self):
+        class FakeHTTPClient:
+            is_closed = False
+
+            def __init__(self):
+                self.payload = None
+
+            async def post(self, url, json, headers):
+                self.payload = json
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-controlled",
+                        "model": "qwen/qwen3.8-max",
+                        "choices": [{"message": {"content": "[]"}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12},
+                    },
+                )
+
+        fake = FakeHTTPClient()
+        client = LLMClient(api_key="test-key")
+        client._client = fake
+
+        await client.complete(
+            [LLMMessage("user", "mine")],
+            model="qwen/qwen3.8-max",
+            reasoning={"effort": "minimal", "exclude": True},
+            seed=0,
+        )
+
+        assert fake.payload["reasoning"] == {"effort": "minimal", "exclude": True}
+        assert fake.payload["seed"] == 0
+
+    async def test_null_content_does_not_promote_reasoning_to_final_answer(self):
+        class FakeHTTPClient:
+            is_closed = False
+
+            async def post(self, url, json, headers):
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-reasoning-only",
+                        "model": "qwen/qwen3.8-max",
+                        "choices": [
+                            {
+                                "message": {
+                                    "content": None,
+                                    "reasoning": "I should eventually return JSON",
+                                },
+                                "finish_reason": "length",
+                            }
+                        ],
+                        "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20},
+                    },
+                )
+
+        client = LLMClient(api_key="test-key")
+        client._client = FakeHTTPClient()
+
+        response = await client.complete(
+            [LLMMessage("user", "mine")],
+            model="qwen/qwen3.8-max",
+        )
+
+        assert response.content == ""
+        assert response.finish_reason == "length"
+
     async def test_complete_can_omit_unsupported_temperature_parameter(self):
         class FakeHTTPClient:
             is_closed = False

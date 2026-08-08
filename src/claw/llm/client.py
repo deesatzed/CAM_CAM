@@ -107,6 +107,8 @@ class LLMClient:
         max_tokens: Optional[int] = None,
         response_format: Optional[dict] = None,
         include_temperature: bool = True,
+        reasoning: Optional[dict] = None,
+        seed: Optional[int] = None,
     ) -> LLMResponse:
         """Send a chat completion request to OpenRouter."""
         if not self.api_key:
@@ -123,6 +125,10 @@ class LLMClient:
             )
         if response_format:
             payload["response_format"] = response_format
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
+        if seed is not None:
+            payload["seed"] = seed
 
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -145,6 +151,8 @@ class LLMClient:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         response_format: Optional[dict] = None,
+        reasoning: Optional[dict] = None,
+        seed: Optional[int] = None,
     ) -> LLMResponse:
         """Try a model chain in order with retry/backoff per model."""
         chain: list[str] = []
@@ -174,6 +182,8 @@ class LLMClient:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     response_format=response_format,
+                    reasoning=reasoning,
+                    seed=seed,
                 )
                 self._record_model_success(model)
                 return response
@@ -253,23 +263,20 @@ class LLMClient:
 
                 content = data["choices"][0]["message"]["content"]
                 if content is None:
-                    # Reasoning models (e.g. nemotron, laguna) may put
-                    # output in "reasoning" when max_tokens is exhausted
-                    # before the content turn.  Fall back gracefully.
                     reasoning = data["choices"][0]["message"].get("reasoning")
                     refusal = data["choices"][0]["message"].get("refusal")
                     if refusal:
                         raise LLMError(f"Model refused to respond: {refusal}")
                     if reasoning:
-                        logger.info(
-                            "Reasoning model returned content=null; "
-                            "using reasoning field (%d chars, model=%s)",
-                            len(reasoning), data.get("model"),
+                        logger.warning(
+                            "Reasoning model returned no final content "
+                            "(%d reasoning chars withheld, model=%s)",
+                            len(reasoning),
+                            data.get("model"),
                         )
-                        content = reasoning
                     else:
                         logger.warning("LLM returned null content (model=%s)", data.get("model"))
-                        content = ""
+                    content = ""
                 model = data.get("model", payload.get("model", "unknown"))
                 usage = data.get("usage", {})
                 tokens = usage.get("total_tokens", 0)
