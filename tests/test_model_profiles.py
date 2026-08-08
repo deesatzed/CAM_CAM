@@ -126,6 +126,36 @@ model = "legacy/quality"
     assert selected.database.db_path == "/pinned/corpus/claw.db"
 
 
+async def test_factory_forwards_explicit_model_profile_path(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    from claw.core.factory import ClawFactory
+
+    captured = {}
+
+    class ConfigStopError(RuntimeError):
+        pass
+
+    def fake_load_config(config_path, *, model_profiles_path=None):
+        captured["config_path"] = config_path
+        captured["model_profiles_path"] = model_profiles_path
+        raise ConfigStopError
+
+    monkeypatch.setattr("claw.core.factory.load_config", fake_load_config)
+
+    with pytest.raises(ConfigStopError):
+        await ClawFactory.create(
+            config_path=tmp_path / "claw.toml",
+            model_profiles_path=tmp_path / "model_profiles.toml",
+        )
+
+    assert captured == {
+        "config_path": tmp_path / "claw.toml",
+        "model_profiles_path": tmp_path / "model_profiles.toml",
+    }
+
+
 def test_promote_and_rollback_are_atomic_and_validate_model(tmp_path: Path) -> None:
     path = tmp_path / "model_profiles.toml"
     _write_registry(path)

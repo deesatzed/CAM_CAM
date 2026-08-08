@@ -6585,6 +6585,11 @@ def mine_workspace(
     yield_sort: bool = typer.Option(True, "--yield-sort/--no-yield-sort", help="Sort candidates by expected yield before mining (default: on)"),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable debug logging"),
     config: Optional[str] = typer.Option(None, "--config", "-c", help="Path to claw.toml"),
+    profiles: Optional[str] = typer.Option(
+        None,
+        "--profiles",
+        help="Explicit model_profiles.toml applied to this mining run",
+    ),
 ) -> None:
     """Mine repos across multiple directories at once.
 
@@ -6630,7 +6635,11 @@ def mine_workspace(
 
     from claw.core.config import load_config
 
-    cfg = load_config(Path(config) if config else None)
+    profiles_path = Path(profiles) if profiles else None
+    cfg = load_config(
+        Path(config) if config else None,
+        model_profiles_path=profiles_path,
+    )
     _fail_if_missing_api_keys(cfg, "mine-workspace")
     if live_keycheck:
         _fail_if_live_key_checks_fail(cfg, "mine-workspace")
@@ -6639,6 +6648,7 @@ def mine_workspace(
         asyncio.run(asyncio.wait_for(
             _mine_workspace_async(
                 dir_paths, target, max_repos, min_relevance, tasks, config,
+                profiles,
                 depth, dedup, skip_known, force_rescan, changed_only,
                 yield_sort=yield_sort,
             ),
@@ -6922,7 +6932,7 @@ def _mine_workspace_scan_only(
 
     # Discover repos from each directory and merge
     console.print("[cyan]Scanning directories for repos...[/cyan]")
-    cfg = load_config()
+    cfg = load_config(Path(config_path) if config_path else None)
     all_candidates: list = []
     source_map: dict[str, str] = {}  # resolved path -> scan root name
     seen_resolved: set[str] = set()
@@ -6943,7 +6953,6 @@ def _mine_workspace_scan_only(
         console.print("[yellow]No repositories or source trees found in any directory.[/yellow]")
         return
 
-    cfg = load_config(Path(config_path) if config_path else None)
     ledger = RepoScanLedger(_default_scan_ledger_path(cfg))
 
     skipped: list = []
@@ -7031,6 +7040,7 @@ async def _mine_workspace_async(
     min_relevance: float,
     generate_tasks: bool,
     config_path: Optional[str],
+    model_profiles_path: Optional[str] = None,
     max_depth: int = 8,
     dedup_iterations: bool = True,
     skip_known: bool = True,
@@ -7045,7 +7055,12 @@ async def _mine_workspace_async(
 
     config_p = Path(config_path) if config_path else None
     target_path = Path(target).resolve()
-    ctx = await ClawFactory.create(config_path=config_p, workspace_dir=target_path)
+    profiles_p = Path(model_profiles_path) if model_profiles_path else None
+    ctx = await ClawFactory.create(
+        config_path=config_p,
+        workspace_dir=target_path,
+        model_profiles_path=profiles_p,
+    )
 
     try:
         project_name = target_path.name

@@ -1906,6 +1906,38 @@ class TestMineWorkspaceCommand:
         param = sig.parameters["directories"]
         # Should be annotated as list[str]
         assert "list" in str(param.annotation).lower() or "list" in str(param.default).lower()
+        assert "profiles" in sig.parameters
+
+    async def test_mine_workspace_forwards_explicit_model_profiles(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        from claw.cli._monolith import _mine_workspace_async
+
+        captured = {}
+
+        class FactoryStopError(RuntimeError):
+            pass
+
+        async def fake_create(**kwargs):
+            captured.update(kwargs)
+            raise FactoryStopError
+
+        monkeypatch.setattr("claw.core.factory.ClawFactory.create", fake_create)
+
+        with pytest.raises(FactoryStopError):
+            await _mine_workspace_async(
+                [],
+                str(tmp_path),
+                1,
+                0.6,
+                False,
+                "claw.toml",
+                model_profiles_path="model_profiles.toml",
+            )
+
+        assert str(captured["model_profiles_path"]) == "model_profiles.toml"
 
 
 # ===========================================================================

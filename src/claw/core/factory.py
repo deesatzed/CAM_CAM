@@ -386,14 +386,19 @@ class ClawFactory:
     async def create(
         config_path: Optional[Path] = None,
         workspace_dir: Optional[Path] = None,
+        model_profiles_path: Optional[Path] = None,
     ) -> ClawContext:
         """Create a fully wired ClawContext.
 
         Args:
             config_path: Path to claw.toml. Defaults to ./claw.toml.
             workspace_dir: Working directory for agent operations.
+            model_profiles_path: Explicit role registry applied over claw.toml.
         """
-        config = load_config(config_path)
+        config = load_config(
+            config_path,
+            model_profiles_path=model_profiles_path,
+        )
         active_camseq_flags = [
             name
             for name, enabled in config.feature_flags.model_dump().items()
