@@ -11,6 +11,7 @@ from claw.llm.client import LLMClient, LLMResponse
 from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
 from claw.models.catalog import ModelCatalog
 from claw.models.scoring import BenchmarkQualityReport, ModelQualitySummary
+from claw.models.tournament import TournamentStagePlan
 
 runner = CliRunner()
 
@@ -560,3 +561,60 @@ def test_benchmark_report_emits_machine_readable_quality_summary(
     assert payload["run_id"] == "run-1"
     assert payload["actual_cost_usd"] == 0.25
     assert captured["existing_titles"] == ["Existing pattern"]
+
+
+def test_benchmark_select_writes_evidence_without_changing_profiles(
+    tmp_path: Path,
+) -> None:
+    plan = TournamentStagePlan(
+        run_id="first",
+        created_at="2026-08-08T00:00:00+00:00",
+        suite_name="mining-v1",
+        stage="first-round",
+        authorization_usd=5,
+        prior_spend_usd=2,
+        stage_maximum_cost_usd=0,
+        catalog_receipt={"digest": "catalog", "model_digests": {}},
+        fixtures=[],
+        calls=[],
+        selected_candidates=[],
+    )
+    report = BenchmarkQualityReport(
+        run_id="first",
+        expected_fixtures=3,
+        actual_cost_usd=0,
+        calls=[],
+        models=[],
+    )
+    plan_path = tmp_path / "plan.json"
+    report_path = tmp_path / "report.json"
+    output_path = tmp_path / "selection.json"
+    profiles_path = tmp_path / "model_profiles.toml"
+    plan_path.write_text(plan.model_dump_json())
+    report_path.write_text(report.model_dump_json())
+    _write_profiles(profiles_path)
+    before = profiles_path.read_bytes()
+
+    result = runner.invoke(
+        app,
+        [
+            "models",
+            "benchmark",
+            "select",
+            "--plan",
+            str(plan_path),
+            "--report",
+            str(report_path),
+            "--profile",
+            "selected",
+            "--format",
+            "json",
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output_path.read_text())
+    assert payload["roles"]["quality"]["model_id"] is None
+    assert profiles_path.read_bytes() == before

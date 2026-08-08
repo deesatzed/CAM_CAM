@@ -36,7 +36,12 @@ from claw.models.scoring import (
     load_existing_mining_titles,
     score_benchmark_run,
 )
-from claw.models.tournament import TournamentPlanner, TournamentStagePlan
+from claw.models.tournament import (
+    TournamentPlanner,
+    TournamentSelectionReport,
+    TournamentStagePlan,
+    select_tournament_roles,
+)
 
 console = Console()
 models_app = typer.Typer(
@@ -366,6 +371,71 @@ def report_benchmark(
     output.write_text(content)
     os.chmod(output, 0o600)
     typer.echo(f"Report: {output}")
+
+
+def _selection_report_markdown(report: TournamentSelectionReport) -> str:
+    lines = [
+        f"# CAM mining-model tournament: {report.final_run_id}",
+        "",
+        f"Tournament spend: ${report.tournament_spend_usd:.6f}",
+        f"Cumulative authorized spend: ${report.cumulative_spend_usd:.6f} / "
+        f"${report.authorization_usd:.2f}",
+        "",
+        "| Role | Candidate | Reason | Promotion command |",
+        "|---|---|---|---|",
+    ]
+    for role in ("quality", "budget", "fast", "batch"):
+        candidate = report.roles[role]
+        lines.append(
+            f"| {role} | {candidate.model_id or 'none'} | {candidate.reason} | "
+            f"{candidate.promotion_command or 'n/a'} |"
+        )
+    if report.exclusions:
+        lines.extend(["", "## Exclusions", ""])
+        for model_id, reasons in report.exclusions.items():
+            lines.append(f"- `{model_id}`: {', '.join(reasons)}")
+    lines.extend(
+        [
+            "",
+            "No model profile was changed. Promotion commands require explicit execution.",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+@benchmark_app.command("select")
+def select_benchmark_roles(
+    plan: list[Path] = typer.Option(..., "--plan"),
+    report: list[Path] = typer.Option(..., "--report"),
+    profile: str = typer.Option(..., "--profile"),
+    output_format: str = typer.Option("markdown", "--format"),
+    output: Path | None = typer.Option(None, "--output"),
+) -> None:
+    """Select evidence-backed role candidates without changing model profiles."""
+    if output_format not in {"json", "markdown"}:
+        raise typer.BadParameter("--format must be json or markdown")
+    plans = [TournamentStagePlan.model_validate_json(path.read_text()) for path in plan]
+    reports = [
+        BenchmarkQualityReport.model_validate_json(path.read_text()) for path in report
+    ]
+    selection = select_tournament_roles(
+        plans=plans,
+        reports=reports,
+        profile=profile,
+    )
+    content = (
+        selection.model_dump_json(indent=2) + "\n"
+        if output_format == "json"
+        else _selection_report_markdown(selection)
+    )
+    if output is None:
+        typer.echo(content, nl=False)
+        return
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(content)
+    os.chmod(output, 0o600)
+    typer.echo(f"Selection report: {output}")
+    typer.echo("No model profile was changed.")
 
 
 @models_app.command("current")

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
@@ -371,3 +371,185 @@ def rank_eligible_models(
         )
 
     return sorted(eligible, key=rank_key)
+
+
+class RoleCandidate(BaseModel):
+    """One evidence-backed role candidate; never an activation instruction."""
+
+    model_config = ConfigDict(frozen=True)
+
+    role: Literal["quality", "budget", "fast", "batch"]
+    model_id: str | None
+    reason: str
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    promotion_command: str | None = None
+
+
+class TournamentSelectionReport(BaseModel):
+    """Deterministic role candidates aggregated across tournament stages."""
+
+    model_config = ConfigDict(frozen=True)
+
+    schema_version: int = 1
+    root_run_id: str
+    final_run_id: str
+    authorization_usd: float
+    prior_spend_usd: float
+    tournament_spend_usd: float
+    cumulative_spend_usd: float
+    roles: dict[str, RoleCandidate]
+    exclusions: dict[str, list[str]] = Field(default_factory=dict)
+    stage_runs: list[str]
+
+
+def _empty_role(role: str, reason: str) -> RoleCandidate:
+    return RoleCandidate(role=role, model_id=None, reason=reason)
+
+
+def select_tournament_roles(
+    *,
+    plans: list[TournamentStagePlan],
+    reports: list[BenchmarkQualityReport],
+    profile: str,
+) -> TournamentSelectionReport:
+    """Select role candidates from grounded evidence without changing profiles."""
+
+    if not plans or len(plans) != len(reports):
+        raise ValueError("Selection requires one quality report for every stage plan")
+    for index, (plan, report) in enumerate(zip(plans, reports, strict=True)):
+        if report.run_id != plan.run_id:
+            raise ValueError(f"Quality report does not match plan {plan.run_id}")
+        if index and plan.parent_run_id != plans[index - 1].run_id:
+            raise ValueError("Tournament stage lineage is not contiguous")
+
+    report_by_stage = {plan.stage: report for plan, report in zip(plans, reports, strict=True)}
+    evaluation = report_by_stage.get("heldout", reports[0])
+    evaluation_by_model = {model.model_id: model for model in evaluation.models}
+    exclusions: dict[str, list[str]] = {}
+    for plan in plans:
+        for model_id, reasons in plan.excluded_candidates.items():
+            exclusions.setdefault(model_id, []).extend(reasons)
+
+    repeat = report_by_stage.get("repeat")
+    if repeat is not None:
+        for repeated in repeat.models:
+            baseline = evaluation_by_model.get(repeated.model_id)
+            if not repeated.eligible:
+                exclusions[repeated.model_id] = ["repeat_hard_failure"]
+            elif baseline is not None and baseline.average_quality - repeated.average_quality > 20:
+                exclusions[repeated.model_id] = ["repeat_instability"]
+
+    eligible = [
+        model
+        for model in evaluation.models
+        if model.eligible and model.model_id not in exclusions
+    ]
+    quality_ranked = rank_eligible_models(eligible)
+    if quality_ranked:
+        quality_model = quality_ranked[0]
+        quality = RoleCandidate(
+            role="quality",
+            model_id=quality_model.model_id,
+            reason="highest eligible held-out quality floor",
+            evidence={
+                "worst_quality": quality_model.worst_quality,
+                "average_quality": quality_model.average_quality,
+            },
+            promotion_command=(
+                f"cam models set mining-quality {quality_model.model_id} "
+                f"--profile {profile}"
+            ),
+        )
+    else:
+        quality = _empty_role("quality", "no eligible held-out model")
+
+    cumulative: dict[str, dict[str, float]] = {}
+    for report in reports:
+        for model in report.models:
+            totals = cumulative.setdefault(model.model_id, {"cost": 0.0, "findings": 0.0})
+            totals["cost"] += model.total_cost_usd
+            totals["findings"] += model.finding_count
+    value_models = []
+    for model in eligible:
+        totals = cumulative[model.model_id]
+        if totals["findings"]:
+            value_models.append(
+                (totals["cost"] / totals["findings"], totals["cost"], model.model_id)
+            )
+    if value_models:
+        value, total_cost, model_id = min(value_models)
+        budget = RoleCandidate(
+            role="budget",
+            model_id=model_id,
+            reason="lowest cumulative cost per accepted finding",
+            evidence={"cost_per_finding_usd": value, "total_cost_usd": total_cost},
+            promotion_command=(
+                f"cam models set mining-budget {model_id} --profile {profile}"
+            ),
+        )
+    else:
+        budget = _empty_role("budget", "no eligible model with accepted findings")
+
+    synchronous = [
+        model for model in eligible if model.average_sync_latency_seconds is not None
+    ]
+    if synchronous:
+        fast_model = min(
+            synchronous,
+            key=lambda model: (model.average_sync_latency_seconds, model.model_id),
+        )
+        fast = RoleCandidate(
+            role="fast",
+            model_id=fast_model.model_id,
+            reason="lowest eligible synchronous latency",
+            evidence={
+                "average_sync_latency_seconds": fast_model.average_sync_latency_seconds
+            },
+        )
+    else:
+        fast = _empty_role("fast", "no eligible synchronous model")
+
+    queued_models = {
+        call.model_id for call in evaluation.calls if call.transport == "queued-job"
+    }
+    batch_ranked = rank_eligible_models(
+        [model for model in eligible if model.model_id in queued_models]
+    )
+    if batch_ranked:
+        batch_model = batch_ranked[0]
+        batch = RoleCandidate(
+            role="batch",
+            model_id=batch_model.model_id,
+            reason="highest-quality eligible queued-batch model",
+            evidence={
+                "worst_quality": batch_model.worst_quality,
+                "average_quality": batch_model.average_quality,
+            },
+            promotion_command=(
+                f"cam models set mining-batch {batch_model.model_id} "
+                f"--profile {profile}"
+            ),
+        )
+    else:
+        batch = _empty_role("batch", "no eligible queued-batch model")
+
+    tournament_spend = round(sum(report.actual_cost_usd for report in reports), 12)
+    prior_spend = plans[0].prior_spend_usd
+    return TournamentSelectionReport(
+        root_run_id=plans[0].run_id,
+        final_run_id=plans[-1].run_id,
+        authorization_usd=plans[0].authorization_usd,
+        prior_spend_usd=prior_spend,
+        tournament_spend_usd=tournament_spend,
+        cumulative_spend_usd=round(prior_spend + tournament_spend, 12),
+        roles={
+            "quality": quality,
+            "budget": budget,
+            "fast": fast,
+            "batch": batch,
+        },
+        exclusions={
+            model_id: sorted(set(reasons)) for model_id, reasons in sorted(exclusions.items())
+        },
+        stage_runs=[plan.run_id for plan in plans],
+    )
