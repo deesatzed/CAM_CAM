@@ -1788,17 +1788,65 @@ class RepoMiner:
         return score
 
     def _attach_symbol_provenance(self, findings: list[MiningFinding], repo_path: Path, per_finding_limit: int = 8) -> None:
-        """Attach concrete symbol references from mined source files."""
+        """Validate model symbols and backfill concrete local provenance."""
         for finding in findings:
-            if finding.source_symbols:
-                continue
             candidates: list[dict[str, Any]] = []
             for relative_path in finding.source_files:
                 candidates.extend(self._extract_symbols_from_file(repo_path, relative_path))
             candidates = self._apply_scip_precision(candidates, repo_path)
             candidates.sort(key=lambda item: self._score_symbol_relevance(item, finding), reverse=True)
+
+            by_file: dict[str, list[dict[str, Any]]] = {}
+            for candidate in candidates:
+                by_file.setdefault(candidate["file_path"], []).append(candidate)
+
             deduped: list[dict[str, Any]] = []
             seen: set[tuple[str, str, str]] = set()
+
+            for supplied in finding.source_symbols:
+                file_path = supplied.get("file_path", "")
+                symbol_name = supplied.get("symbol_name", "")
+                file_candidates = by_file.get(file_path, [])
+                exact = next(
+                    (
+                        candidate
+                        for candidate in file_candidates
+                        if candidate["symbol_name"] == symbol_name
+                    ),
+                    None,
+                )
+                qualified_parts = symbol_name.split(".")
+                candidate_names = {
+                    candidate["symbol_name"] for candidate in file_candidates
+                }
+                qualified = (
+                    len(qualified_parts) > 1
+                    and all(part.isidentifier() for part in qualified_parts)
+                    and all(part in candidate_names for part in qualified_parts)
+                )
+                local_match = exact
+                if local_match is None and qualified:
+                    local_match = next(
+                        candidate
+                        for candidate in file_candidates
+                        if candidate["symbol_name"] == qualified_parts[-1]
+                    )
+                if local_match is None:
+                    continue
+                validated = dict(local_match)
+                if qualified:
+                    validated["symbol_name"] = symbol_name
+                if supplied.get("note"):
+                    validated["note"] = supplied["note"]
+                ident = (
+                    validated["file_path"],
+                    validated["symbol_name"],
+                    validated["symbol_kind"],
+                )
+                if ident not in seen:
+                    seen.add(ident)
+                    deduped.append(validated)
+
             for item in candidates:
                 ident = (item["file_path"], item["symbol_name"], item["symbol_kind"])
                 if ident in seen:
@@ -1807,7 +1855,7 @@ class RepoMiner:
                 deduped.append(item)
                 if len(deduped) >= per_finding_limit:
                     break
-            finding.source_symbols = deduped
+            finding.source_symbols = deduped[:per_finding_limit]
 
     def _seed_capability_data_from_finding(self, finding: MiningFinding) -> dict[str, Any]:
         """Create retrieval-friendly seed capability metadata from a mining finding.

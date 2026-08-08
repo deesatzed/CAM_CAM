@@ -108,6 +108,21 @@ def test_grounding_accepts_class_qualified_method_symbols(tmp_path: Path) -> Non
     assert "invalid_provenance" not in score.hard_failures
 
 
+def test_imprecise_symbol_lowers_grounding_without_hard_failing_valid_file(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    response = json.loads(_response())
+    response[0]["source_symbols"][0]["symbol_name"] = "Retry orchestration"
+
+    score = score_candidate(json.dumps(response), _fixture(repo), [])
+
+    assert "invalid_provenance" not in score.hard_failures
+    assert 0 < score.grounded_correctness < QUALITY_WEIGHTS["grounded_correctness"]
+
+
 def test_duplicates_reduce_novelty_and_malformed_output_reduces_reliability(
     tmp_path: Path,
 ) -> None:

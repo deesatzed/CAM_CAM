@@ -113,17 +113,17 @@ def _safe_source_path(repo_root: Path, relative_path: str) -> Path | None:
 def _provenance_fraction(findings: list[MiningFinding], repo_root: Path) -> tuple[float, bool]:
     checks = 0
     valid = 0
-    invalid = False
+    invalid_file_provenance = False
     for finding in findings:
         if not finding.source_files:
             checks += 1
-            invalid = True
+            invalid_file_provenance = True
             continue
         for relative_path in finding.source_files:
             checks += 1
             source_path = _safe_source_path(repo_root, relative_path)
             if source_path is None:
-                invalid = True
+                invalid_file_provenance = True
                 continue
             valid += 1
         for symbol in finding.source_symbols:
@@ -131,7 +131,6 @@ def _provenance_fraction(findings: list[MiningFinding], repo_root: Path) -> tupl
             source_path = _safe_source_path(repo_root, symbol.get("file_path", ""))
             symbol_name = symbol.get("symbol_name", "").strip()
             if source_path is None or not symbol_name:
-                invalid = True
                 continue
             source_text = source_path.read_text(encoding="utf-8", errors="replace")
             qualified_parts = symbol_name.split(".")
@@ -144,10 +143,9 @@ def _provenance_fraction(findings: list[MiningFinding], repo_root: Path) -> tupl
                 )
             )
             if symbol_name not in source_text and not qualified_match:
-                invalid = True
                 continue
             valid += 1
-    return (valid / checks if checks else 0.0), invalid
+    return (valid / checks if checks else 0.0), invalid_file_provenance
 
 
 def _actionability(findings: list[MiningFinding]) -> float:
@@ -188,11 +186,11 @@ def score_candidate(
             finding_count=0,
         )
 
-    grounded_fraction, invalid_provenance = _provenance_fraction(
+    grounded_fraction, invalid_file_provenance = _provenance_fraction(
         findings,
         Path(fixture.repo_path),
     )
-    if invalid_provenance:
+    if invalid_file_provenance:
         hard_failures.append("invalid_provenance")
     grounded = QUALITY_WEIGHTS["grounded_correctness"] * grounded_fraction
 

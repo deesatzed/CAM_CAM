@@ -1413,6 +1413,38 @@ class TestSymbolExtraction:
         assert "function" in kinds
         assert "class" in kinds
 
+    def test_attach_symbol_provenance_replaces_imprecise_model_label(
+        self, repo_miner, tmp_path
+    ):
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        (repo / "frontmatter.py").write_text(
+            "def validate_frontmatter(document):\n"
+            "    return bool(document)\n",
+            encoding="utf-8",
+        )
+        finding = MiningFinding(
+            title="Frontmatter validation",
+            description="The validate_frontmatter function checks documents before use.",
+            category="code_quality",
+            source_repo="tmp-repo",
+            source_files=["frontmatter.py"],
+            source_symbols=[
+                {
+                    "file_path": "frontmatter.py",
+                    "symbol_name": "Frontmatter validation",
+                    "symbol_kind": "module",
+                    "note": "model-supplied prose label",
+                }
+            ],
+        )
+
+        repo_miner._attach_symbol_provenance([finding], repo)
+
+        names = {item["symbol_name"] for item in finding.source_symbols}
+        assert "Frontmatter validation" not in names
+        assert "validate_frontmatter" in names
+
 
 # ===========================================================================
 # 8. RepoMiner._generate_tasks() — async, real database
