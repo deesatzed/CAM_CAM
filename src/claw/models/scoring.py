@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import sqlite3
 from collections import defaultdict
 from pathlib import Path, PurePosixPath
+from urllib.parse import quote
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -96,6 +98,35 @@ class BenchmarkQualityReport(BaseModel):
     actual_cost_usd: float
     calls: list[CallQualityReceipt]
     models: list[ModelQualitySummary]
+
+
+def load_existing_mining_titles(db_path: Path) -> list[str]:
+    """Load live mined titles from an explicitly pinned immutable corpus."""
+    resolved = db_path.resolve()
+    if not resolved.is_file():
+        raise FileNotFoundError(f"CAM corpus does not exist: {resolved}")
+    uri = f"file:{quote(resolved.as_posix(), safe='/')}?mode=ro&immutable=1"
+    with sqlite3.connect(uri, uri=True) as connection:
+        connection.execute("PRAGMA query_only = ON")
+        rows = connection.execute(
+            """SELECT problem_description, solution_code
+               FROM methodologies
+               WHERE lifecycle_state != 'dead'"""
+        ).fetchall()
+
+    titles: set[str] = set()
+    for problem_description, solution_code in rows:
+        problem_match = re.match(
+            r"^\[Mined from [^\]]+\]\s+(.+?):\s",
+            problem_description or "",
+        )
+        if problem_match:
+            titles.add(problem_match.group(1).strip())
+            continue
+        heading_match = re.search(r"^##\s+(.+?)\s*$", solution_code or "", re.MULTILINE)
+        if heading_match:
+            titles.add(heading_match.group(1).strip())
+    return sorted(titles, key=str.casefold)
 
 
 def _safe_source_path(repo_root: Path, relative_path: str) -> Path | None:
@@ -256,6 +287,7 @@ def score_benchmark_run(
     run_dir: Path,
     fixtures: list[MiningPromptFixture],
     expected_fixtures: int,
+    existing_titles: list[str],
 ) -> BenchmarkQualityReport:
     """Score completed receipts and aggregate promotion eligibility by model."""
     fixture_by_name = {fixture.repo_name: fixture for fixture in fixtures}
@@ -266,13 +298,16 @@ def score_benchmark_run(
             continue
         fixture = fixture_by_name[receipt.fixture_name]
         response_text = (run_dir / receipt.response_path).read_text()
-        score = score_candidate(response_text, fixture, existing_titles=[])
+        score = score_candidate(response_text, fixture, existing_titles=existing_titles)
         failures = list(score.hard_failures)
         if receipt.finish_reason == "length":
             failures.append("truncated_response")
         envelope = _response_envelope(response_text)
+        if envelope == "repaired-or-invalid":
+            failures.append("repaired_or_invalid_json")
         if envelope == "unsupported-json":
             failures.append("unsupported_json_envelope")
+        failures = sorted(set(failures))
         calls.append(
             CallQualityReceipt(
                 candidate_code=build_blinded_packet(
@@ -285,9 +320,9 @@ def score_benchmark_run(
                 model_id=receipt.requested_model,
                 fixture_name=receipt.fixture_name,
                 envelope=envelope,
-                quality=score.total,
+                quality=0.0 if failures else score.total,
                 finding_count=score.finding_count,
-                hard_failures=sorted(set(failures)),
+                hard_failures=failures,
                 cost_usd=receipt.cost_usd,
                 duration_seconds=(
                     None if receipt.transport == "queued-job" else receipt.duration_seconds

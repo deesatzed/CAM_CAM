@@ -31,7 +31,11 @@ from claw.models.profiles import (
     promote_role,
     rollback_promotion,
 )
-from claw.models.scoring import BenchmarkQualityReport, score_benchmark_run
+from claw.models.scoring import (
+    BenchmarkQualityReport,
+    load_existing_mining_titles,
+    score_benchmark_run,
+)
 
 console = Console()
 models_app = typer.Typer(
@@ -237,6 +241,15 @@ def _quality_report_markdown(report: BenchmarkQualityReport) -> str:
 def report_benchmark(
     run_dir: Path,
     fixtures: Path = typer.Option(..., "--fixtures"),
+    db: Path = typer.Option(
+        ...,
+        "--db",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        readable=True,
+        help="Explicit read-only claw.db used for novelty scoring.",
+    ),
     output_format: str = typer.Option("markdown", "--format"),
     output: Path | None = typer.Option(None, "--output"),
 ) -> None:
@@ -246,11 +259,13 @@ def report_benchmark(
     plan_payload = json.loads((run_dir / "plan.json").read_text())
     fixture_adapter = TypeAdapter(list[MiningPromptFixture])
     prompt_fixtures = fixture_adapter.validate_json(fixtures.read_text())
+    existing_titles = load_existing_mining_titles(db)
     report = score_benchmark_run(
         run_id=str(plan_payload["run_id"]),
         run_dir=run_dir,
         fixtures=prompt_fixtures,
         expected_fixtures=int(plan_payload["stage_policy"]["first_round_fixtures"]),
+        existing_titles=existing_titles,
     )
     content = (
         report.model_dump_json(indent=2) + "\n"

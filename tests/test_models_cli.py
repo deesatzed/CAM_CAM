@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
 
 from typer.testing import CliRunner
@@ -389,16 +390,39 @@ def test_benchmark_report_emits_machine_readable_quality_summary(
     )
     fixture_path = tmp_path / "fixtures.json"
     fixture_path.write_text("[]")
-    monkeypatch.setattr(
-        models_cli,
-        "score_benchmark_run",
-        lambda **kwargs: BenchmarkQualityReport(
+    db_path = tmp_path / "claw.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """CREATE TABLE methodologies (
+                problem_description TEXT NOT NULL,
+                solution_code TEXT NOT NULL,
+                lifecycle_state TEXT NOT NULL
+            )"""
+        )
+        connection.execute(
+            "INSERT INTO methodologies VALUES (?, ?, ?)",
+            (
+                "[Mined from fixture] Existing pattern: description",
+                "## Existing pattern\n",
+                "viable",
+            ),
+        )
+    captured: dict = {}
+
+    def fake_score(**kwargs):
+        captured.update(kwargs)
+        return BenchmarkQualityReport(
             run_id="run-1",
             expected_fixtures=3,
             actual_cost_usd=0.25,
             calls=[],
             models=[],
-        ),
+        )
+
+    monkeypatch.setattr(
+        models_cli,
+        "score_benchmark_run",
+        fake_score,
     )
 
     result = runner.invoke(
@@ -410,6 +434,8 @@ def test_benchmark_report_emits_machine_readable_quality_summary(
             str(run_dir),
             "--fixtures",
             str(fixture_path),
+            "--db",
+            str(db_path),
             "--format",
             "json",
         ],
@@ -419,3 +445,4 @@ def test_benchmark_report_emits_machine_readable_quality_summary(
     payload = json.loads(result.output)
     assert payload["run_id"] == "run-1"
     assert payload["actual_cost_usd"] == 0.25
+    assert captured["existing_titles"] == ["Existing pattern"]

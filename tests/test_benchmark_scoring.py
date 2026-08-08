@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from pathlib import Path
+
+import claw.models.scoring as scoring_module
 
 from claw.models.benchmark import CallReceipt, MiningPromptFixture
 from claw.models.scoring import (
@@ -186,6 +189,7 @@ def test_score_run_aggregates_cost_quality_and_normalized_envelopes(
         run_dir=run_dir,
         fixtures=[fixture],
         expected_fixtures=1,
+        existing_titles=[],
     )
 
     assert report.actual_cost_usd == 0.001
@@ -193,3 +197,74 @@ def test_score_run_aggregates_cost_quality_and_normalized_envelopes(
     assert report.calls[0].hard_failures == []
     assert report.models[0].eligible is True
     assert report.models[0].average_quality > 80
+
+
+def test_load_existing_titles_uses_immutable_read_only_corpus(tmp_path: Path) -> None:
+    db_path = tmp_path / "claw.db"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """CREATE TABLE methodologies (
+                problem_description TEXT NOT NULL,
+                solution_code TEXT NOT NULL,
+                lifecycle_state TEXT NOT NULL
+            )"""
+        )
+        connection.executemany(
+            "INSERT INTO methodologies VALUES (?, ?, ?)",
+            [
+                (
+                    "[Mined from retry-lib] Bounded retry: Preserves the final error.",
+                    "## Bounded retry\n\nImplementation",
+                    "viable",
+                ),
+                (
+                    "[Mined from queue-lib] Durable queue: Survives restarts.",
+                    "## Durable queue\n\nImplementation",
+                    "dead",
+                ),
+            ],
+        )
+
+    titles = scoring_module.load_existing_mining_titles(db_path)
+
+    assert titles == ["Bounded retry"]
+    assert not db_path.with_name("claw.db-wal").exists()
+    assert not db_path.with_name("claw.db-shm").exists()
+
+
+def test_truncated_or_repaired_call_reports_zero_quality(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    run_dir = tmp_path / "run"
+    (run_dir / "receipts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    (run_dir / "responses" / "call-length.txt").write_text(_response())
+    receipt = CallReceipt(
+        call_id="call-length",
+        status="completed",
+        requested_model="qwen/qwen3.8-max",
+        returned_model="qwen/qwen3.8-max",
+        fixture_name="fixture",
+        prompt_sha256=fixture.prompt_sha256,
+        finish_reason="length",
+        cost_usd=0.01,
+        response_path="responses/call-length.txt",
+    )
+    (run_dir / "receipts" / "call-length.json").write_text(
+        receipt.model_dump_json()
+    )
+
+    report = score_benchmark_run(
+        run_id="run-length",
+        run_dir=run_dir,
+        fixtures=[fixture],
+        expected_fixtures=1,
+        existing_titles=[],
+    )
+
+    assert report.calls[0].finding_count == 1
+    assert "truncated_response" in report.calls[0].hard_failures
+    assert report.calls[0].quality == 0
+    assert report.models[0].eligible is False
