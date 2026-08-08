@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from claw.llm.client import LLMResponse
-from claw.models.batch import BatchJobError
+from claw.models.batch import (
+    BatchCompatibilityReceipt,
+    BatchCompletion,
+    BatchJobError,
+    BatchSubmission,
+)
 from claw.models.benchmark import (
     BenchmarkPlan,
     BenchmarkPlanner,
@@ -98,13 +103,20 @@ class RecordingClient:
         )
 
 
+class OverCapClient(RecordingClient):
+    async def complete(self, *args, **kwargs):
+        response = await super().complete(*args, **kwargs)
+        response.cost_usd = 6.0
+        return response
+
+
 class RecordingBatchClient:
     def __init__(self, returned_model: str | None = None) -> None:
         self.models: list[str] = []
         self.requests: list[dict] = []
         self.returned_model = returned_model
 
-    async def complete(
+    async def submit(
         self,
         *,
         messages,
@@ -115,8 +127,6 @@ class RecordingBatchClient:
         reasoning=None,
         seed=None,
     ):
-        from claw.models.batch import BatchCompatibilityReceipt, BatchCompletion
-
         self.models.append(requested_model)
         self.requests.append(
             {
@@ -126,10 +136,18 @@ class RecordingBatchClient:
                 "seed": seed,
             }
         )
+        return BatchSubmission(
+            job_id=f"batch-job-{len(self.models)}",
+            requested_model=requested_model,
+            custom_id=custom_id,
+        )
+
+    async def poll(self, *, submission: BatchSubmission):
         return BatchCompletion(
             response=LLMResponse(
                 content="[]",
-                model=self.returned_model or requested_model.removesuffix(":batch"),
+                model=self.returned_model
+                or submission.requested_model.removesuffix(":batch"),
                 input_tokens=100,
                 output_tokens=20,
                 cost_usd=0.0001,
@@ -137,24 +155,31 @@ class RecordingBatchClient:
                 request_id=f"batch-gen-{len(self.models)}",
                 finish_reason="stop",
             ),
-            job_id=f"batch-job-{len(self.models)}",
+            job_id=submission.job_id,
             compatibility=BatchCompatibilityReceipt(
-                model_id=requested_model,
+                model_id=submission.requested_model,
                 status="completed",
                 transport="queued-job",
-                job_id=f"batch-job-{len(self.models)}",
+                job_id=submission.job_id,
                 retention_days=30,
             ),
         )
 
 
-class FailedSubmittedBatchClient:
-    async def complete(self, **kwargs):
-        raise BatchJobError(
-            "submitted batch timed out",
-            job_id="batch-preserved",
-            status="timed_out",
-        )
+class ResumableBatchClient(RecordingBatchClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.poll_job_ids: list[str] = []
+
+    async def poll(self, *, submission: BatchSubmission):
+        self.poll_job_ids.append(submission.job_id)
+        if len(self.poll_job_ids) == 1:
+            raise BatchJobError(
+                "temporary polling failure",
+                job_id=submission.job_id,
+                status="submitted",
+            )
+        return await super().poll(submission=submission)
 
 
 async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
@@ -213,7 +238,7 @@ async def test_runner_uses_exact_models_writes_atomic_receipts_and_resumes(
     assert resumed_client.models == []
 
 
-async def test_runner_persists_failed_submitted_batch_id_without_retry(
+async def test_runner_resumes_submitted_batch_id_without_resubmitting(
     tmp_path: Path,
 ) -> None:
     fixtures = _fixtures()
@@ -221,12 +246,13 @@ async def test_runner_persists_failed_submitted_batch_id_without_retry(
     first_batch_call = next(
         call for call in plan.first_round_calls if call.transport == "batch-compatibility"
     )
+    batch_client = ResumableBatchClient()
     runner = BenchmarkRunner(
         plan=plan,
         fixtures=fixtures,
         catalog=_catalog(),
         client=RecordingClient(),
-        batch_client=FailedSubmittedBatchClient(),
+        batch_client=batch_client,
         run_dir=tmp_path,
     )
 
@@ -236,18 +262,27 @@ async def test_runner_persists_failed_submitted_batch_id_without_retry(
         (tmp_path / "receipts" / f"{first_batch_call.call_id}.json").read_text()
     )
 
-    assert receipt["status"] == "failed"
-    assert receipt["batch_job_id"] == "batch-preserved"
+    assert receipt["status"] == "submitted"
+    assert receipt["batch_job_id"] == "batch-job-1"
+    assert batch_client.models == [first_batch_call.model_id]
+    assert batch_client.poll_job_ids == ["batch-job-1"]
 
     resumed = await BenchmarkRunner(
         plan=plan,
         fixtures=fixtures,
         catalog=_catalog(),
         client=RecordingClient(),
-        batch_client=FailedSubmittedBatchClient(),
+        batch_client=batch_client,
         run_dir=tmp_path,
     ).run_first_round(limit=1)
-    assert resumed.failed == 1
+    assert resumed.completed == 1
+    assert batch_client.models == [first_batch_call.model_id]
+    assert batch_client.poll_job_ids == ["batch-job-1", "batch-job-1"]
+    completed_receipt = json.loads(
+        (tmp_path / "receipts" / f"{first_batch_call.call_id}.json").read_text()
+    )
+    assert completed_receipt["status"] == "completed"
+    assert completed_receipt["batch_job_id"] == "batch-job-1"
 
 
 async def test_runner_aborts_on_returned_model_drift(tmp_path: Path) -> None:
@@ -282,6 +317,44 @@ async def test_runner_aborts_on_returned_model_drift(tmp_path: Path) -> None:
     assert resumed.completed == 0
     assert resumed.failed == 1
     assert resumed.actual_cost_usd == pytest.approx(0.0001)
+    assert resumed_client.models == []
+
+
+async def test_over_cap_provider_cost_is_reconciled_once_and_receipted(
+    tmp_path: Path,
+) -> None:
+    fixtures = _fixtures()
+    plan = _plan(fixtures)
+    selected = "openai/gpt-5.6-luna"
+    runner = BenchmarkRunner(
+        plan=plan,
+        fixtures=fixtures,
+        catalog=_catalog(),
+        client=OverCapClient(),
+        batch_client=RecordingBatchClient(),
+        run_dir=tmp_path,
+    )
+
+    with pytest.raises(ValueError, match="exceeded benchmark budget cap"):
+        await runner.run_first_round(limit=1, models={selected})
+
+    receipt_path = next((tmp_path / "receipts").glob("*.json"))
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["status"] == "failed"
+    assert receipt["cost_usd"] == 6.0
+    assert runner.ledger.actual_cost_usd == 6.0
+
+    resumed_client = RecordingClient()
+    resumed = await BenchmarkRunner(
+        plan=plan,
+        fixtures=fixtures,
+        catalog=_catalog(),
+        client=resumed_client,
+        batch_client=RecordingBatchClient(),
+        run_dir=tmp_path,
+    ).run_first_round(limit=1, models={selected})
+    assert resumed.failed == 1
+    assert resumed.actual_cost_usd == 6.0
     assert resumed_client.models == []
 
 

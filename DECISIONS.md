@@ -118,7 +118,11 @@ Reason: overwriting a failed receipt could both double charge a provider call
 and understate the remaining budget. Queued batches are especially sensitive
 because submission may succeed before polling times out.
 
-Safety: batch failures persist the submitted job ID and 30-day retention fact;
-exact planned call IDs, fixture hashes, catalog digests, and output-plan identity
-are validated before execution or scoring. Repeat trials must copy their root
-first-round call controls and are compared with that same model/fixture call.
+Safety: batch submission and polling are separate operations. A `submitted`
+receipt persists the job ID and 30-day retention fact before the first poll;
+transient polling failures preserve that receipt and resume the same job rather
+than POSTing a duplicate. Terminal provider failures remain non-retriable.
+Exact planned call IDs, fixture hashes, catalog digests, and output-plan
+identity are validated before execution or scoring. Repeat trials must copy
+their root first-round call controls and are compared with that same
+model/fixture call.

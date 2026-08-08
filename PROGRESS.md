@@ -160,8 +160,10 @@ Assumptions:
   gaps. Added regression tests and mitigated every Critical and Important
   pre-spend finding.
 - Failed receipts are now non-retriable during normal resume, their actual cost
-  is counted, and unreconciled failures reserve their frozen maximum. Submitted
-  batch job IDs survive timeout and terminal-failure receipts.
+  is counted, and unreconciled failures reserve their frozen maximum. Batch
+  submission and polling are separate: the queued job ID is atomically written
+  before polling, local timeout/network failures remain resumable, and restart
+  polls the same job without a second submission.
 - Repeat plans now require the root first-round plan, copy its prompt, source,
   token, reasoning, seed, transport, price, and catalog controls, and report
   same-fixture quality, finding-count, validity, and cost deltas.
@@ -171,9 +173,11 @@ Assumptions:
 - Normalized catalog snapshots recompute entry and full-catalog digests before
   execution. Tournament runs use the sibling frozen catalog by default and
   refuse output directories bound to another plan.
-- Current implementation verification: 73 focused tests pass; the broader
-  mining/model gate passes 462 tests with two pre-existing aiosqlite event-loop
-  cleanup warnings. Static checks and `git diff --check` pass. No paid
-  tournament calls have been made yet.
+- Provider costs that exceed the cap are reconciled exactly once and written to
+  a failed receipt before the cap error propagates, preventing hidden spend or
+  an automatic charged retry.
+- Current implementation verification: 76 focused tests and 443 tests in the
+  available broader mining/model gate pass. Static checks and `git diff
+  --check` pass. No paid tournament calls have been made yet.
 - The hard cumulative authorization remains `$5.00`; conservative prior spend
   is `$2.0348919774`, leaving `$2.9651080226` before the corrected tournament.

@@ -14,6 +14,7 @@ import toml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from claw.llm.client import LLMMessage
+from claw.models.batch import BatchSubmission
 from claw.models.catalog import ModelCatalog, ModelCatalogEntry
 
 if TYPE_CHECKING:
@@ -160,7 +161,7 @@ class CallReceipt(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     call_id: str
-    status: Literal["completed", "failed"]
+    status: Literal["submitted", "completed", "failed"]
     requested_model: str
     returned_model: str | None = None
     fixture_name: str
@@ -179,6 +180,15 @@ class CallReceipt(BaseModel):
     batch_job_id: str | None = None
     retention_days: int | None = None
     error: str | None = None
+
+    @model_validator(mode="after")
+    def validate_submitted_receipt(self) -> "CallReceipt":
+        if self.status == "submitted":
+            if self.transport != "queued-job" or not self.batch_job_id:
+                raise ValueError("Submitted receipts require a queued batch job id")
+            if self.cost_usd != 0 or self.response_path is not None:
+                raise ValueError("Submitted receipts cannot claim cost or response output")
+        return self
 
 
 class BenchmarkRunSummary(BaseModel):
@@ -495,6 +505,7 @@ class BenchmarkRunner:
             fixture = self._validate_call(call)
             receipt_path = self.run_dir / "receipts" / f"{call.call_id}.json"
             existing = self._load_existing_receipt(receipt_path)
+            resume_submission = None
             if existing is not None:
                 if (
                     existing.call_id != call.call_id
@@ -503,13 +514,25 @@ class BenchmarkRunner:
                     or existing.prompt_sha256 != call.prompt_sha256
                 ):
                     raise ValueError(f"Receipt drift for call {call.call_id}")
-                self.ledger.actual_cost_usd += existing.cost_usd
-                receipt_paths.append(str(receipt_path))
-                if existing.status == "completed":
-                    skipped += 1
-                else:
-                    failed += 1
-                continue
+                if existing.status in {"completed", "failed"}:
+                    self.ledger.actual_cost_usd += existing.cost_usd
+                    receipt_paths.append(str(receipt_path))
+                    if existing.status == "completed":
+                        skipped += 1
+                    else:
+                        failed += 1
+                    continue
+                entry = self.catalog.require(call.model_id)
+                if not entry.is_batch or not existing.batch_job_id:
+                    raise ValueError(
+                        f"Only submitted batch receipts can resume call {call.call_id}"
+                    )
+                resume_submission = BatchSubmission(
+                    job_id=existing.batch_job_id,
+                    requested_model=call.model_id,
+                    custom_id=call.call_id,
+                    retention_days=existing.retention_days or 30,
+                )
 
             self.ledger.authorize(call.maximum_cost_usd)
             started = time.monotonic()
@@ -530,15 +553,38 @@ class BenchmarkRunner:
                 if entry.is_batch:
                     if self.batch_client is None:
                         raise RuntimeError("Batch model requires an OpenRouter batch client")
-                    batch = await self.batch_client.complete(
-                        messages=[LLMMessage(role="user", content=fixture.prompt)],
-                        requested_model=call.model_id,
-                        custom_id=call.call_id,
-                        max_tokens=call.maximum_output_tokens,
-                        response_format=None,
-                        reasoning=reasoning,
-                        seed=0 if "seed" in call.parameters else None,
-                    )
+                    submission = resume_submission
+                    if submission is None:
+                        submission = await self.batch_client.submit(
+                            messages=[LLMMessage(role="user", content=fixture.prompt)],
+                            requested_model=call.model_id,
+                            custom_id=call.call_id,
+                            max_tokens=call.maximum_output_tokens,
+                            response_format=None,
+                            reasoning=reasoning,
+                            seed=0 if "seed" in call.parameters else None,
+                        )
+                        batch_job_id = submission.job_id
+                        retention_days = submission.retention_days
+                        submitted_receipt = CallReceipt(
+                            call_id=call.call_id,
+                            status="submitted",
+                            requested_model=call.model_id,
+                            fixture_name=fixture.repo_name,
+                            prompt_sha256=fixture.prompt_sha256,
+                            transport="queued-job",
+                            duration_seconds=time.monotonic() - started,
+                            batch_job_id=batch_job_id,
+                            retention_days=retention_days,
+                        )
+                        _atomic_write(
+                            receipt_path,
+                            submitted_receipt.model_dump_json(indent=2) + "\n",
+                        )
+                    else:
+                        batch_job_id = submission.job_id
+                        retention_days = submission.retention_days
+                    batch = await self.batch_client.poll(submission=submission)
                     response = batch.response
                     batch_job_id = batch.job_id
                     retention_days = batch.compatibility.retention_days
@@ -566,8 +612,10 @@ class BenchmarkRunner:
                 response_path = self.run_dir / "responses" / f"{call.call_id}.txt"
                 _atomic_write(response_path, response.content)
                 self._validate_returned_model(call.model_id, response.model, entry)
-                self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
-                reconciled = True
+                try:
+                    self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
+                finally:
+                    reconciled = True
                 receipt = CallReceipt(
                     call_id=call.call_id,
                     status="completed",
@@ -594,6 +642,30 @@ class BenchmarkRunner:
                 batch_job_id = getattr(exc, "job_id", batch_job_id)
                 if batch_job_id is not None and retention_days is None:
                     retention_days = 30
+                resumable_batch = (
+                    entry.is_batch
+                    and batch_job_id is not None
+                    and getattr(exc, "status", None)
+                    in {"submitted", "queued", "running", "timed_out"}
+                )
+                if resumable_batch:
+                    receipt = CallReceipt(
+                        call_id=call.call_id,
+                        status="submitted",
+                        requested_model=call.model_id,
+                        fixture_name=fixture.repo_name,
+                        prompt_sha256=fixture.prompt_sha256,
+                        transport="queued-job",
+                        duration_seconds=time.monotonic() - started,
+                        batch_job_id=batch_job_id,
+                        retention_days=retention_days,
+                        error=_redact_error(str(exc)),
+                    )
+                    _atomic_write(
+                        receipt_path,
+                        receipt.model_dump_json(indent=2) + "\n",
+                    )
+                    raise
                 if response is not None and response_path is None:
                     response_path = self.run_dir / "responses" / f"{call.call_id}.txt"
                     _atomic_write(response_path, response.content)
@@ -607,8 +679,14 @@ class BenchmarkRunner:
                         response.input_tokens,
                         response.output_tokens,
                     )
+                reconcile_error = None
                 if not reconciled:
-                    self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
+                    try:
+                        self.ledger.reconcile(call.maximum_cost_usd, actual_cost)
+                    except Exception as ledger_exc:
+                        reconcile_error = ledger_exc
+                    finally:
+                        reconciled = True
                 receipt = CallReceipt(
                     call_id=call.call_id,
                     status="failed",
@@ -641,6 +719,8 @@ class BenchmarkRunner:
                 )
                 failed += 1
                 _atomic_write(receipt_path, receipt.model_dump_json(indent=2) + "\n")
+                if reconcile_error is not None:
+                    raise reconcile_error from exc
                 raise
             _atomic_write(receipt_path, receipt.model_dump_json(indent=2) + "\n")
             receipt_paths.append(str(receipt_path))

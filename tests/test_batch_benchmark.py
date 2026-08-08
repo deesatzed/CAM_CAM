@@ -10,6 +10,7 @@ from claw.llm.client import LLMMessage
 from claw.models.batch import (
     BatchCompatibilityReceipt,
     BatchJobError,
+    BatchSubmission,
     OpenRouterBatchClient,
     _parse_batch_result,
 )
@@ -204,3 +205,40 @@ async def test_batch_timeout_preserves_submitted_job_id() -> None:
 
     assert captured.value.job_id == "batch-timeout"
     assert captured.value.status == "timed_out"
+
+
+async def test_batch_poll_network_failure_preserves_submission_for_resume() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.method == "POST":
+            return httpx.Response(
+                200,
+                json={"id": "batch-resume", "status": "validating"},
+            )
+        raise httpx.ConnectError("temporary network failure", request=request)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http_client:
+        client = OpenRouterBatchClient(
+            api_key="test-key",
+            http_client=http_client,
+            poll_interval_seconds=0,
+        )
+        submission = await client.submit(
+            messages=[LLMMessage(role="user", content="mine")],
+            requested_model="google/gemini-3.6-flash:batch",
+            custom_id="call-resume",
+            max_tokens=100,
+        )
+        assert submission == BatchSubmission(
+            job_id="batch-resume",
+            requested_model="google/gemini-3.6-flash:batch",
+            custom_id="call-resume",
+        )
+        with pytest.raises(BatchJobError) as captured:
+            await client.poll(submission=submission)
+
+    assert captured.value.job_id == "batch-resume"
+    assert captured.value.status == "submitted"
+    assert [request.method for request in requests] == ["POST", "GET"]

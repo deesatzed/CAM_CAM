@@ -49,6 +49,16 @@ class BatchCompletion:
     compatibility: BatchCompatibilityReceipt
 
 
+@dataclass(frozen=True)
+class BatchSubmission:
+    """Durable identity needed to poll a previously submitted batch."""
+
+    job_id: str
+    requested_model: str
+    custom_id: str
+    retention_days: int = 30
+
+
 class BatchJobError(RuntimeError):
     """A submitted batch that did not yield a usable completion."""
 
@@ -95,7 +105,7 @@ class OpenRouterBatchClient:
             "X-Title": "CLAW",
         }
 
-    async def complete(
+    async def submit(
         self,
         *,
         messages: list[LLMMessage],
@@ -105,8 +115,8 @@ class OpenRouterBatchClient:
         response_format: dict | None = None,
         reasoning: dict | None = None,
         seed: int | None = None,
-    ) -> BatchCompletion:
-        """Submit, poll, and parse one inlined Batch API result."""
+    ) -> BatchSubmission:
+        """Submit one batch and return the identity that must be persisted."""
         if not requested_model.endswith(":batch"):
             raise ValueError("Batch transport requires a model ID ending in ':batch'")
         base_model = requested_model.removesuffix(":batch")
@@ -136,10 +146,18 @@ class OpenRouterBatchClient:
         job_id = str(created.get("id") or "")
         if not job_id:
             raise RuntimeError("OpenRouter Batch API returned no job id")
+        return BatchSubmission(
+            job_id=job_id,
+            requested_model=requested_model,
+            custom_id=custom_id,
+        )
 
+    async def poll(self, *, submission: BatchSubmission) -> BatchCompletion:
+        """Poll a new or restored submission without creating another job."""
+        job_id = submission.job_id
         loop = asyncio.get_running_loop()
         deadline = loop.time() + self.timeout_seconds
-        batch = created
+        batch: dict[str, Any] = {"id": job_id, "status": "submitted"}
         while str(batch.get("status")) not in self._TERMINAL:
             if loop.time() >= deadline:
                 raise BatchJobError(
@@ -149,12 +167,19 @@ class OpenRouterBatchClient:
                 )
             if self.poll_interval_seconds:
                 await asyncio.sleep(self.poll_interval_seconds)
-            response = await self.client.get(
-                f"{self.base_url}/beta/batches/{job_id}",
-                headers=self.headers,
-            )
-            response.raise_for_status()
-            batch = response.json()
+            try:
+                response = await self.client.get(
+                    f"{self.base_url}/beta/batches/{job_id}",
+                    headers=self.headers,
+                )
+                response.raise_for_status()
+                batch = response.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                raise BatchJobError(
+                    f"OpenRouter batch {job_id} polling failed: {exc}",
+                    job_id=job_id,
+                    status="submitted",
+                ) from exc
 
         status = str(batch.get("status"))
         if status != "completed":
@@ -165,7 +190,7 @@ class OpenRouterBatchClient:
                 status=status,
             )
         try:
-            response = _parse_batch_result(batch, custom_id=custom_id)
+            response = _parse_batch_result(batch, custom_id=submission.custom_id)
         except Exception as exc:
             raise BatchJobError(
                 str(exc),
@@ -173,12 +198,12 @@ class OpenRouterBatchClient:
                 status="failed",
             ) from exc
         compatibility = BatchCompatibilityReceipt(
-            model_id=requested_model,
+            model_id=submission.requested_model,
             status="completed",
             transport="queued-job",
             job_id=job_id,
             synchronous_latency_seconds=None,
-            retention_days=30,
+            retention_days=submission.retention_days,
             detail="OpenRouter retains batch inputs and results for 30 days",
         )
         return BatchCompletion(
@@ -186,6 +211,29 @@ class OpenRouterBatchClient:
             job_id=job_id,
             compatibility=compatibility,
         )
+
+    async def complete(
+        self,
+        *,
+        messages: list[LLMMessage],
+        requested_model: str,
+        custom_id: str,
+        max_tokens: int,
+        response_format: dict | None = None,
+        reasoning: dict | None = None,
+        seed: int | None = None,
+    ) -> BatchCompletion:
+        """Compatibility wrapper for callers that do not persist submissions."""
+        submission = await self.submit(
+            messages=messages,
+            requested_model=requested_model,
+            custom_id=custom_id,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            reasoning=reasoning,
+            seed=seed,
+        )
+        return await self.poll(submission=submission)
 
     async def close(self) -> None:
         if self._http_client is not None:

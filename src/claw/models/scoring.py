@@ -345,9 +345,8 @@ def score_benchmark_run(
                 or receipt.prompt_sha256 != planned.prompt_sha256
             ):
                 raise ValueError(f"Receipt lineage drift for call {receipt.call_id}")
-            if (
-                receipt.status == "failed"
-                and (receipt.cost_source != "provider" or receipt.cost_usd <= 0)
+            if receipt.status != "completed" and (
+                receipt.cost_source != "provider" or receipt.cost_usd <= 0
             ):
                 unresolved_reserve_usd += max(
                     0.0,

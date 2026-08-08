@@ -317,6 +317,56 @@ def test_failed_charged_receipt_counts_toward_report_spend(tmp_path: Path) -> No
     assert report.models == []
 
 
+def test_submitted_receipt_reserves_frozen_maximum_cost(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    (run_dir / "receipts").mkdir(parents=True)
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    submitted = CallReceipt(
+        call_id="submitted-call",
+        status="submitted",
+        requested_model="google/gemini-3.6-flash:batch",
+        fixture_name=fixture.repo_name,
+        prompt_sha256=fixture.prompt_sha256,
+        transport="queued-job",
+        batch_job_id="batch-pending",
+        retention_days=30,
+    )
+    (run_dir / "receipts" / "submitted-call.json").write_text(
+        submitted.model_dump_json()
+    )
+    planned = PlannedCall(
+        call_id="submitted-call",
+        stage="first-round",
+        model_id="google/gemini-3.6-flash:batch",
+        fixture_name=fixture.repo_name,
+        prompt_sha256=fixture.prompt_sha256,
+        repo_content_sha256=fixture.repo_content_sha256,
+        catalog_digest="catalog",
+        maximum_input_tokens=100,
+        maximum_output_tokens=100,
+        maximum_cost_usd=0.03,
+        parameters=[],
+        transport="batch-compatibility",
+    )
+
+    report = score_benchmark_run(
+        run_id="submitted-run",
+        run_dir=run_dir,
+        fixtures=[fixture],
+        expected_fixtures=1,
+        existing_titles=[],
+        planned_calls=[planned],
+    )
+
+    assert report.actual_cost_usd == 0
+    assert report.conservative_cost_usd == 0.03
+    assert report.calls == []
+    assert report.models == []
+
+
 def test_scoring_rejects_receipts_outside_the_frozen_call_set(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     (run_dir / "receipts").mkdir(parents=True)
