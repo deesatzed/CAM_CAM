@@ -8,13 +8,16 @@ import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import toml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from claw.llm.client import LLMMessage
 from claw.models.catalog import ModelCatalog, ModelCatalogEntry
+
+if TYPE_CHECKING:
+    from claw.models.tournament import TournamentStagePlan
 
 
 class MiningPromptFixture(BaseModel):
@@ -395,7 +398,7 @@ class BenchmarkRunner:
     def __init__(
         self,
         *,
-        plan: BenchmarkPlan,
+        plan: BenchmarkPlan | TournamentStagePlan,
         fixtures: list[MiningPromptFixture],
         catalog: ModelCatalog,
         client,
@@ -408,7 +411,12 @@ class BenchmarkRunner:
         self.client = client
         self.batch_client = batch_client
         self.run_dir = run_dir
-        self.ledger = BudgetLedger(budget_usd=plan.budget_usd)
+        self._stage_budget_usd = (
+            plan.authorization_usd - plan.prior_spend_usd
+            if hasattr(plan, "authorization_usd")
+            else plan.budget_usd
+        )
+        self.ledger = BudgetLedger(budget_usd=self._stage_budget_usd)
 
     def _validate_call(self, call: PlannedCall) -> MiningPromptFixture:
         fixture = self.fixtures[call.fixture_name]
@@ -449,13 +457,14 @@ class BenchmarkRunner:
             return None
         return receipt
 
-    async def run_first_round(
+    async def run_calls(
         self,
+        calls: list[PlannedCall],
         *,
         limit: int | None = None,
         models: set[str] | None = None,
     ) -> BenchmarkRunSummary:
-        calls = self.plan.first_round_calls
+        self.ledger = BudgetLedger(budget_usd=self._stage_budget_usd)
         if models is not None:
             planned_models = {call.model_id for call in calls}
             unknown = models - planned_models
@@ -471,15 +480,22 @@ class BenchmarkRunner:
         skipped = 0
         receipt_paths: list[str] = []
         for call in calls:
+            fixture = self._validate_call(call)
             receipt_path = self.run_dir / "receipts" / f"{call.call_id}.json"
             existing = self._load_existing_receipt(receipt_path)
             if existing is not None:
+                if (
+                    existing.call_id != call.call_id
+                    or existing.requested_model != call.model_id
+                    or existing.fixture_name != call.fixture_name
+                    or existing.prompt_sha256 != call.prompt_sha256
+                ):
+                    raise ValueError(f"Receipt drift for call {call.call_id}")
                 skipped += 1
                 self.ledger.actual_cost_usd += existing.cost_usd
                 receipt_paths.append(str(receipt_path))
                 continue
 
-            fixture = self._validate_call(call)
             self.ledger.authorize(call.maximum_cost_usd)
             started = time.monotonic()
             response = None
@@ -623,3 +639,17 @@ class BenchmarkRunner:
             summary.model_dump_json(indent=2) + "\n",
         )
         return summary
+
+    async def run_first_round(
+        self,
+        *,
+        limit: int | None = None,
+        models: set[str] | None = None,
+    ) -> BenchmarkRunSummary:
+        """Compatibility wrapper for historical first-round plans."""
+
+        return await self.run_calls(
+            self.plan.first_round_calls,
+            limit=limit,
+            models=models,
+        )
