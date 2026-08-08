@@ -283,16 +283,21 @@ def build_blinded_packet(
 
 
 def _response_envelope(response_text: str) -> str:
+    cleaned = response_text.strip()
+    fenced = re.fullmatch(r"```(?:json)?\s*\n?(.*?)\n?```", cleaned, re.DOTALL)
+    if fenced is not None:
+        cleaned = fenced.group(1).strip()
     try:
-        parsed = json.loads(response_text)
+        parsed = json.loads(cleaned)
     except json.JSONDecodeError:
         return "repaired-or-invalid"
+    prefix = "fenced-" if fenced is not None else ""
     if isinstance(parsed, list):
-        return "strict-array"
+        return f"{prefix}strict-array"
     if isinstance(parsed, dict) and isinstance(parsed.get("findings"), list):
-        return "findings-wrapper"
+        return f"{prefix}findings-wrapper"
     if isinstance(parsed, dict) and parsed.get("title") and parsed.get("description"):
-        return "single-finding"
+        return f"{prefix}single-finding"
     return "unsupported-json"
 
 

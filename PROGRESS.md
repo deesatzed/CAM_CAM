@@ -176,10 +176,10 @@ Assumptions:
 - Provider costs that exceed the cap are reconciled exactly once and written to
   a failed receipt before the cap error propagates, preventing hidden spend or
   an automatic charged retry.
-- Current implementation verification: 77 focused tests and 452 tests in the
+- Current implementation verification: 78 focused tests and 452 tests in the
   available broader mining/model gate pass. Static checks and `git diff
   --check` pass. The broader gate retains one pre-existing aiosqlite event-loop
-  cleanup warning. No paid tournament calls have been made yet.
+  cleanup warning.
 - The first execution attempt stopped before client execution because the
   frozen full-catalog digest changed across Python hash seeds. Root cause was
   unordered `frozenset` serialization inside the aggregate digest. Added a
@@ -188,3 +188,20 @@ Assumptions:
   fresh validating plan with unchanged per-model prices and cost ceilings.
 - The hard cumulative authorization remains `$5.00`; conservative prior spend
   is `$2.0348919774`, leaving `$2.9651080226` before the corrected tournament.
+- Paid first round `20260808T212139Z-9f299170-first-round` completed all 24
+  exact calls with zero failed/resumed calls and `$1.902849538` recorded spend.
+  The corpus and `model_profiles.toml` hashes remained unchanged.
+- Initial scoring incorrectly hard-failed complete fenced JSON even though the
+  production `parse_findings` path explicitly accepts that envelope. Added a
+  regression test and aligned the benchmark classifier with the production
+  parser; malformed, truncated, unsupported, secret-like, and invalid-
+  provenance outputs remain hard failures.
+- Corrected first-round leaders are Qwen 3.8 Max (quality `93.09`), Grok 4.5
+  (`90.40`), and Kimi K3 (`83.67`), all with zero hard failures. The remaining
+  models are excluded by provenance or truncation gates.
+- GLM 5.2 provider cost was `$0.27956364`, about 7.8 times its frozen catalog
+  lane maximum of `$0.035829352`; do not treat its nominal price as reliable
+  budget evidence until OpenRouter routing/pricing is reconciled.
+- The zero-spend held-out plan advances Qwen and Grok for four calls with a
+  `$0.68782` stage maximum and `$4.6255615154` cumulative maximum. Kimi was
+  eligible but excluded because all three did not fit the remaining budget.

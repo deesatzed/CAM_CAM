@@ -140,3 +140,18 @@ was safe and pre-spend, but made valid frozen plans unusable.
 Safety: catalog verification still rejects material entry or aggregate
 tampering. Any plan whose legacy aggregate digest cannot validate is retained
 only as rejected evidence; it is never repaired in place or executed.
+
+## 2026-08-08: Score complete fenced JSON as production-compatible
+
+Decision: distinguish complete fenced JSON objects/arrays from malformed or
+repaired JSON. A complete supported payload inside a standard `json` code fence
+is recorded as a fenced envelope and does not create a hard failure.
+
+Reason: CAM's production `parse_findings` intentionally strips standard code
+fences before JSON validation. Treating the same response as invalid in the
+benchmark measured stricter formatting preference rather than actual mining
+compatibility and incorrectly excluded otherwise grounded candidates.
+
+Safety: incomplete fences, truncation, unsupported JSON shapes, secret-like
+output, and missing/escaping provenance remain hard failures. The envelope type
+stays visible in per-call evidence; no raw response or profile is rewritten.

@@ -216,6 +216,46 @@ def test_score_run_aggregates_cost_quality_and_normalized_envelopes(
     assert report.models[0].cost_per_finding_usd == 0.001
 
 
+def test_fenced_json_accepted_by_production_parser_is_not_a_hard_failure(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    (repo / "src").mkdir(parents=True)
+    (repo / "src" / "retry.py").write_text("def retry():\n    pass\n")
+    fixture = _fixture(repo)
+    run_dir = tmp_path / "run"
+    (run_dir / "receipts").mkdir(parents=True)
+    (run_dir / "responses").mkdir()
+    wrapped = json.dumps({"findings": json.loads(_response())})
+    (run_dir / "responses" / "fenced.txt").write_text(
+        f"```json\n{wrapped}\n```"
+    )
+    receipt = CallReceipt(
+        call_id="fenced",
+        status="completed",
+        requested_model="qwen/qwen3.8-max",
+        returned_model="qwen/qwen3.8-max",
+        fixture_name="fixture",
+        prompt_sha256=fixture.prompt_sha256,
+        cost_usd=0.001,
+        cost_source="provider",
+        response_path="responses/fenced.txt",
+    )
+    (run_dir / "receipts" / "fenced.json").write_text(receipt.model_dump_json())
+
+    report = score_benchmark_run(
+        run_id="fenced-run",
+        run_dir=run_dir,
+        fixtures=[fixture],
+        expected_fixtures=1,
+        existing_titles=[],
+    )
+
+    assert report.calls[0].envelope == "fenced-findings-wrapper"
+    assert report.calls[0].hard_failures == []
+    assert report.models[0].eligible is True
+
+
 def test_load_existing_titles_uses_immutable_read_only_corpus(tmp_path: Path) -> None:
     db_path = tmp_path / "claw.db"
     with sqlite3.connect(db_path) as connection:
