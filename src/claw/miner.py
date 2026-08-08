@@ -2187,6 +2187,96 @@ class RepoMiner:
             prompt = "\n".join(context_lines) + "\n\n" + prompt
         return prompt
 
+    async def prepare_mining_prompt(
+        self,
+        repo_path: str | Path,
+        repo_name: str,
+        brain: str,
+        secret_scan_files: set[str] | None = None,
+    ):
+        """Build the exact production mining prompt without an LLM or database write."""
+        import subprocess
+
+        from claw.models.benchmark import MiningPromptFixture
+
+        path = Path(repo_path).resolve()
+        brain_config = self.config.mining.brains.get(
+            brain,
+            self.config.mining.brains.get("misc", BrainConfig()),
+        )
+        repo_content, file_count = serialize_repo(
+            path,
+            max_bytes=brain_config.max_bytes,
+            exclude_files=secret_scan_files,
+            config=self.config,
+        )
+        if not repo_content:
+            raise ValueError("No source files found")
+        if file_count < 3:
+            raise ValueError(f"Too few source files ({file_count} < 3)")
+        repo_bytes = len(repo_content.encode("utf-8"))
+        if repo_bytes < 1024:
+            raise ValueError("Insufficient code content")
+
+        domain_info = self._classify_repo_domain(repo_content, file_count)
+        overlap = await self._assess_knowledge_overlap(repo_name, domain_info)
+        repo_content, file_count, prompt, estimated_tokens = (
+            self._cap_repo_content_for_prompt_budget(
+                repo_path=path,
+                repo_name=repo_name,
+                repo_content=repo_content,
+                file_count=file_count,
+                brain=brain,
+                brain_config=brain_config,
+                domain_info=domain_info,
+                overlap=overlap,
+                secret_scan_files=secret_scan_files,
+            )
+        )
+        repo_bytes = len(repo_content.encode("utf-8"))
+        source_manifest = re.findall(r"^--- FILE: (.+) ---$", repo_content, re.MULTILINE)
+
+        def git_output(*args: str) -> str | None:
+            completed = subprocess.run(
+                ["git", "-C", str(path), *args],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            return completed.stdout.strip() if completed.returncode == 0 else None
+
+        git_head = git_output("rev-parse", "HEAD")
+        dirty_output = git_output("status", "--porcelain") or ""
+        token_budget = {
+            "small": 4096,
+            "medium": 6144,
+            "large": 8192,
+        }.get(domain_info["complexity"], 6144)
+        return MiningPromptFixture(
+            repo_path=str(path),
+            repo_name=repo_name,
+            git_head=git_head,
+            dirty_paths=[line for line in dirty_output.splitlines() if line],
+            brain=brain,
+            prompt=prompt,
+            prompt_sha256=hashlib.sha256(prompt.encode()).hexdigest(),
+            repo_content=repo_content,
+            repo_content_sha256=hashlib.sha256(repo_content.encode()).hexdigest(),
+            source_manifest=source_manifest,
+            repo_bytes=repo_bytes,
+            file_count=file_count,
+            estimated_tokens=estimated_tokens,
+            token_budget=token_budget,
+            domain_info=domain_info,
+            overlap={
+                "repo_known_titles": overlap.repo_known_titles,
+                "domain_known_titles": overlap.domain_known_titles,
+                "domain_known_categories": overlap.domain_known_categories,
+                "overlap_score": overlap.overlap_score,
+                "suggested_focus": overlap.suggested_focus,
+            },
+        )
+
     def _estimate_prompt_tokens(self, prompt: str) -> int:
         cpt = self.config.mining.recovery.token_estimate_chars_per_token
         return int(len(prompt) / cpt)
@@ -3205,33 +3295,22 @@ class RepoMiner:
         logger.info("Brain selected for %s: %s (max_bytes=%d, prompt=%s)",
                      repo_name, brain, brain_config.max_bytes, brain_config.prompt)
 
-        # Serialize repo content with brain-specific limit
-        repo_content, file_count = serialize_repo(
-            repo_path,
-            max_bytes=brain_config.max_bytes,
-            exclude_files=secret_scan_files,
-            config=self.config,
-        )
-        if not repo_content:
+        try:
+            fixture = await self.prepare_mining_prompt(
+                repo_path,
+                repo_name,
+                brain,
+                secret_scan_files,
+            )
+        except ValueError as exc:
             return RepoMiningResult(
                 repo_name=repo_name,
                 repo_path=str(repo_path),
-                error="No source files found",
+                error=str(exc),
             )
 
-        # Gate: skip trivial repos that would waste an LLM call
-        if file_count < 3:
-            return RepoMiningResult(
-                repo_name=repo_name,
-                repo_path=str(repo_path),
-                error=f"Too few source files ({file_count} < 3)",
-            )
-        if len(repo_content.encode("utf-8")) < 1024:
-            return RepoMiningResult(
-                repo_name=repo_name,
-                repo_path=str(repo_path),
-                error="Insufficient code content",
-            )
+        repo_content = fixture.repo_content
+        file_count = fixture.file_count
 
         logger.info(
             "Serialized %s: %d files, %d bytes (brain=%s, limit=%dKB)",
@@ -3240,7 +3319,7 @@ class RepoMiner:
         )
 
         # === PASS 1: Domain Classification (rule-based, free) ===
-        domain_info = self._classify_repo_domain(repo_content, file_count)
+        domain_info = fixture.domain_info
         logger.info(
             "Pass 1 — domain: %s, language: %s, complexity: %s",
             domain_info["primary_domain"],
@@ -3249,7 +3328,7 @@ class RepoMiner:
         )
 
         # === PASS 2: Knowledge Overlap Assessment (embedding search, cheap) ===
-        overlap = await self._assess_knowledge_overlap(repo_name, domain_info)
+        overlap = KnowledgeOverlap(**fixture.overlap)
         logger.info(
             "Pass 2 — repo-known: %d, domain-known: %d, overlap: %.2f, focus: %s",
             len(overlap.repo_known_titles),
@@ -3259,27 +3338,12 @@ class RepoMiner:
         )
 
         # Adaptive token budget based on repo complexity
-        token_budget = {
-            "small": 4096,
-            "medium": 6144,
-            "large": 8192,
-        }.get(domain_info["complexity"], 6144)
+        token_budget = fixture.token_budget
 
         # --- Self-recovering LLM call with model escalation ---
         model_selector = MiningModelSelector(self.config, self.repository)
-        repo_content, file_count, prompt, estimated_tokens = (
-            self._cap_repo_content_for_prompt_budget(
-                repo_path=repo_path,
-                repo_name=repo_name,
-                repo_content=repo_content,
-                file_count=file_count,
-                brain=brain,
-                brain_config=brain_config,
-                domain_info=domain_info,
-                overlap=overlap,
-                secret_scan_files=secret_scan_files,
-            )
-        )
+        prompt = fixture.prompt
+        estimated_tokens = fixture.estimated_tokens
         logger.info(
             "Estimated prompt tokens for %s: ~%dK (brain=%s)",
             repo_name, estimated_tokens // 1000, brain,

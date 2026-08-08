@@ -1,0 +1,28 @@
+schema_version = 1
+name = "mining-v1"
+description = "Frozen production-prompt comparison for CAM repository mining"
+
+[[fixtures]]
+name = "Codx_LoopKit"
+language = "python"
+stage = "first-round"
+
+[[fixtures]]
+name = "atomic-agent"
+language = "python"
+stage = "first-round"
+
+[[fixtures]]
+name = "RedaktSafe"
+language = "python"
+stage = "first-round"
+
+[[fixtures]]
+name = "OpenCLI"
+language = "python"
+stage = "heldout"
+
+[[fixtures]]
+name = "OpenViking"
+language = "python"
+stage = "heldout"
