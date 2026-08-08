@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import httpx
@@ -97,6 +100,29 @@ def test_catalog_digest_is_stable_and_changes_with_material_data(payload: dict) 
     changed["data"][0]["pricing"]["prompt"] = "0.0000002"
     third = ModelCatalog.from_payload(changed)
     assert third.digest != first.digest
+
+
+def test_catalog_digest_is_stable_across_python_hash_seeds() -> None:
+    script = """
+import json
+from pathlib import Path
+from claw.models.catalog import ModelCatalog
+
+payload = json.loads(Path("tests/fixtures/openrouter_models.json").read_text())
+print(ModelCatalog.from_payload(payload).digest)
+"""
+    digests = set()
+    for seed in ("1", "2", "3"):
+        result = subprocess.run(
+            [sys.executable, "-c", script],
+            check=True,
+            capture_output=True,
+            text=True,
+            env={**os.environ, "PYTHONHASHSEED": seed, "PYTHONPATH": "src"},
+        )
+        digests.add(result.stdout.strip())
+
+    assert len(digests) == 1
 
 
 def test_normalized_catalog_rejects_tampered_entry_or_full_digest(payload: dict) -> None:

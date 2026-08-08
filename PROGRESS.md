@@ -176,8 +176,15 @@ Assumptions:
 - Provider costs that exceed the cap are reconciled exactly once and written to
   a failed receipt before the cap error propagates, preventing hidden spend or
   an automatic charged retry.
-- Current implementation verification: 76 focused tests and 443 tests in the
+- Current implementation verification: 77 focused tests and 452 tests in the
   available broader mining/model gate pass. Static checks and `git diff
-  --check` pass. No paid tournament calls have been made yet.
+  --check` pass. The broader gate retains one pre-existing aiosqlite event-loop
+  cleanup warning. No paid tournament calls have been made yet.
+- The first execution attempt stopped before client execution because the
+  frozen full-catalog digest changed across Python hash seeds. Root cause was
+  unordered `frozenset` serialization inside the aggregate digest. Added a
+  three-process hash-seed regression test, canonicalized the digest payload,
+  preserved the rejected artifacts as `first-round-stale-digest`, and froze a
+  fresh validating plan with unchanged per-model prices and cost ceilings.
 - The hard cumulative authorization remains `$5.00`; conservative prior spend
   is `$2.0348919774`, leaving `$2.9651080226` before the corrected tournament.

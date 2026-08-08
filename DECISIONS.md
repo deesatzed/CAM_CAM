@@ -126,3 +126,17 @@ Exact planned call IDs, fixture hashes, catalog digests, and output-plan
 identity are validated before execution or scoring. Repeat trials must copy
 their root first-round call controls and are compared with that same
 model/fixture call.
+
+## 2026-08-08: Catalog authorization hashes must be process-independent
+
+Decision: canonicalize set-valued model capabilities before computing both
+entry and full-catalog digests, and test the same payload under multiple Python
+hash seeds.
+
+Reason: a normalized snapshot created in one process could fail validation in
+another because `frozenset` iteration order is hash-seed dependent. The failure
+was safe and pre-spend, but made valid frozen plans unusable.
+
+Safety: catalog verification still rejects material entry or aggregate
+tampering. Any plan whose legacy aggregate digest cannot validate is retained
+only as rejected evidence; it is never repaired in place or executed.

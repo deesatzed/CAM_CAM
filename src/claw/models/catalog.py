@@ -85,6 +85,17 @@ def _entry_digest_payload(entry: ModelCatalogEntry) -> dict[str, Any]:
     return payload
 
 
+def _catalog_digest_payload(
+    entries: dict[str, ModelCatalogEntry],
+) -> dict[str, dict[str, Any]]:
+    payload: dict[str, dict[str, Any]] = {}
+    for model_id in sorted(entries):
+        normalized = _entry_digest_payload(entries[model_id])
+        normalized["catalog_digest"] = entries[model_id].catalog_digest
+        payload[model_id] = normalized
+    return payload
+
+
 class _RawCatalogEntry(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -166,11 +177,7 @@ class ModelCatalog(BaseModel):
                 update={"catalog_digest": _digest(_entry_digest_payload(entry))}
             )
 
-        digest_payload = {
-            model_id: entries[model_id].model_dump(mode="json")
-            for model_id in sorted(entries)
-        }
-        return cls(entries=entries, digest=_digest(digest_payload))
+        return cls(entries=entries, digest=_digest(_catalog_digest_payload(entries)))
 
     def require(self, model_id: str) -> ModelCatalogEntry:
         try:
@@ -185,11 +192,7 @@ class ModelCatalog(BaseModel):
             expected = _digest(_entry_digest_payload(entry))
             if expected != entry.catalog_digest:
                 raise ValueError(f"Model catalog entry digest mismatch: {model_id}")
-        digest_payload = {
-            model_id: self.entries[model_id].model_dump(mode="json")
-            for model_id in sorted(self.entries)
-        }
-        if _digest(digest_payload) != self.digest:
+        if _digest(_catalog_digest_payload(self.entries)) != self.digest:
             raise ValueError("Model catalog digest mismatch")
 
 
