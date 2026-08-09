@@ -1185,6 +1185,49 @@ To make an explicitly selected profile control a workspace mining run, pass it
 to the command: `cam mine-workspace ... --profiles model_profiles.toml`. Without
 `--profiles`, mining continues to use the models pinned in `claw.toml`.
 
+#### Hard-cap a changed-only mining run
+
+For paid workspace mining, provide `--max-cost-usd`, `--exact-model`, and
+`--budget-receipt` together. CAM freezes the live catalog entry, disables model
+fallbacks, persists a conservative reservation before every HTTP attempt, and
+stops before submitting a request that would cross the aggregate cap. Reusing
+the same receipt safely resumes the same authorization; changing its budget,
+model, or catalog entry is rejected.
+
+```bash
+cd /Volumes/WS4TB/repo622sn/CAM_CAM
+set -a
+source .env
+set +a
+export CLAW_DB_PATH=/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db
+export CAM_CODEX_MCP_DB_PATH=/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db
+
+# No-spend preview first.
+cam mine-workspace \
+  /Volumes/WS4TB/repo622sn \
+  /Volumes/WS4TB/waswiki/repos2mine \
+  --changed-only --scan-only --max-repos 200 \
+  --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml \
+  --profiles /Volumes/WS4TB/repo622sn/CAM_CAM/model_profiles.toml
+
+# Exact Grok 4.5 mining, with a separate hard $7 authorization.
+cam mine-workspace \
+  /Volumes/WS4TB/repo622sn \
+  /Volumes/WS4TB/waswiki/repos2mine \
+  --changed-only --max-repos 200 --max-minutes 240 --no-tasks \
+  --target /Volumes/WS4TB/repo622sn/CAM_CAM \
+  --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml \
+  --profiles /Volumes/WS4TB/repo622sn/CAM_CAM/model_profiles.toml \
+  --exact-model x-ai/grok-4.5 \
+  --max-cost-usd 7 \
+  --budget-receipt /Volumes/WS4TB/repo622sn/CAM_CAM/data/mining_runs/2026-08-09-grok-4.5-7usd.json
+```
+
+The cap is authoritative, so the command may stop before every eligible
+repository fits. The ignored mode-`0600` receipt reports actual spend,
+conservative spend, remaining authorization, per-attempt model identity, and
+the repository active for each request.
+
 ### Google Gemini Embeddings
 All semantic search uses `gemini-embedding-2-preview` (384 dimensions) via Google API. This powers novelty scoring, knowledge retrieval, and cross-domain synergy detection. For local-only mode, CAM falls back to sentence-transformers or MLX embeddings — no cloud needed.
 

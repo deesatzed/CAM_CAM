@@ -236,3 +236,49 @@ Assumptions:
   eligible (36 under `repo622sn`, 12 under `repos2mine`), after two iteration
   deduplications and 11 unchanged-ledger exclusions. Paid mining has not
   started because no separate maximum dollar authorization was specified.
+
+## 2026-08-09 Hard-capped exact-model mining
+
+- Added a persistent request-level mining budget receipt that reserves a
+  conservative maximum before every OpenRouter HTTP attempt and reconciles
+  provider-reported cost after each response.
+- Added exact-model enforcement for enabled remote mining routes, disabled LLM
+  fallbacks, rejected returned-model drift, and made budget failures terminal
+  across primary, escalation, content-reduction, and chunk recovery paths.
+- Added all-or-none `mine-workspace` controls: `--max-cost-usd`,
+  `--exact-model`, and `--budget-receipt`. Scan-only remains no-spend and the
+  legacy no-budget path remains unchanged.
+- Removed the existing unreserved live LLM probe from capped runs. Environment
+  key checks still run; the first live model call validates access inside the
+  receipt authorization.
+- Focused Task 4 regression gate passed 289 tests across CLI, miner, recovery,
+  profiles, LLM accounting, and budget receipt behavior. CLI help exposes all
+  three controls, targeted fatal/static checks passed, and `git diff --check`
+  passed.
+- No paid changed-only mining calls were made during implementation. The
+  authorized live run remains capped at `$7` and exact model
+  `x-ai/grok-4.5`; final repository, finding, and spend evidence will be added
+  after integration and execution.
+- Release verification passed 308 focused tests and 538 tests in the current
+  broader mining/model gate. The broader gate retained the previously recorded
+  non-fatal aiosqlite event-loop cleanup warning. Targeted Ruff checks and
+  `git diff --check` passed.
+
+## Rescue Ladder - step `hard-capped-mining-release-gate` - attempt 1
+
+### Rung 1: alternate pattern
+- Searched: `pytest broader mining model verification gate fails because planned test file paths no longer exist`
+- Considered: `03b2c0af-318d-45b5-8ffb-d9f525add8df`
+- Selected / Rejected: rejected because the recalled methodology was stale and
+  concerned parametrized fixtures rather than verification-command drift.
+
+### Rung 2: bisect
+- Diff hunks tried: 0; `rg --files tests` proved the implementation-plan names
+  `tests/test_llm_client.py` and `tests/test_miner_prompts.py` were stale.
+- Smallest failing hunk: none; the failure was in the historical command, not
+  the current code diff.
+
+### Rung 3: escalate
+- BLOCKER.md updated: no
+- User question: none; the corrected gate used the current `test_llm.py` and
+  mining prompt fixture coverage and passed.

@@ -81,22 +81,26 @@ export CAM_CODEX_MCP_DB_PATH=/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db
      --profiles /Volumes/WS4TB/repo622sn/CAM_CAM/model_profiles.toml
    ```
 
-3. After approving a separate mining budget, run the same command without
-   `--scan-only` and add the selected profile:
+3. Run the selected model under its separate hard `$7` mining authorization:
 
    ```bash
    cam mine-workspace \
      /Volumes/WS4TB/repo622sn \
      /Volumes/WS4TB/waswiki/repos2mine \
-     --changed-only --max-repos 200 --max-minutes 120 \
+     --changed-only --max-repos 200 --max-minutes 240 --no-tasks \
      --target /Volumes/WS4TB/repo622sn/CAM_CAM \
      --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml \
-     --profiles /Volumes/WS4TB/repo622sn/CAM_CAM/model_profiles.toml
+     --profiles /Volumes/WS4TB/repo622sn/CAM_CAM/model_profiles.toml \
+     --exact-model x-ai/grok-4.5 \
+     --max-cost-usd 7 \
+     --budget-receipt /Volumes/WS4TB/repo622sn/CAM_CAM/data/mining_runs/2026-08-09-grok-4.5-7usd.json
    ```
 
-The paid mining command is intentionally not executed by this tournament: the
-remaining `$0.2567236846` belongs to the comparison authorization, and
-`mine-workspace` does not yet expose a separate dollar cap.
+This authorization is separate from the completed comparison tournament. The
+receipt is persisted before each provider attempt, fallback is disabled, and a
+request that does not fit is rejected before HTTP submission. The `$7` cap may
+therefore stop the run before all eligible repositories fit; rerunning the same
+command resumes the same receipt rather than resetting its spend.
 
 The authoritative no-spend preview on 2026-08-09 found 61 candidates and
 classified 48 as new or changed (36 under `repo622sn`, 12 under `repos2mine`),

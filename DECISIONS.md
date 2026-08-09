@@ -187,3 +187,22 @@ Safety: the authoritative scan is read-only, uses the live
 `mining_registry.json`, and must precede every paid `--changed-only` run. The
 2026-08-09 correction reduced the eligible set from the worktree-local 59 to
 the live-ledger 48 without writing to the corpus.
+
+## 2026-08-09: Paid workspace mining requires a persistent exact-model cap
+
+Decision: a hard-capped `mine-workspace` run must provide
+`--max-cost-usd`, `--exact-model`, and `--budget-receipt` together. Each LLM
+HTTP attempt reserves its conservative maximum in the mode-`0600` receipt
+before submission, provider-reported cost is reconciled afterward, and normal
+model fallback and recovery cannot bypass a budget stop.
+
+Reason: production mining previously reported zero aggregate cost and could
+route recovery through models other than the selected profile. A chat-only
+authorization was therefore not an enforceable spending boundary.
+
+Safety: the live OpenRouter catalog entry is frozen into the receipt;
+authorization, model, and catalog drift fail closed on resume. Returned-model
+drift is charged once and rejected. The legacy CLI path is unchanged when the
+three controls are omitted, scan-only never creates a receipt, and the existing
+unbudgeted live LLM key probe is skipped for capped runs so the first paid
+request is always reserved.
