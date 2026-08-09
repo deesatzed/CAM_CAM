@@ -46,7 +46,16 @@ the route/provider discrepancy is understood.
 
 ## Very simple operator instructions
 
-After this branch is merged into the canonical CAM_CAM checkout:
+From the canonical CAM_CAM checkout, first pin the live environment and corpus:
+
+```bash
+cd /Volumes/WS4TB/repo622sn/CAM_CAM
+set -a
+source .env
+set +a
+export CLAW_DB_PATH=/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db
+export CAM_CODEX_MCP_DB_PATH=/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db
+```
 
 1. Select Grok with rollback receipts:
 
@@ -68,7 +77,8 @@ After this branch is merged into the canonical CAM_CAM checkout:
      /Volumes/WS4TB/repo622sn \
      /Volumes/WS4TB/waswiki/repos2mine \
      --changed-only --scan-only --max-repos 200 \
-     --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml
+     --config /Volumes/WS4TB/repo622sn/CAM_CAM/claw.toml \
+     --profiles /Volumes/WS4TB/repo622sn/CAM_CAM/model_profiles.toml
    ```
 
 3. After approving a separate mining budget, run the same command without
@@ -88,10 +98,13 @@ The paid mining command is intentionally not executed by this tournament: the
 remaining `$0.2567236846` belongs to the comparison authorization, and
 `mine-workspace` does not yet expose a separate dollar cap.
 
-The no-spend changed-only preview found 61 unique candidates and classified 59
-as new or changed (37 under `repo622sn`, 22 under `repos2mine`, after two
-deduplicated iterations). Mining all 59 requires a new dollar authorization;
-the comparison budget is not silently reused.
+The authoritative no-spend preview on 2026-08-09 found 61 candidates and
+classified 48 as new or changed (36 under `repo622sn`, 12 under `repos2mine`),
+after two iteration deduplications and 11 unchanged-ledger exclusions. An
+earlier isolated-worktree preview reported 59 because it did not pin the live
+database environment variables and therefore consulted an empty worktree-local
+ledger. Mining all 48 requires a new dollar authorization; the comparison
+budget is not silently reused.
 
 ## Evidence paths
 

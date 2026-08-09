@@ -171,3 +171,19 @@ Safety: the profile overlay does not change the database path, authorization,
 or fallback policy beyond its declared roles. Promotion remains a separate,
 receipt-backed `cam models set` action, and the tournament itself never writes
 the profile.
+
+## 2026-08-09: Changed-only scans must pin the live corpus environment
+
+Decision: workspace scans that determine a paid mining batch must export both
+`CLAW_DB_PATH` and `CAM_CODEX_MCP_DB_PATH` to the authoritative absolute
+`claw.db` before running, even when an absolute `--config` is supplied.
+
+Reason: the live config intentionally stores `db_path = "claw.db"`. The scan
+ledger path is derived from the resolved database directory, so a command run
+from an isolated worktree without the DB environment override consults a
+worktree-local ledger and overstates the number of new repositories.
+
+Safety: the authoritative scan is read-only, uses the live
+`mining_registry.json`, and must precede every paid `--changed-only` run. The
+2026-08-09 correction reduced the eligible set from the worktree-local 59 to
+the live-ledger 48 without writing to the corpus.

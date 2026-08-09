@@ -222,7 +222,17 @@ Assumptions:
   `ClawFactory.create`, so a deliberate role promotion now controls the actual
   mining runtime. Without it, `claw.toml` remains authoritative. Scan-only
   workspace discovery now honors its explicit `--config` path.
-- A current no-spend `--changed-only --scan-only` pass over `repo622sn` and
-  `repos2mine` found 61 unique candidates and classified 59 as eligible after
-  two iteration deduplications. Paid mining did not start because those repos
-  require a separate budget beyond the comparison authorization.
+- The initial no-spend `--changed-only --scan-only` pass from the isolated
+  benchmark worktree found 61 candidates and reported 59 eligible, but that
+  shell did not pin the live DB variables and consulted an empty worktree-local
+  ledger. Treat that count as superseded.
+- On 2026-08-09, fast-forwarded the tested branch to the canonical CAM_CAM
+  `main`, promoted `x-ai/grok-4.5` for `mining-quality` and `mining-budget` with
+  separate rollback receipts, and verified 162 focused model/profile/miner
+  tests. The pre-existing modified `claw.toml` and SQLite sidecars were
+  preserved.
+- The authoritative live no-spend scan pinned both DB environment variables,
+  the absolute config, and the explicit profile. It found 61 candidates and 48
+  eligible (36 under `repo622sn`, 12 under `repos2mine`), after two iteration
+  deduplications and 11 unchanged-ledger exclusions. Paid mining has not
+  started because no separate maximum dollar authorization was specified.
