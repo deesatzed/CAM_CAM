@@ -300,3 +300,41 @@ Assumptions:
 - BLOCKER.md updated: no
 - User question: none; the corrected gate used the current `test_llm.py` and
   mining prompt fixture coverage and passed.
+
+## 2026-08-09 Zoomcam mining and Swift detection follow-up
+
+- A pinned no-spend scan of `/Volumes/WS4TB/waswiki/zoomcam` found seven
+  eligible projects. The hard-capped Grok 4.5 run completed 54 provider calls
+  with zero failures and stored 45 enriched findings from `MLX-SAGE`,
+  `sage-wiki`, `CAM_Assistant`, `prime-agent`, and `semantica`.
+- The main zoomcam receipt recorded `$1.9001416` actual spend. `ScreenSage`
+  contained documentation only. `ZoomitForMac` contained 38 tracked Swift
+  files but was rejected before serialization because Swift was missing from
+  the language census.
+- Added a pure-Swift regression that failed with an empty zone set, then added
+  the minimal Swift-to-`misc` mappings. The focused regression passed, and
+  `tests/test_miner_polyglot.py tests/test_miner_brains.py` passed 107 tests
+  with the known aiosqlite event-loop cleanup warning.
+- A follow-up scan detected `ZoomitForMac` as one eligible `misc` repo. Its
+  fresh receipt capped maximum exposure at `$5.0998584`, so prior actual spend
+  plus the follow-up maximum was exactly `$7`.
+- The follow-up completed six Grok 4.5 calls with zero failures, spent
+  `$0.191138`, and stored five enriched, novelty-scored methodologies in the
+  misc ganglion. SQLite integrity passed, the canonical ledger contains all
+  five IDs, and an immediate changed-only scan returned zero eligible repos.
+
+## 2026-08-09 repos.txt no-spend mining inventory
+
+- Read all 11 existing roots in `/Volumes/WS4TB/repos.txt` and ran one combined
+  authoritative `--changed-only --scan-only` pass with depth 8.
+- The scan found 352 unique paths, retained 334 canonical candidates after 18
+  iteration deduplications, and classified 323 as eligible: 316 never mined and
+  seven changed since their last ledger record.
+- The seven changed repos are `CAM_Codx`, `SkillOpt`,
+  `blockify-agentic-data-optimization`, `mydisasters`, `fractal`, `careframe`,
+  and `finESS`.
+- Prepared and re-scanned a bounded 15-repo proposal consisting of all seven
+  changed repos plus eight high-yield new repos. All 15 remain eligible; no paid
+  call was made for this proposed batch pending explicit user approval.
+- `tabfm` remains eligible but is excluded from the proposal because the prior
+  capped run repeatedly timed out without a durable result.

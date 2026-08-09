@@ -225,3 +225,18 @@ the returned model explicitly; missing or different model evidence is charged
 once and fails terminally. Budget errors propagate through assimilation, and
 the CLI releases the receipt lock on normal completion, early exit, timeout,
 factory failure, and other exceptions.
+
+## 2026-08-09: Route Swift repositories through the misc mining brain
+
+Decision: include `.swift` in the repository language census and route the
+language label `swift` to the existing `misc` brain.
+
+Reason: Swift was already allowed by `mining.extra_code_extensions`, but it was
+absent from `_EXT_TO_LANGUAGE`. Pure-Swift repositories were therefore rejected
+as having no recognizable source files before serialization, while mixed repos
+could hide the defect behind another recognized language.
+
+Safety: this adds no model, prompt, database, or fallback path. A pure-Swift
+regression test proves the existing `misc` path is selected. Paid verification
+used the residual exposure from the already-approved `$7` batch, with
+`x-ai/grok-4.5`, a fresh terminal receipt, and the authoritative database pinned.
