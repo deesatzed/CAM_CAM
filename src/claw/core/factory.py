@@ -16,15 +16,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NamedTuple, Optional
 
+from claw.agents.interface import AgentInterface
 from claw.core.config import ClawConfig, load_config
 from claw.core.models import AgentMode
-from claw.db.engine import DatabaseEngine
 from claw.db.embeddings import EmbeddingEngine
+from claw.db.engine import DatabaseEngine
 from claw.db.repository import Repository
 from claw.llm.client import LLMClient
 from claw.llm.token_tracker import TokenTracker
+from claw.mining_budget import MiningBudgetController
+from claw.models.profiles import resolve_exact_mining_config
 from claw.security.policy import AutonomyLevel, SecurityPolicy
-from claw.agents.interface import AgentInterface
 
 logger = logging.getLogger("claw.factory")
 
@@ -387,6 +389,8 @@ class ClawFactory:
         config_path: Optional[Path] = None,
         workspace_dir: Optional[Path] = None,
         model_profiles_path: Optional[Path] = None,
+        exact_mining_model: str | None = None,
+        mining_budget_controller: MiningBudgetController | None = None,
     ) -> ClawContext:
         """Create a fully wired ClawContext.
 
@@ -394,11 +398,15 @@ class ClawFactory:
             config_path: Path to claw.toml. Defaults to ./claw.toml.
             workspace_dir: Working directory for agent operations.
             model_profiles_path: Explicit role registry applied over claw.toml.
+            exact_mining_model: Optional model forced across enabled remote routes.
+            mining_budget_controller: Optional fail-closed request budget controller.
         """
         config = load_config(
             config_path,
             model_profiles_path=model_profiles_path,
         )
+        if exact_mining_model is not None:
+            config = resolve_exact_mining_config(config, exact_mining_model)
         active_camseq_flags = [
             name
             for name, enabled in config.feature_flags.model_dump().items()
@@ -440,7 +448,10 @@ class ClawFactory:
         search = _build_search_stack(config, engine, embeddings)
 
         # ── LLM client + token tracker ─────────────────────────────
-        llm_client = LLMClient(config.llm)
+        llm_client = LLMClient(
+            config.llm,
+            budget_controller=mining_budget_controller,
+        )
 
         token_tracker = TokenTracker(
             repository=search.repository,
@@ -593,6 +604,7 @@ class ClawFactory:
         mcp_srv = None
         if config.mcp.enabled:
             import os
+
             from claw.mcp_server import ClawMCPServer
             auth_token = os.environ.get(config.mcp.auth_token_env)
             mcp_srv = ClawMCPServer(

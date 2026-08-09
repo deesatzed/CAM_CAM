@@ -10,6 +10,7 @@ from claw.models.profiles import (
     load_model_profiles,
     promote_role,
     resolve_effective_config,
+    resolve_exact_mining_config,
     rollback_promotion,
 )
 
@@ -126,6 +127,28 @@ model = "legacy/quality"
     assert selected.database.db_path == "/pinned/corpus/claw.db"
 
 
+def test_exact_mining_config_forces_enabled_remote_agents_without_mutating_base() -> None:
+    base = ClawConfig(
+        llm=LLMConfig(fallback_models=["legacy/fallback"]),
+        agents={
+            "claude": AgentConfig(enabled=True, mode="api", model="legacy/quality"),
+            "codex": AgentConfig(enabled=True, mode="cli", model="legacy/budget"),
+            "local": AgentConfig(enabled=True, mode="local", model="local/model"),
+            "disabled": AgentConfig(enabled=False, mode="api", model="legacy/disabled"),
+        },
+    )
+
+    exact = resolve_exact_mining_config(base, "x-ai/grok-4.5")
+
+    assert exact.agents["claude"].model == "x-ai/grok-4.5"
+    assert exact.agents["codex"].model == "x-ai/grok-4.5"
+    assert exact.agents["local"].model == "local/model"
+    assert exact.agents["disabled"].model == "legacy/disabled"
+    assert exact.llm.fallback_models == []
+    assert base.agents["claude"].model == "legacy/quality"
+    assert base.llm.fallback_models == ["legacy/fallback"]
+
+
 async def test_factory_forwards_explicit_model_profile_path(
     monkeypatch,
     tmp_path: Path,
@@ -153,6 +176,68 @@ async def test_factory_forwards_explicit_model_profile_path(
     assert captured == {
         "config_path": tmp_path / "claw.toml",
         "model_profiles_path": tmp_path / "model_profiles.toml",
+    }
+
+
+async def test_factory_forwards_exact_model_and_budget_controller(
+    monkeypatch,
+) -> None:
+    from claw.core.factory import ClawFactory
+
+    captured = {}
+    budget_controller = object()
+    config = ClawConfig(
+        agents={
+            "claude": AgentConfig(enabled=True, mode="api", model="legacy/model"),
+        }
+    )
+
+    class FakeEngine:
+        def __init__(self, db_config):
+            pass
+
+        async def connect(self):
+            pass
+
+        async def apply_migrations(self):
+            pass
+
+        async def initialize_schema(self):
+            pass
+
+    class CaptureStopError(RuntimeError):
+        pass
+
+    def capture_llm(llm_config, *, budget_controller=None):
+        captured["fallback_models"] = llm_config.fallback_models
+        captured["budget_controller"] = budget_controller
+        raise CaptureStopError
+
+    def capture_search(effective_config, *args):
+        captured["model"] = effective_config.agents["claude"].model
+        return object()
+
+    monkeypatch.setattr("claw.core.factory.load_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr("claw.core.factory.DatabaseEngine", FakeEngine)
+    monkeypatch.setattr("claw.core.factory.EmbeddingEngine", lambda config: object())
+
+    async def fake_run_seed(**kwargs):
+        return {}
+
+    monkeypatch.setattr("claw.community.seeder.run_seed", fake_run_seed)
+    monkeypatch.setattr("claw.core.factory._build_search_stack", capture_search)
+    monkeypatch.setattr("claw.core.factory.LLMClient", capture_llm)
+
+    with pytest.raises(CaptureStopError):
+        await ClawFactory.create(
+            exact_mining_model="x-ai/grok-4.5",
+            mining_budget_controller=budget_controller,
+        )
+
+    assert captured == {
+        "model": "x-ai/grok-4.5",
+        "fallback_models": [],
+        "budget_controller": budget_controller,
     }
 
 

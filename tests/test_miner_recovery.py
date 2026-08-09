@@ -37,16 +37,16 @@ from claw.core.config import (
 )
 from claw.db.engine import DatabaseEngine
 from claw.db.repository import Repository
+from claw.llm.client import LLMResponse
 from claw.memory.hybrid_search import HybridSearch
 from claw.memory.semantic import SemanticMemory
-from claw.llm.client import LLMResponse
 from claw.miner import (
     MiningFinding,
     MiningModelSelector,
     RepoMiner,
     RepoMiningResult,
 )
-
+from claw.mining_budget import MiningBudgetExceededError
 
 # ---------------------------------------------------------------------------
 # Deterministic embedding engine (same pattern as other test files)
@@ -823,6 +823,66 @@ class TestRecoveryDisabled:
         assert findings == []
         assert repository.outcomes[0]["success"] is False
         assert repository.outcomes[0]["findings_count"] == 0
+
+    @pytest.mark.asyncio
+    async def test_budget_stop_is_not_retried_by_recovery(self, tmp_path):
+        class BudgetStopLLM:
+            def __init__(self):
+                self.calls = 0
+
+            async def complete(self, **kwargs):
+                self.calls += 1
+                raise MiningBudgetExceededError("hard cap reached")
+
+        class Selector:
+            def build_escalation_chain(self, estimated_tokens):
+                return [("claude", "x-ai/grok-4.5")]
+
+        class OutcomeRepository:
+            async def record_mining_outcome(self, **kwargs):
+                return None
+
+            async def update_agent_score(self, **kwargs):
+                return None
+
+        config = ClawConfig()
+        config.agents = {
+            "claude": AgentConfig(
+                enabled=True,
+                mode="api",
+                model="x-ai/grok-4.5",
+                context_window_tokens=128_000,
+            )
+        }
+        config.mining.recovery.enabled = True
+        llm = BudgetStopLLM()
+        miner = RepoMiner(
+            repository=OutcomeRepository(),
+            llm_client=llm,
+            semantic_memory=None,
+            config=config,
+            scan_ledger_path=tmp_path / "ledger.json",
+        )
+
+        with pytest.raises(MiningBudgetExceededError, match="hard cap reached"):
+            await miner._mine_with_recovery(
+                prompt="mine this repo",
+                token_budget=4096,
+                model_selector=Selector(),
+                estimated_tokens=100,
+                repo_name="fixture",
+                repo_path=tmp_path,
+                repo_content="--- FILE: main.py ---\nprint('safe')",
+                file_count=1,
+                brain="python",
+                brain_config=BrainConfig(),
+                domain_info={},
+                overlap=None,
+                secret_scan_files=set(),
+                start_time=0.0,
+            )
+
+        assert llm.calls == 1
 
 
 # ===========================================================================

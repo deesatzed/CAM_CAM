@@ -118,6 +118,20 @@ def resolve_effective_config(
     return effective
 
 
+def resolve_exact_mining_config(base: ClawConfig, exact_model: str) -> ClawConfig:
+    """Force every enabled remote mining route onto one exact model."""
+    model_id = exact_model.strip()
+    if not model_id:
+        raise ValueError("Exact mining model must not be empty")
+
+    effective = base.model_copy(deep=True)
+    for agent in effective.agents.values():
+        if agent.enabled and agent.mode != "local":
+            agent.model = model_id
+    effective.llm.fallback_models = []
+    return effective
+
+
 def _write_registry(path: Path, registry: ModelProfileRegistry) -> None:
     temp_path = path.with_suffix(".tmp")
     temp_path.write_text(toml.dumps(registry.model_dump(mode="python")))

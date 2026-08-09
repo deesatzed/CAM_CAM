@@ -10,19 +10,22 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import fnmatch
+import hashlib
 import json
 import logging
 import os
 import re
 import time
-import hashlib
-import asyncio
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+from claw.connectome.barcodes import build_family_barcode, build_source_barcode
+from claw.connectome.lineage import build_initial_lineage, rebuild_lineage_stats
 from claw.core.config import AgentConfig, BrainConfig, ClawConfig, DatabaseConfig
+from claw.core.exceptions import ModelNotFoundError
 from claw.core.models import (
     ActionTemplate,
     ComponentCard,
@@ -36,16 +39,14 @@ from claw.core.models import (
     TaskStatus,
     TransferMode,
 )
-from claw.connectome.barcodes import build_family_barcode, build_source_barcode
-from claw.connectome.lineage import build_initial_lineage, rebuild_lineage_stats
 from claw.db.engine import DatabaseEngine
 from claw.db.repository import Repository
 from claw.llm.client import LLMClient, LLMMessage, LLMResponse
-from claw.core.exceptions import ModelNotFoundError
+from claw.memory.cag_staleness import maybe_mark_cag_stale
+from claw.memory.semantic import SemanticMemory
 from claw.mining.component_extractor import extract_components_from_file
 from claw.mining.scip_loader import load_repo_scip
-from claw.memory.semantic import SemanticMemory
-from claw.memory.cag_staleness import maybe_mark_cag_stale
+from claw.mining_budget import MiningBudgetError
 
 logger = logging.getLogger("claw.miner")
 
@@ -2572,6 +2573,8 @@ class RepoMiner:
                     response=resp, start_time=start_time,
                 )
                 return resp, findings, 0, "primary"
+            except MiningBudgetError:
+                raise
             except Exception as e:
                 await self._record_mining_outcome(
                     model=model, agent_id=agent_name, brain=brain,
@@ -2609,6 +2612,8 @@ class RepoMiner:
                     ),
                     timeout=_MINING_LLM_TIMEOUT_SECONDS,
                 )
+            except MiningBudgetError:
+                raise
             except Exception as e:
                 logger.warning(
                     "Mining %s: model %s threw %s — escalating",
@@ -2709,6 +2714,8 @@ class RepoMiner:
                             reduced_max // 1024, best_model,
                         )
                         return resp, findings, attempts, "content_reduction"
+                except MiningBudgetError:
+                    raise
                 except Exception as e:
                     logger.warning(
                         "Mining %s: content reduction failed: %s",
@@ -2868,6 +2875,8 @@ class RepoMiner:
                     repo_name, i + 1, len(chunks),
                     len(chunk_findings), best_model,
                 )
+            except MiningBudgetError:
+                raise
             except Exception as e:
                 logger.warning(
                     "Mining %s chunk %d/%d failed: %s",
