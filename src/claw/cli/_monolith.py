@@ -6590,6 +6590,21 @@ def mine_workspace(
         "--profiles",
         help="Explicit model_profiles.toml applied to this mining run",
     ),
+    max_cost_usd: Optional[float] = typer.Option(
+        None,
+        "--max-cost-usd",
+        help="Hard aggregate OpenRouter authorization for this mining run",
+    ),
+    exact_model: Optional[str] = typer.Option(
+        None,
+        "--exact-model",
+        help="Only allow this exact OpenRouter model ID",
+    ),
+    budget_receipt: Optional[str] = typer.Option(
+        None,
+        "--budget-receipt",
+        help="Persistent JSON receipt used to stop and safely resume the run",
+    ),
 ) -> None:
     """Mine repos across multiple directories at once.
 
@@ -6603,6 +6618,22 @@ def mine_workspace(
         cam mine-workspace ~/code ~/experiments --depth 4 --max-repos 10
     """
     _setup_logging(verbose)
+
+    budget_values = (max_cost_usd, exact_model, budget_receipt)
+    if any(value is not None for value in budget_values) and not all(
+        value is not None for value in budget_values
+    ):
+        console.print(
+            "[red]--max-cost-usd, --exact-model, and --budget-receipt "
+            "must be provided together[/red]"
+        )
+        raise typer.Exit(1)
+    if max_cost_usd is not None and max_cost_usd <= 0:
+        console.print("[red]--max-cost-usd must be greater than zero[/red]")
+        raise typer.Exit(1)
+    if exact_model is not None and not exact_model.strip():
+        console.print("[red]--exact-model must not be empty[/red]")
+        raise typer.Exit(1)
 
     # Validate all directories
     dir_paths: list[Path] = []
@@ -6641,8 +6672,13 @@ def mine_workspace(
         model_profiles_path=profiles_path,
     )
     _fail_if_missing_api_keys(cfg, "mine-workspace")
-    if live_keycheck:
+    if live_keycheck and max_cost_usd is None:
         _fail_if_live_key_checks_fail(cfg, "mine-workspace")
+    elif live_keycheck:
+        console.print(
+            "[dim]Skipping the unbudgeted live LLM probe; the first mining "
+            "request will validate access inside the receipt cap.[/dim]"
+        )
 
     try:
         asyncio.run(asyncio.wait_for(
@@ -6651,6 +6687,9 @@ def mine_workspace(
                 profiles,
                 depth, dedup, skip_known, force_rescan, changed_only,
                 yield_sort=yield_sort,
+                max_cost_usd=max_cost_usd,
+                exact_model=exact_model,
+                budget_receipt_path=budget_receipt,
             ),
             timeout=max_minutes * 60,
         ))
@@ -7047,19 +7086,45 @@ async def _mine_workspace_async(
     force_rescan: bool = False,
     changed_only: bool = False,
     yield_sort: bool = True,
+    max_cost_usd: float | None = None,
+    exact_model: str | None = None,
+    budget_receipt_path: str | None = None,
 ) -> None:
     """Mine repos across multiple directories."""
     from claw.core.factory import ClawFactory
     from claw.core.models import Project
+    from claw.mining_budget import (
+        MiningBudgetController,
+        MiningBudgetError,
+        MiningBudgetExceededError,
+    )
+    from claw.models.catalog import OpenRouterCatalogClient
     from claw.miner import _discover_repos, _dedup_iterations, _score_yield_priority, MiningReport, RepoMiningResult
 
     config_p = Path(config_path) if config_path else None
     target_path = Path(target).resolve()
     profiles_p = Path(model_profiles_path) if model_profiles_path else None
+    budget_controller: MiningBudgetController | None = None
+    budget_values = (max_cost_usd, exact_model, budget_receipt_path)
+    if any(value is not None for value in budget_values):
+        if not all(value is not None for value in budget_values):
+            raise ValueError(
+                "max_cost_usd, exact_model, and budget_receipt_path are all required"
+            )
+        catalog = await OpenRouterCatalogClient().fetch()
+        catalog_entry = catalog.require(exact_model)
+        budget_controller = MiningBudgetController.open(
+            receipt_path=Path(budget_receipt_path),
+            authorization_usd=max_cost_usd,
+            exact_model=exact_model,
+            catalog_entry=catalog_entry,
+        )
     ctx = await ClawFactory.create(
         config_path=config_p,
         workspace_dir=target_path,
         model_profiles_path=profiles_p,
+        exact_mining_model=exact_model,
+        mining_budget_controller=budget_controller,
     )
 
     try:
@@ -7132,6 +7197,9 @@ async def _mine_workspace_async(
 
         if not to_mine:
             console.print("[yellow]No new or changed repos to mine.[/yellow]")
+            if budget_controller is not None:
+                budget_controller.mark_status("completed")
+                _print_mining_budget_summary(budget_controller)
             return
 
         report = MiningReport()
@@ -7152,8 +7220,11 @@ async def _mine_workspace_async(
         console.print("[cyan]Mining repositories...[/cyan]")
         import time
         start = time.monotonic()
+        budget_exhausted = False
 
         for candidate in to_mine:
+            if budget_controller is not None:
+                budget_controller.set_repo_context(candidate.name)
             try:
                 result = await ctx.miner.mine_repo(candidate.path, candidate.name, project.id)
                 report.repo_results.append(result)
@@ -7164,6 +7235,16 @@ async def _mine_workspace_async(
                 if not result.error and not result.skipped:
                     ctx.miner.scan_ledger.record_result(candidate, result)
                 on_repo_complete(candidate.name, result)
+            except MiningBudgetExceededError as e:
+                budget_exhausted = True
+                if budget_controller is not None:
+                    budget_controller.mark_status("budget-exhausted")
+                console.print(f"  [yellow]Budget stop before {candidate.name}: {e}[/yellow]")
+                break
+            except MiningBudgetError:
+                if budget_controller is not None:
+                    budget_controller.mark_status("failed")
+                raise
             except Exception as e:
                 err_result = RepoMiningResult(
                     repo_name=candidate.name, repo_path=str(candidate.path), error=str(e),
@@ -7216,6 +7297,11 @@ async def _mine_workspace_async(
         console.print(f"  Total tokens: {report.total_tokens}")
         console.print(f"  Total time: {report.total_duration_seconds:.1f}s")
 
+        if budget_controller is not None:
+            if not budget_exhausted:
+                budget_controller.mark_status("completed")
+            _print_mining_budget_summary(budget_controller)
+
         if report.tasks:
             console.print(f"\n[bold]Generated Tasks[/bold]")
             task_table = Table()
@@ -7235,6 +7321,15 @@ async def _mine_workspace_async(
 
     finally:
         await ctx.close()
+
+
+def _print_mining_budget_summary(controller: Any) -> None:
+    """Print authoritative spend from the persistent request receipt."""
+    receipt = controller.receipt
+    console.print("\n[bold]Mining budget[/bold]")
+    console.print(f"  Actual spend: ${receipt.actual_spend_usd:.6f}")
+    console.print(f"  Conservative spend: ${receipt.conservative_spend_usd:.6f}")
+    console.print(f"  Remaining authorization: ${receipt.remaining_usd:.6f}")
 
 
 @app.command(name="mine-self")

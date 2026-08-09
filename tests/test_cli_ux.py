@@ -36,6 +36,124 @@ def _group_map():
     return mapping
 
 
+def test_mine_workspace_budget_options_are_all_or_none(monkeypatch, tmp_path):
+    from claw.cli import app
+
+    monkeypatch.setattr(
+        "claw.cli._monolith._mine_workspace_scan_only",
+        lambda *args, **kwargs: None,
+    )
+    runner = CliRunner()
+    options = {
+        "--max-cost-usd": "7",
+        "--exact-model": "x-ai/grok-4.5",
+        "--budget-receipt": str((tmp_path / "run.json").resolve()),
+    }
+
+    for omitted in options:
+        args = ["mine-workspace", str(tmp_path), "--scan-only"]
+        for option, value in options.items():
+            if option != omitted:
+                args.extend([option, value])
+        result = runner.invoke(app, args)
+        assert result.exit_code == 1
+        assert "must be provided together" in result.output
+
+
+def test_mine_workspace_rejects_non_positive_budget(tmp_path):
+    from claw.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "mine-workspace",
+            str(tmp_path),
+            "--scan-only",
+            "--max-cost-usd",
+            "0",
+            "--exact-model",
+            "x-ai/grok-4.5",
+            "--budget-receipt",
+            str((tmp_path / "run.json").resolve()),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "must be greater than zero" in result.output
+
+
+def test_mine_workspace_scan_only_never_builds_paid_budget(monkeypatch, tmp_path):
+    from claw.cli import app
+
+    events = []
+    monkeypatch.setattr(
+        "claw.cli._monolith._mine_workspace_scan_only",
+        lambda *args, **kwargs: events.append("scan"),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "mine-workspace",
+            str(tmp_path),
+            "--scan-only",
+            "--max-cost-usd",
+            "7",
+            "--exact-model",
+            "x-ai/grok-4.5",
+            "--budget-receipt",
+            str((tmp_path / "run.json").resolve()),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert events == ["scan"]
+    assert not (tmp_path / "run.json").exists()
+
+
+def test_budgeted_mine_workspace_skips_unreserved_live_llm_probe(
+    monkeypatch,
+    tmp_path,
+):
+    from claw.cli import app
+
+    live_checks = []
+
+    async def fake_mine(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr("claw.core.config.load_config", lambda *args, **kwargs: object())
+    monkeypatch.setattr(
+        "claw.cli._monolith._fail_if_missing_api_keys",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr(
+        "claw.cli._monolith._fail_if_live_key_checks_fail",
+        lambda *args, **kwargs: live_checks.append("paid-probe"),
+    )
+    monkeypatch.setattr("claw.cli._monolith._mine_workspace_async", fake_mine)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "mine-workspace",
+            str(tmp_path),
+            "--max-cost-usd",
+            "7",
+            "--exact-model",
+            "x-ai/grok-4.5",
+            "--budget-receipt",
+            str((tmp_path / "run.json").resolve()),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert live_checks == []
+
+
 async def _seed_doctor_audit_db(
     db_path: str,
     *,

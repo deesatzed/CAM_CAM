@@ -23,6 +23,7 @@ import json
 import os
 import time
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 import claw.miner as miner_module
@@ -1907,6 +1908,9 @@ class TestMineWorkspaceCommand:
         # Should be annotated as list[str]
         assert "list" in str(param.annotation).lower() or "list" in str(param.default).lower()
         assert "profiles" in sig.parameters
+        assert "max_cost_usd" in sig.parameters
+        assert "exact_model" in sig.parameters
+        assert "budget_receipt" in sig.parameters
 
     async def test_mine_workspace_forwards_explicit_model_profiles(
         self,
@@ -1938,6 +1942,253 @@ class TestMineWorkspaceCommand:
             )
 
         assert str(captured["model_profiles_path"]) == "model_profiles.toml"
+        assert captured["exact_mining_model"] is None
+        assert captured["mining_budget_controller"] is None
+
+    async def test_mine_workspace_builds_budget_before_factory(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        from claw.cli._monolith import _mine_workspace_async
+
+        captured = {}
+        entry = object()
+        controller = object()
+
+        class FakeCatalog:
+            def require(self, model_id):
+                captured["required_model"] = model_id
+                return entry
+
+        class FactoryStopError(RuntimeError):
+            pass
+
+        async def fake_fetch(self):
+            captured["catalog_fetched"] = True
+            return FakeCatalog()
+
+        def fake_open(**kwargs):
+            captured["budget_open"] = kwargs
+            return controller
+
+        async def fake_create(**kwargs):
+            captured["factory"] = kwargs
+            raise FactoryStopError
+
+        monkeypatch.setattr("claw.models.catalog.OpenRouterCatalogClient.fetch", fake_fetch)
+        monkeypatch.setattr("claw.mining_budget.MiningBudgetController.open", fake_open)
+        monkeypatch.setattr("claw.core.factory.ClawFactory.create", fake_create)
+
+        receipt_path = tmp_path / "run.json"
+        with pytest.raises(FactoryStopError):
+            await _mine_workspace_async(
+                [],
+                str(tmp_path),
+                1,
+                0.6,
+                False,
+                "claw.toml",
+                exact_model="x-ai/grok-4.5",
+                max_cost_usd=7.0,
+                budget_receipt_path=str(receipt_path),
+            )
+
+        assert captured["catalog_fetched"] is True
+        assert captured["required_model"] == "x-ai/grok-4.5"
+        assert captured["budget_open"] == {
+            "receipt_path": receipt_path,
+            "authorization_usd": 7.0,
+            "exact_model": "x-ai/grok-4.5",
+            "catalog_entry": entry,
+        }
+        assert captured["factory"]["exact_mining_model"] == "x-ai/grok-4.5"
+        assert captured["factory"]["mining_budget_controller"] is controller
+
+    async def test_mine_workspace_budget_exhaustion_stops_before_next_repo(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        from claw.cli._monolith import _mine_workspace_async
+        from claw.mining_budget import MiningBudgetExceededError
+
+        candidates = [
+            SimpleNamespace(
+                name=name,
+                path=tmp_path / name,
+                last_commit_ts=0,
+                file_count=1,
+                source_kind="git",
+            )
+            for name in ("repo-one", "repo-two")
+        ]
+
+        class FakeBudget:
+            def __init__(self):
+                self.contexts = []
+                self.statuses = []
+                self.receipt = SimpleNamespace(
+                    actual_spend_usd=1.25,
+                    conservative_spend_usd=6.75,
+                    remaining_usd=0.25,
+                )
+
+            def set_repo_context(self, repo_name):
+                self.contexts.append(repo_name)
+
+            def mark_status(self, status):
+                self.statuses.append(status)
+
+        class FakeMiner:
+            def __init__(self):
+                self.calls = []
+                self.scan_ledger = SimpleNamespace(
+                    should_mine=lambda *args, **kwargs: (True, "new")
+                )
+
+            async def mine_repo(self, path, name, project_id):
+                self.calls.append(name)
+                raise MiningBudgetExceededError("hard cap reached")
+
+        class FakeRepository:
+            async def get_project_by_name(self, name):
+                return SimpleNamespace(name=name, id="project-1")
+
+        budget = FakeBudget()
+        miner = FakeMiner()
+        context = SimpleNamespace(
+            repository=FakeRepository(),
+            miner=miner,
+            config=ClawConfig(),
+            close=lambda: None,
+        )
+
+        async def fake_close():
+            return None
+
+        context.close = fake_close
+
+        async def fake_create(**kwargs):
+            return context
+
+        async def fake_fetch(self):
+            return SimpleNamespace(require=lambda model_id: object())
+
+        monkeypatch.setattr("claw.core.factory.ClawFactory.create", fake_create)
+        monkeypatch.setattr("claw.models.catalog.OpenRouterCatalogClient.fetch", fake_fetch)
+        monkeypatch.setattr(
+            "claw.mining_budget.MiningBudgetController.open",
+            lambda **kwargs: budget,
+        )
+        monkeypatch.setattr("claw.miner._discover_repos", lambda *args, **kwargs: candidates)
+
+        await _mine_workspace_async(
+            [tmp_path],
+            str(tmp_path),
+            2,
+            0.6,
+            False,
+            None,
+            exact_model="x-ai/grok-4.5",
+            max_cost_usd=7.0,
+            budget_receipt_path=str(tmp_path / "run.json"),
+            dedup_iterations=False,
+            yield_sort=False,
+        )
+
+        assert miner.calls == ["repo-one"]
+        assert budget.contexts == ["repo-one"]
+        assert budget.statuses == ["budget-exhausted"]
+
+    async def test_mine_workspace_marks_completed_and_prints_budget_summary(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ):
+        from claw.cli._monolith import _mine_workspace_async
+
+        candidate = SimpleNamespace(
+            name="repo-one",
+            path=tmp_path / "repo-one",
+            last_commit_ts=0,
+            file_count=1,
+            source_kind="git",
+        )
+
+        class FakeBudget:
+            def __init__(self):
+                self.statuses = []
+                self.receipt = SimpleNamespace(
+                    actual_spend_usd=1.25,
+                    conservative_spend_usd=1.50,
+                    remaining_usd=5.50,
+                )
+
+            def set_repo_context(self, repo_name):
+                pass
+
+            def mark_status(self, status):
+                self.statuses.append(status)
+
+        class FakeMiner:
+            scan_ledger = SimpleNamespace(
+                should_mine=lambda *args, **kwargs: (True, "new"),
+                record_result=lambda *args, **kwargs: None,
+            )
+
+            async def mine_repo(self, path, name, project_id):
+                return RepoMiningResult(repo_name=name, repo_path=str(path))
+
+        class FakeRepository:
+            async def get_project_by_name(self, name):
+                return SimpleNamespace(name=name, id="project-1")
+
+        async def fake_close():
+            return None
+
+        budget = FakeBudget()
+        context = SimpleNamespace(
+            repository=FakeRepository(),
+            miner=FakeMiner(),
+            config=ClawConfig(),
+            close=fake_close,
+        )
+
+        async def fake_create(**kwargs):
+            return context
+
+        async def fake_fetch(self):
+            return SimpleNamespace(require=lambda model_id: object())
+
+        monkeypatch.setattr("claw.core.factory.ClawFactory.create", fake_create)
+        monkeypatch.setattr("claw.models.catalog.OpenRouterCatalogClient.fetch", fake_fetch)
+        monkeypatch.setattr(
+            "claw.mining_budget.MiningBudgetController.open",
+            lambda **kwargs: budget,
+        )
+        monkeypatch.setattr("claw.miner._discover_repos", lambda *args, **kwargs: [candidate])
+
+        await _mine_workspace_async(
+            [tmp_path],
+            str(tmp_path),
+            1,
+            0.6,
+            False,
+            None,
+            exact_model="x-ai/grok-4.5",
+            max_cost_usd=7.0,
+            budget_receipt_path=str(tmp_path / "run.json"),
+            dedup_iterations=False,
+            yield_sort=False,
+        )
+
+        assert budget.statuses == ["completed"]
+        output = capsys.readouterr().out
+        assert "Actual spend: $1.250000" in output
+        assert "Conservative spend: $1.500000" in output
+        assert "Remaining authorization: $5.500000" in output
 
 
 # ===========================================================================
