@@ -159,6 +159,10 @@ class MiningBudgetController:
     def set_repo_context(self, repo_name: str | None) -> None:
         self._repo_name = repo_name
 
+    @property
+    def exact_model(self) -> str:
+        return self.receipt.exact_model
+
     def reserve_attempt(
         self,
         payload: dict[str, Any],

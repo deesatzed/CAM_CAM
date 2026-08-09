@@ -63,6 +63,7 @@ def test_reserve_is_persisted_before_request(tmp_path: Path) -> None:
 
     attempt, guarded = controller.reserve_attempt(_payload())
 
+    assert controller.exact_model == "x-ai/grok-4.5"
     restored = MiningBudgetReceipt.model_validate_json(
         (tmp_path / "run.json").read_text()
     )

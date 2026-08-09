@@ -1,11 +1,15 @@
 """Tests for CLAW LLM client and token tracker."""
 
+from types import SimpleNamespace
+
 import httpx
 import pytest
 
+from claw.core.config import LLMConfig
+from claw.core.exceptions import ModelRejectedError, ResponseParseError
 from claw.llm.client import LLMClient, LLMMessage, LLMResponse, _backoff_delay, _parse_json_response
 from claw.llm.token_tracker import TokenTracker
-from claw.core.exceptions import ModelRejectedError, ResponseParseError
+from claw.mining_budget import MiningBudgetExceededError, MiningBudgetViolationError
 
 
 class TestLLMMessage:
@@ -238,6 +242,258 @@ class TestLLMClientCooldown:
             )
 
         assert fake.calls == 1
+
+    async def test_budget_reserves_before_each_http_attempt(self):
+        class RecordingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def __init__(self):
+                self.events = []
+                self.next_attempt = 0
+
+            def reserve_attempt(self, payload):
+                self.events.append("reserve")
+                self.next_attempt += 1
+                guarded = dict(payload)
+                guarded["provider"] = {"allow_fallbacks": False}
+                return SimpleNamespace(attempt_id=str(self.next_attempt)), guarded
+
+            def record_failure(self, attempt_id, error):
+                self.events.append("fail")
+
+            def reconcile_completed(self, attempt_id, **kwargs):
+                self.events.append("complete")
+
+        class RetryThenSuccessClient:
+            is_closed = False
+
+            def __init__(self):
+                self.calls = 0
+
+            async def post(self, url, json, headers):
+                self.calls += 1
+                if self.calls == 1:
+                    return httpx.Response(
+                        500,
+                        request=httpx.Request("POST", url),
+                        json={"error": {"message": "transient"}},
+                    )
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-budgeted",
+                        "model": "x-ai/grok-4.5",
+                        "choices": [
+                            {"message": {"content": "[]"}, "finish_reason": "stop"}
+                        ],
+                        "usage": {
+                            "prompt_tokens": 10,
+                            "completion_tokens": 2,
+                            "total_tokens": 12,
+                            "cost": 0.001,
+                        },
+                    },
+                )
+
+        budget = RecordingBudget()
+        client = LLMClient(
+            LLMConfig(max_retries=2, backoff_base=0),
+            api_key="test-key",
+            budget_controller=budget,
+        )
+        client._client = RetryThenSuccessClient()
+
+        await client.complete(
+            [LLMMessage("user", "mine")],
+            model="x-ai/grok-4.5",
+        )
+
+        assert budget.events == ["reserve", "fail", "reserve", "complete"]
+
+    async def test_budget_rejection_makes_no_http_call(self):
+        class RejectingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def reserve_attempt(self, payload):
+                raise MiningBudgetExceededError("no room")
+
+        class NeverCalledClient:
+            is_closed = False
+
+            def __init__(self):
+                self.calls = 0
+
+            async def post(self, url, json, headers):
+                self.calls += 1
+                raise AssertionError("HTTP must not be called")
+
+        transport = NeverCalledClient()
+        client = LLMClient(
+            api_key="test-key",
+            budget_controller=RejectingBudget(),
+        )
+        client._client = transport
+
+        with pytest.raises(MiningBudgetExceededError, match="no room"):
+            await client.complete(
+                [LLMMessage("user", "mine")],
+                model="x-ai/grok-4.5",
+            )
+
+        assert transport.calls == 0
+
+    async def test_budget_guarded_provider_payload_and_provider_receipt(self):
+        class RecordingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def __init__(self):
+                self.completed = None
+
+            def reserve_attempt(self, payload):
+                guarded = dict(payload)
+                guarded["provider"] = {
+                    "allow_fallbacks": False,
+                    "max_price": {"prompt": 3.0, "completion": 15.0},
+                }
+                return SimpleNamespace(attempt_id="attempt-1"), guarded
+
+            def record_failure(self, attempt_id, error):
+                raise AssertionError(error)
+
+            def reconcile_completed(self, attempt_id, **kwargs):
+                self.completed = (attempt_id, kwargs)
+
+        class CapturingClient:
+            is_closed = False
+
+            def __init__(self):
+                self.payload = None
+
+            async def post(self, url, json, headers):
+                self.payload = json
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-actual",
+                        "model": "x-ai/grok-4.5",
+                        "choices": [
+                            {"message": {"content": "[]"}, "finish_reason": "stop"}
+                        ],
+                        "usage": {
+                            "prompt_tokens": 100,
+                            "completion_tokens": 20,
+                            "total_tokens": 120,
+                            "cost": 0.0123,
+                        },
+                    },
+                )
+
+        budget = RecordingBudget()
+        transport = CapturingClient()
+        client = LLMClient(api_key="test-key", budget_controller=budget)
+        client._client = transport
+
+        await client.complete(
+            [LLMMessage("user", "mine")],
+            model="x-ai/grok-4.5",
+        )
+
+        assert transport.payload["provider"]["allow_fallbacks"] is False
+        assert budget.completed == (
+            "attempt-1",
+            {
+                "returned_model": "x-ai/grok-4.5",
+                "actual_cost_usd": 0.0123,
+                "cost_source": "provider",
+                "request_id": "gen-actual",
+            },
+        )
+
+    async def test_returned_model_drift_is_reconciled_then_rejected(self):
+        class RecordingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def __init__(self):
+                self.events = []
+
+            def reserve_attempt(self, payload):
+                self.events.append("reserve")
+                return SimpleNamespace(attempt_id="attempt-1"), dict(payload)
+
+            def record_failure(self, attempt_id, error):
+                self.events.append("fail")
+
+            def reconcile_completed(self, attempt_id, **kwargs):
+                self.events.append("complete")
+
+        class DriftClient:
+            is_closed = False
+
+            async def post(self, url, json, headers):
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-drift",
+                        "model": "x-ai/grok-4.3",
+                        "choices": [
+                            {"message": {"content": "[]"}, "finish_reason": "stop"}
+                        ],
+                        "usage": {
+                            "prompt_tokens": 10,
+                            "completion_tokens": 2,
+                            "total_tokens": 12,
+                            "cost": 0.001,
+                        },
+                    },
+                )
+
+        budget = RecordingBudget()
+        client = LLMClient(api_key="test-key", budget_controller=budget)
+        client._client = DriftClient()
+
+        with pytest.raises(MiningBudgetViolationError, match="returned model"):
+            await client.complete(
+                [LLMMessage("user", "mine")],
+                model="x-ai/grok-4.5",
+            )
+
+        assert budget.events == ["reserve", "complete"]
+
+    async def test_legacy_client_payload_has_no_provider_budget_controls(self):
+        class CapturingClient:
+            is_closed = False
+
+            def __init__(self):
+                self.payload = None
+
+            async def post(self, url, json, headers):
+                self.payload = json
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-legacy",
+                        "model": "x-ai/grok-4.5",
+                        "choices": [
+                            {"message": {"content": "[]"}, "finish_reason": "stop"}
+                        ],
+                        "usage": {"total_tokens": 0},
+                    },
+                )
+
+        transport = CapturingClient()
+        client = LLMClient(api_key="test-key")
+        client._client = transport
+
+        await client.complete(
+            [LLMMessage("user", "mine")],
+            model="x-ai/grok-4.5",
+        )
+
+        assert "provider" not in transport.payload
 
     def test_cooldown_mechanism(self):
         client = LLMClient()

@@ -26,6 +26,11 @@ from claw.core.exceptions import (
     RateLimitError,
     ResponseParseError,
 )
+from claw.mining_budget import (
+    MiningBudgetController,
+    MiningBudgetError,
+    MiningBudgetViolationError,
+)
 
 logger = logging.getLogger("claw.llm")
 
@@ -82,10 +87,16 @@ class LLMClient:
     This client never hardcodes model IDs.
     """
 
-    def __init__(self, config: Optional[LLMConfig] = None, api_key: Optional[str] = None):
+    def __init__(
+        self,
+        config: Optional[LLMConfig] = None,
+        api_key: Optional[str] = None,
+        budget_controller: MiningBudgetController | None = None,
+    ):
         self.config = config or LLMConfig()
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY", "")
         self.base_url = self.config.base_url.rstrip("/")
+        self.budget_controller = budget_controller
         self._client: Optional[httpx.AsyncClient] = None
         self._model_failure_counts: dict[str, int] = {}
         self._model_cooldown_until: dict[str, float] = {}
@@ -226,10 +237,18 @@ class LLMClient:
         last_error: Optional[Exception] = None
 
         for attempt in range(max_retries):
+            budget_attempt_id: str | None = None
+            budget_finalized = False
             try:
+                request_payload = payload
+                if self.budget_controller is not None:
+                    budget_attempt, request_payload = (
+                        self.budget_controller.reserve_attempt(payload)
+                    )
+                    budget_attempt_id = budget_attempt.attempt_id
                 resp = await self.client.post(
                     f"{self.base_url}/chat/completions",
-                    json=payload,
+                    json=request_payload,
                     headers=headers,
                 )
 
@@ -238,6 +257,11 @@ class LLMClient:
                 if resp.status_code == 404:
                     raise ModelNotFoundError(f"Model not found: {payload.get('model')}")
                 if resp.status_code == 429:
+                    self._record_budget_failure(
+                        budget_attempt_id,
+                        f"provider status {resp.status_code}",
+                    )
+                    budget_finalized = True
                     delay = _backoff_delay(attempt, backoff_base_seconds)
                     logger.warning(
                         "Rate limited. Waiting %.1fs before retry %d",
@@ -247,6 +271,11 @@ class LLMClient:
                     await asyncio.sleep(delay)
                     continue
                 if resp.status_code >= 500:
+                    self._record_budget_failure(
+                        budget_attempt_id,
+                        f"provider status {resp.status_code}",
+                    )
+                    budget_finalized = True
                     delay = _backoff_delay(attempt, backoff_base_seconds)
                     logger.warning("Server error %d. Waiting %.1fs", resp.status_code, delay)
                     await asyncio.sleep(delay)
@@ -291,7 +320,7 @@ class LLMClient:
                 choice = data["choices"][0]
 
                 logger.debug("LLM response: model=%s tokens=%d", model, tokens)
-                return LLMResponse(
+                response = LLMResponse(
                     content=content, model=model, tokens_used=tokens, raw=data,
                     input_tokens=input_tokens, output_tokens=output_tokens,
                     reasoning_tokens=reasoning_tokens,
@@ -306,17 +335,47 @@ class LLMClient:
                         if key in data
                     },
                 )
+                if self.budget_controller is not None and budget_attempt_id is not None:
+                    self.budget_controller.reconcile_completed(
+                        budget_attempt_id,
+                        returned_model=response.model,
+                        actual_cost_usd=response.cost_usd,
+                        cost_source=response.cost_source,
+                        request_id=response.request_id,
+                    )
+                    budget_finalized = True
+                    if response.model != self.budget_controller.exact_model:
+                        raise MiningBudgetViolationError(
+                            f"Provider returned model {response.model!r}; exact model "
+                            f"{self.budget_controller.exact_model!r} was authorized"
+                        )
+                return response
 
             except (httpx.TimeoutException, httpx.ConnectError) as e:
+                if not budget_finalized:
+                    self._record_budget_failure(budget_attempt_id, str(e))
+                    budget_finalized = True
                 last_error = e
                 delay = _backoff_delay(attempt, backoff_base_seconds)
                 logger.warning("Network error: %s. Waiting %.1fs", e, delay)
                 await asyncio.sleep(delay)
+            except MiningBudgetError:
+                raise
             except (AuthenticationError, ModelNotFoundError):
+                if not budget_finalized:
+                    self._record_budget_failure(
+                        budget_attempt_id,
+                        type(last_error).__name__ if last_error else "provider rejection",
+                    )
                 raise
             except RateLimitError:
+                if not budget_finalized:
+                    self._record_budget_failure(budget_attempt_id, "rate limit")
                 raise
             except Exception as e:
+                if not budget_finalized:
+                    self._record_budget_failure(budget_attempt_id, str(e))
+                    budget_finalized = True
                 last_error = e
                 if attempt == max_retries - 1:
                     break
@@ -325,6 +384,14 @@ class LLMClient:
                 await asyncio.sleep(delay)
 
         raise LLMError(f"Request failed after {max_retries} attempts: {last_error}")
+
+    def _record_budget_failure(
+        self,
+        attempt_id: str | None,
+        error: str,
+    ) -> None:
+        if self.budget_controller is not None and attempt_id is not None:
+            self.budget_controller.record_failure(attempt_id, error)
 
     async def close(self) -> None:
         if self._client:
