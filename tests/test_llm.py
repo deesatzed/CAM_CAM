@@ -343,6 +343,28 @@ class TestLLMClientCooldown:
 
         assert transport.calls == 0
 
+    async def test_budget_rejection_is_terminal_across_fallback_wrapper(self):
+        class RejectingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def __init__(self):
+                self.reservations = 0
+
+            def reserve_attempt(self, payload):
+                self.reservations += 1
+                raise MiningBudgetExceededError("hard cap reached")
+
+        budget = RejectingBudget()
+        client = LLMClient(api_key="test-key", budget_controller=budget)
+
+        with pytest.raises(MiningBudgetExceededError, match="hard cap reached"):
+            await client.complete_with_fallback(
+                [LLMMessage("user", "mine")],
+                models=["x-ai/grok-4.5", "openai/gpt-4.1-mini"],
+            )
+
+        assert budget.reservations == 1
+
     async def test_budget_guarded_provider_payload_and_provider_receipt(self):
         class RecordingBudget:
             exact_model = "x-ai/grok-4.5"

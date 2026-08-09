@@ -198,6 +198,8 @@ class LLMClient:
                 )
                 self._record_model_success(model)
                 return response
+            except MiningBudgetError:
+                raise
             except AuthenticationError:
                 raise
             except Exception as e:
