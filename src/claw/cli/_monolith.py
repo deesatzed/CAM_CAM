@@ -7254,7 +7254,7 @@ async def _mine_workspace_async(
                 on_repo_complete(candidate.name, err_result)
 
         # Generate tasks from all findings
-        if generate_tasks:
+        if generate_tasks and not budget_exhausted:
             all_findings = []
             for result in report.repo_results:
                 all_findings.extend(result.findings)

@@ -2021,7 +2021,7 @@ class TestMineWorkspaceCommand:
                 file_count=1,
                 source_kind="git",
             )
-            for name in ("repo-one", "repo-two")
+            for name in ("repo-one", "repo-two", "repo-three")
         ]
 
         class FakeBudget:
@@ -2043,13 +2043,32 @@ class TestMineWorkspaceCommand:
         class FakeMiner:
             def __init__(self):
                 self.calls = []
+                self.task_calls = 0
                 self.scan_ledger = SimpleNamespace(
-                    should_mine=lambda *args, **kwargs: (True, "new")
+                    should_mine=lambda *args, **kwargs: (True, "new"),
+                    record_result=lambda *args, **kwargs: None,
                 )
 
             async def mine_repo(self, path, name, project_id):
                 self.calls.append(name)
+                if name == "repo-one":
+                    return RepoMiningResult(
+                        repo_name=name,
+                        repo_path=str(path),
+                        findings=[
+                            MiningFinding(
+                                title="Safe pattern",
+                                description="Fixture",
+                                category="testing",
+                                source_repo=name,
+                            )
+                        ],
+                    )
                 raise MiningBudgetExceededError("hard cap reached")
+
+            async def _generate_tasks(self, *args, **kwargs):
+                self.task_calls += 1
+                raise AssertionError("task generation must not follow a budget stop")
 
         class FakeRepository:
             async def get_project_by_name(self, name):
@@ -2086,9 +2105,9 @@ class TestMineWorkspaceCommand:
         await _mine_workspace_async(
             [tmp_path],
             str(tmp_path),
-            2,
+            3,
             0.6,
-            False,
+            True,
             None,
             exact_model="x-ai/grok-4.5",
             max_cost_usd=7.0,
@@ -2097,8 +2116,9 @@ class TestMineWorkspaceCommand:
             yield_sort=False,
         )
 
-        assert miner.calls == ["repo-one"]
-        assert budget.contexts == ["repo-one"]
+        assert miner.calls == ["repo-one", "repo-two"]
+        assert miner.task_calls == 0
+        assert budget.contexts == ["repo-one", "repo-two"]
         assert budget.statuses == ["budget-exhausted"]
 
     async def test_mine_workspace_marks_completed_and_prints_budget_summary(
