@@ -33,6 +33,8 @@ instances/
 !src/claw/data/
 !src/claw/data/**
 *.db
+*.db-wal
+*.db-shm
 
 # Claude Code user-specific memory
 .claude/

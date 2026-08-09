@@ -18,7 +18,7 @@ from claw.core.config import (
 class TestLoadConfig:
     def test_loads_claw_toml(self):
         config = load_config()
-        assert config.database.db_path == "data/claw.db"
+        assert config.database.db_path == "claw.db"
         assert config.llm.base_url == "https://openrouter.ai/api/v1"
 
     def test_agents_section(self):
