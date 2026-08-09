@@ -7,6 +7,8 @@
 - Database: `/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db`
 - Scan: `--changed-only --scan-only --depth 8 --dedup`
 - Model calls and spend: none
+- Complete eligible-repository inventory:
+  `docs/reports/2026-08-09-repos-txt-eligible.json`
 
 ## Inventory result
 
