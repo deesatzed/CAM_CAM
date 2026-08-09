@@ -338,3 +338,33 @@ Assumptions:
   call was made for this proposed batch pending explicit user approval.
 - `tabfm` remains eligible but is excluded from the proposal because the prior
   capped run repeatedly timed out without a durable result.
+
+## 2026-08-09 Priority 15 changed-only mining
+
+- After explicit user approval, re-scanned the exact 15-repository proposal
+  against the pinned live corpus and confirmed 15 discovered / 15 eligible
+  before spending.
+- Executed one single-writer hard-capped run with exact model
+  `x-ai/grok-4.5`, `$5.00` authorization, no fallback, no generated tasks, and
+  a fresh receipt at
+  `data/mining_runs/2026-08-09-repos-txt-priority15-grok-4.5-5usd.json`.
+- The run completed 96 of 96 calls with zero failures, spent `$3.0921648`,
+  processed all 15 entries, and stored 80 enriched findings from 14
+  source-bearing repositories. `taste-skill` incurred no call and was skipped
+  because serialization found no recognizable source files.
+- Verified the receipt is terminal and mode `0600`; every requested and
+  returned model is Grok 4.5; all five SQLite integrity checks are `ok`; all 80
+  unique ledger IDs exist across the root and language ganglia; and all 80 new
+  rows have capability, novelty, and potential data.
+- The live key reported `$2.50175256` remaining after the run. The exact key
+  usage delta matched the receipt spend.
+- The focused current-source miner gate passed 107 tests with the known
+  aiosqlite cleanup warning. A bare test command was proven to import an older
+  editable CAM checkout, so verification was rerun with this checkout's
+  absolute `PYTHONPATH` before publication.
+- An immediate authoritative changed-only scan excluded the 14 mined repos and
+  retained only `taste-skill`. Re-running it unchanged would skip again without
+  spend; supporting documentation/skill-only repos requires a separate product
+  decision or scanner/miner eligibility fix.
+- Full evidence is recorded in
+  `docs/reports/2026-08-09-priority15-grok-mining-results.md`.
