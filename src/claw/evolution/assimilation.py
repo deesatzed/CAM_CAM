@@ -24,6 +24,7 @@ import struct
 from typing import Any, Optional
 
 from claw.core.config import AssimilationConfig, ClawConfig
+from claw.core.exceptions import ModelRejectedError
 from claw.core.models import (
     CapabilityData,
     CapabilityIO,
@@ -32,8 +33,8 @@ from claw.core.models import (
     SynergyExploration,
 )
 from claw.db.repository import Repository
-from claw.core.exceptions import ModelRejectedError
 from claw.llm.client import LLMClient, LLMMessage
+from claw.mining_budget import MiningBudgetError
 
 logger = logging.getLogger("claw.evolution.assimilation")
 
@@ -343,6 +344,8 @@ class CapabilityExtractor:
                     max_tokens=1024,
                 )
             return _parse_capability_json(response.content)
+        except MiningBudgetError:
+            raise
         except Exception as e:
             logger.error("Capability extraction failed for %s: %s", methodology.id, e)
             return None
@@ -530,6 +533,8 @@ class SynergyDiscoverer:
             stype = result.get("synergy_type")
             composite = result.get("composite_description")
             return score, stype, composite
+        except MiningBudgetError:
+            raise
         except Exception as e:
             logger.error("LLM synergy analysis failed: %s", e)
             return 0.0, None, None
@@ -994,6 +999,8 @@ class NoveltyScorer:
             if parsed and "potential_score" in parsed:
                 return min(1.0, max(0.0, float(parsed["potential_score"])))
             return 0.5
+        except MiningBudgetError:
+            raise
         except Exception as e:
             logger.warning("LLM potential assessment failed: %s", e)
             return 0.5
@@ -1195,6 +1202,8 @@ class CapabilityAssimilationEngine:
                 )
                 result["novelty_score"] = scores["novelty_score"]
                 result["potential_score"] = scores["potential_score"]
+            except MiningBudgetError:
+                raise
             except Exception as e:
                 logger.warning("Novelty scoring failed for %s: %s", methodology_id, e)
 

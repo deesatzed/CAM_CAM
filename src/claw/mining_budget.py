@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import math
 import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -98,10 +100,12 @@ class MiningBudgetController:
         receipt_path: Path,
         receipt: MiningBudgetReceipt,
         catalog_entry: ModelCatalogEntry,
+        lock_handle: Any,
     ) -> None:
         self.receipt_path = receipt_path
         self.receipt = receipt
         self.catalog_entry = catalog_entry
+        self._lock_handle = lock_handle
         self._repo_name: str | None = None
 
     @classmethod
@@ -113,48 +117,135 @@ class MiningBudgetController:
         exact_model: str,
         catalog_entry: ModelCatalogEntry,
     ) -> "MiningBudgetController":
-        if authorization_usd <= 0:
-            raise MiningBudgetViolationError("Mining authorization must be positive")
+        if not math.isfinite(authorization_usd) or authorization_usd <= 0:
+            raise MiningBudgetViolationError(
+                "Mining authorization must be finite and positive"
+            )
         if catalog_entry.requested_id != exact_model:
             raise MiningBudgetViolationError(
                 "Catalog entry does not match the authorized exact model"
             )
-
         path = receipt_path.resolve()
-        if path.exists():
-            receipt = MiningBudgetReceipt.model_validate_json(path.read_text())
-            if not math.isclose(
-                receipt.authorization_usd,
-                authorization_usd,
-                rel_tol=0.0,
-                abs_tol=1e-12,
-            ):
-                raise MiningBudgetViolationError(
-                    "Mining authorization changed on resume"
+        cls._validate_catalog_prices(catalog_entry)
+        lock_handle = cls._acquire_receipt_lock(path)
+        try:
+            if path.exists():
+                receipt = MiningBudgetReceipt.model_validate_json(path.read_text())
+                cls._validate_receipt_money(receipt)
+                if not math.isclose(
+                    receipt.authorization_usd,
+                    authorization_usd,
+                    rel_tol=0.0,
+                    abs_tol=1e-12,
+                ):
+                    raise MiningBudgetViolationError(
+                        "Mining authorization changed on resume"
+                    )
+                if receipt.exact_model != exact_model:
+                    raise MiningBudgetViolationError(
+                        "Mining exact model changed on resume"
+                    )
+                if receipt.model_catalog_digest != catalog_entry.catalog_digest:
+                    raise MiningBudgetViolationError(
+                        "Mining catalog entry changed on resume"
+                    )
+            else:
+                timestamp = _now()
+                receipt = MiningBudgetReceipt(
+                    authorization_usd=authorization_usd,
+                    exact_model=exact_model,
+                    model_catalog_digest=catalog_entry.catalog_digest,
+                    created_at=timestamp,
+                    updated_at=timestamp,
                 )
-            if receipt.exact_model != exact_model:
-                raise MiningBudgetViolationError("Mining exact model changed on resume")
-            if receipt.model_catalog_digest != catalog_entry.catalog_digest:
+
+            controller = cls(
+                receipt_path=path,
+                receipt=receipt,
+                catalog_entry=catalog_entry,
+                lock_handle=lock_handle,
+            )
+            controller._persist()
+            return controller
+        except Exception:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+            lock_handle.close()
+            raise
+
+    @staticmethod
+    def _acquire_receipt_lock(path: Path) -> Any:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path = path.with_name(f"{path.name}.lock")
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        os.chmod(lock_path, 0o600)
+        handle = os.fdopen(descriptor, "a+")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            handle.close()
+            raise MiningBudgetViolationError(
+                f"Mining budget receipt is already in use: {path}"
+            ) from exc
+        return handle
+
+    @staticmethod
+    def _validate_catalog_prices(catalog_entry: ModelCatalogEntry) -> None:
+        prices: list[tuple[str, float | None]] = [
+            ("prompt", catalog_entry.pricing.prompt_per_million),
+            ("completion", catalog_entry.pricing.completion_per_million),
+            ("cached input", catalog_entry.pricing.cached_input_per_million),
+            (
+                "cached input write",
+                catalog_entry.pricing.cached_input_write_per_million,
+            ),
+            ("reasoning", catalog_entry.pricing.reasoning_per_million),
+            ("request", catalog_entry.pricing.request_price),
+        ]
+        for index, override in enumerate(catalog_entry.pricing.overrides):
+            for key in ("prompt_per_million", "completion_per_million"):
+                if key in override:
+                    prices.append((f"override {index} {key}", float(override[key])))
+        for label, price in prices:
+            if price is not None and (not math.isfinite(price) or price < 0):
                 raise MiningBudgetViolationError(
-                    "Mining catalog entry changed on resume"
+                    f"Mining catalog price {label!r} must be finite and nonnegative"
                 )
-        else:
-            timestamp = _now()
-            receipt = MiningBudgetReceipt(
-                authorization_usd=authorization_usd,
-                exact_model=exact_model,
-                model_catalog_digest=catalog_entry.catalog_digest,
-                created_at=timestamp,
-                updated_at=timestamp,
+
+    @staticmethod
+    def _validate_receipt_money(receipt: MiningBudgetReceipt) -> None:
+        values: list[tuple[str, float | None, bool]] = [
+            ("authorization", receipt.authorization_usd, True),
+        ]
+        for index, attempt in enumerate(receipt.attempts):
+            values.extend(
+                [
+                    (f"attempt {index} maximum cost", attempt.maximum_cost_usd, False),
+                    (f"attempt {index} actual cost", attempt.actual_cost_usd, False),
+                ]
+            )
+        for label, value, must_be_positive in values:
+            if value is None:
+                continue
+            invalid = not math.isfinite(value) or value < 0
+            if must_be_positive:
+                invalid = invalid or value == 0
+            if invalid:
+                raise MiningBudgetViolationError(
+                    f"Mining receipt {label} must be finite and "
+                    f"{'positive' if must_be_positive else 'nonnegative'}"
+                )
+        if receipt.conservative_spend_usd > receipt.authorization_usd + 1e-12:
+            raise MiningBudgetViolationError(
+                "Mining receipt conservative spend exceeds its authorization"
             )
 
-        controller = cls(
-            receipt_path=path,
-            receipt=receipt,
-            catalog_entry=catalog_entry,
-        )
-        controller._persist()
-        return controller
+    def close(self) -> None:
+        """Release the exclusive receipt lifecycle lock."""
+        if self._lock_handle is None:
+            return
+        fcntl.flock(self._lock_handle.fileno(), fcntl.LOCK_UN)
+        self._lock_handle.close()
+        self._lock_handle = None
 
     def set_repo_context(self, repo_name: str | None) -> None:
         self._repo_name = repo_name
@@ -167,6 +258,10 @@ class MiningBudgetController:
         self,
         payload: dict[str, Any],
     ) -> tuple[MiningAttemptReceipt, dict[str, Any]]:
+        if self.receipt.status != "running":
+            raise MiningBudgetViolationError(
+                f"Mining budget receipt is terminal: {self.receipt.status}"
+            )
         requested_model = str(payload.get("model") or "")
         if requested_model != self.receipt.exact_model:
             raise MiningBudgetViolationError(
@@ -175,6 +270,11 @@ class MiningBudgetController:
             )
 
         maximum_cost, prompt_price, completion_price = self._maximum_cost(payload)
+        if not math.isfinite(maximum_cost) or maximum_cost < 0:
+            self._replace_receipt(status="failed")
+            raise MiningBudgetViolationError(
+                "Computed mining request reserve must be finite and nonnegative"
+            )
         projected = self.receipt.conservative_spend_usd + maximum_cost
         if projected > self.receipt.authorization_usd + 1e-12:
             self._replace_receipt(status="budget-exhausted")
@@ -223,6 +323,28 @@ class MiningBudgetController:
         request_id: str | None,
     ) -> None:
         attempt = self._find_attempt(attempt_id)
+        if actual_cost_usd is not None and (
+            not math.isfinite(actual_cost_usd) or actual_cost_usd < 0
+        ):
+            failed = attempt.model_copy(
+                update={
+                    "status": "failed",
+                    "returned_model": returned_model,
+                    "actual_cost_usd": None,
+                    "cost_source": "invalid-provider",
+                    "request_id": request_id,
+                    "error": "Provider cost was non-finite or negative",
+                    "updated_at": _now(),
+                }
+            )
+            attempts = [
+                failed if current.attempt_id == attempt_id else current
+                for current in self.receipt.attempts
+            ]
+            self._replace_receipt(status="failed", attempts=attempts)
+            raise MiningBudgetViolationError(
+                "provider cost must be finite and nonnegative"
+            )
         completed = attempt.model_copy(
             update={
                 "status": "completed",
@@ -255,6 +377,11 @@ class MiningBudgetController:
         self,
         status: Literal["running", "completed", "budget-exhausted", "failed"],
     ) -> None:
+        current = self.receipt.status
+        if current != "running" and status != current:
+            raise MiningBudgetViolationError(
+                f"Mining budget receipt is terminal: {current}"
+            )
         self._replace_receipt(status=status)
 
     def _maximum_cost(self, payload: dict[str, Any]) -> tuple[float, float, float]:
@@ -326,9 +453,26 @@ class MiningBudgetController:
 
     def _persist(self) -> None:
         self.receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = self.receipt_path.with_suffix(".tmp")
         encoded = self.receipt.model_dump_json(indent=2) + "\n"
-        temp_path.write_text(encoded)
-        os.chmod(temp_path, 0o600)
-        temp_path.replace(self.receipt_path)
-        os.chmod(self.receipt_path, 0o600)
+        descriptor, temp_name = tempfile.mkstemp(
+            prefix=f".{self.receipt_path.name}.",
+            suffix=".tmp",
+            dir=self.receipt_path.parent,
+        )
+        temp_path = Path(temp_name)
+        try:
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_path, self.receipt_path)
+            os.chmod(self.receipt_path, 0o600)
+            directory_fd = os.open(self.receipt_path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()

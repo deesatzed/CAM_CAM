@@ -285,6 +285,28 @@ class TestAssimilationParallelism:
         assert sorted(calls) == ["a", "b", "c", "d"]
         assert duration < 0.16
 
+    @pytest.mark.asyncio
+    async def test_budgeted_assimilation_stops_serially_at_budget_boundary(
+        self,
+        repo_miner,
+    ):
+        from claw.mining_budget import MiningBudgetExceededError
+
+        calls: list[str] = []
+
+        class BudgetStoppedAssimilationEngine:
+            async def assimilate(self, methodology_id: str):
+                calls.append(methodology_id)
+                raise MiningBudgetExceededError("hard cap reached")
+
+        repo_miner.llm_client = SimpleNamespace(budget_controller=object())
+        repo_miner.assimilation_engine = BudgetStoppedAssimilationEngine()
+
+        with pytest.raises(MiningBudgetExceededError, match="hard cap reached"):
+            await repo_miner._assimilate_methodologies(["a", "b", "c"])
+
+        assert calls == ["a"]
+
 
 @pytest.mark.asyncio
 async def test_backfill_components_from_existing_methodology(repo_miner, repository):
@@ -1954,7 +1976,20 @@ class TestMineWorkspaceCommand:
 
         captured = {}
         entry = object()
-        controller = object()
+        class FakeBudget:
+            def __init__(self):
+                self.receipt = SimpleNamespace(
+                    status="running",
+                    actual_spend_usd=0.0,
+                    conservative_spend_usd=0.0,
+                    remaining_usd=7.0,
+                )
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        controller = FakeBudget()
 
         class FakeCatalog:
             def require(self, model_id):
@@ -2004,6 +2039,127 @@ class TestMineWorkspaceCommand:
         }
         assert captured["factory"]["exact_mining_model"] == "x-ai/grok-4.5"
         assert captured["factory"]["mining_budget_controller"] is controller
+        assert controller.closed is True
+
+    async def test_mine_workspace_terminal_receipt_skips_factory(
+        self,
+        monkeypatch,
+        tmp_path,
+        capsys,
+    ):
+        from claw.cli._monolith import _mine_workspace_async
+
+        class FakeBudget:
+            def __init__(self):
+                self.receipt = SimpleNamespace(
+                    status="completed",
+                    actual_spend_usd=1.0,
+                    conservative_spend_usd=1.0,
+                    remaining_usd=6.0,
+                )
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        budget = FakeBudget()
+
+        async def fake_fetch(self):
+            return SimpleNamespace(require=lambda model_id: object())
+
+        async def fail_create(**kwargs):
+            raise AssertionError("terminal receipt must not build mining context")
+
+        monkeypatch.setattr("claw.models.catalog.OpenRouterCatalogClient.fetch", fake_fetch)
+        monkeypatch.setattr(
+            "claw.mining_budget.MiningBudgetController.open",
+            lambda **kwargs: budget,
+        )
+        monkeypatch.setattr("claw.core.factory.ClawFactory.create", fail_create)
+
+        await _mine_workspace_async(
+            [tmp_path],
+            str(tmp_path),
+            1,
+            0.6,
+            False,
+            None,
+            exact_model="x-ai/grok-4.5",
+            max_cost_usd=7.0,
+            budget_receipt_path=str(tmp_path / "run.json"),
+        )
+
+        assert budget.closed is True
+        assert "Receipt is already terminal: completed" in capsys.readouterr().out
+
+    async def test_mine_workspace_no_repositories_completes_and_closes_receipt(
+        self,
+        monkeypatch,
+        tmp_path,
+    ):
+        from claw.cli._monolith import _mine_workspace_async
+
+        class FakeBudget:
+            def __init__(self):
+                self.receipt = SimpleNamespace(
+                    status="running",
+                    actual_spend_usd=0.0,
+                    conservative_spend_usd=0.0,
+                    remaining_usd=7.0,
+                )
+                self.statuses = []
+                self.closed = False
+
+            def mark_status(self, status):
+                self.statuses.append(status)
+                self.receipt.status = status
+
+            def close(self):
+                self.closed = True
+
+        class FakeRepository:
+            async def get_project_by_name(self, name):
+                return SimpleNamespace(name=name, id="project-1")
+
+        async def fake_close():
+            return None
+
+        budget = FakeBudget()
+        context = SimpleNamespace(
+            repository=FakeRepository(),
+            miner=SimpleNamespace(),
+            config=ClawConfig(),
+            close=fake_close,
+        )
+
+        async def fake_fetch(self):
+            return SimpleNamespace(require=lambda model_id: object())
+
+        async def fake_create(**kwargs):
+            return context
+
+        monkeypatch.setattr("claw.models.catalog.OpenRouterCatalogClient.fetch", fake_fetch)
+        monkeypatch.setattr(
+            "claw.mining_budget.MiningBudgetController.open",
+            lambda **kwargs: budget,
+        )
+        monkeypatch.setattr("claw.core.factory.ClawFactory.create", fake_create)
+        monkeypatch.setattr("claw.miner._discover_repos", lambda *args, **kwargs: [])
+
+        await _mine_workspace_async(
+            [tmp_path],
+            str(tmp_path),
+            1,
+            0.6,
+            False,
+            None,
+            exact_model="x-ai/grok-4.5",
+            max_cost_usd=7.0,
+            budget_receipt_path=str(tmp_path / "run.json"),
+        )
+
+        assert budget.statuses == ["completed"]
+        assert budget.closed is True
 
     async def test_mine_workspace_budget_exhaustion_stops_before_next_repo(
         self,
@@ -2029,6 +2185,7 @@ class TestMineWorkspaceCommand:
                 self.contexts = []
                 self.statuses = []
                 self.receipt = SimpleNamespace(
+                    status="running",
                     actual_spend_usd=1.25,
                     conservative_spend_usd=6.75,
                     remaining_usd=0.25,
@@ -2141,6 +2298,7 @@ class TestMineWorkspaceCommand:
             def __init__(self):
                 self.statuses = []
                 self.receipt = SimpleNamespace(
+                    status="running",
                     actual_spend_usd=1.25,
                     conservative_spend_usd=1.50,
                     remaining_usd=5.50,

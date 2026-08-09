@@ -100,6 +100,7 @@ class LLMClient:
         self._client: Optional[httpx.AsyncClient] = None
         self._model_failure_counts: dict[str, int] = {}
         self._model_cooldown_until: dict[str, float] = {}
+        self._budget_request_lock = asyncio.Lock()
 
     @property
     def client(self) -> httpx.AsyncClient:
@@ -235,6 +236,29 @@ class LLMClient:
         max_retries: int = 3,
         backoff_base_seconds: float = 2.0,
     ) -> LLMResponse:
+        """Serialize the complete reserve/request/reconcile cycle when capped."""
+        if self.budget_controller is None:
+            return await self._request_with_retry_unlocked(
+                payload,
+                headers,
+                max_retries=max_retries,
+                backoff_base_seconds=backoff_base_seconds,
+            )
+        async with self._budget_request_lock:
+            return await self._request_with_retry_unlocked(
+                payload,
+                headers,
+                max_retries=max_retries,
+                backoff_base_seconds=backoff_base_seconds,
+            )
+
+    async def _request_with_retry_unlocked(
+        self,
+        payload: dict,
+        headers: dict,
+        max_retries: int = 3,
+        backoff_base_seconds: float = 2.0,
+    ) -> LLMResponse:
         """Execute request with exponential backoff on retryable errors."""
         last_error: Optional[Exception] = None
 
@@ -308,7 +332,12 @@ class LLMClient:
                     else:
                         logger.warning("LLM returned null content (model=%s)", data.get("model"))
                     content = ""
-                model = data.get("model", payload.get("model", "unknown"))
+                raw_returned_model = data.get("model")
+                returned_model = (
+                    str(raw_returned_model) if raw_returned_model not in (None, "")
+                    else None
+                )
+                model = returned_model or payload.get("model", "unknown")
                 usage = data.get("usage", {})
                 tokens = usage.get("total_tokens", 0)
                 input_tokens = usage.get("prompt_tokens", 0)
@@ -340,15 +369,20 @@ class LLMClient:
                 if self.budget_controller is not None and budget_attempt_id is not None:
                     self.budget_controller.reconcile_completed(
                         budget_attempt_id,
-                        returned_model=response.model,
+                        returned_model=returned_model,
                         actual_cost_usd=response.cost_usd,
                         cost_source=response.cost_source,
                         request_id=response.request_id,
                     )
                     budget_finalized = True
-                    if response.model != self.budget_controller.exact_model:
+                    if returned_model is None:
                         raise MiningBudgetViolationError(
-                            f"Provider returned model {response.model!r}; exact model "
+                            "Provider did not identify the returned model; exact-model "
+                            "authorization cannot be verified"
+                        )
+                    if returned_model != self.budget_controller.exact_model:
+                        raise MiningBudgetViolationError(
+                            f"Provider returned model {returned_model!r}; exact model "
                             f"{self.budget_controller.exact_model!r} was authorized"
                         )
                 return response

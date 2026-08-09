@@ -26,6 +26,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shlex
@@ -203,13 +204,19 @@ def _run_python_script_with_timeout(script_path: Path, args: list[str], max_minu
 
 def _uses_remote_embeddings(config: Any) -> bool:
     """Return True if embeddings use a remote API (OpenRouter or direct Gemini)."""
-    model_name = str(getattr(config.embeddings, "model", "") or "")
-    required_model = str(getattr(config.embeddings, "required_model", "") or "")
+    embeddings = getattr(config, "embeddings", None)
+    model_name = str(getattr(embeddings, "model", "") or "")
+    required_model = str(getattr(embeddings, "required_model", "") or "")
     # OpenRouter: provider/model format (e.g. "perplexity/pplx-embed-v1-4b")
-    if "/" in model_name:
+    if "/" in model_name and not model_name.startswith("mlx-"):
         return True
     # Direct Gemini API
-    return model_name.startswith("gemini-embedding") or required_model.startswith("gemini-embedding")
+    return (
+        model_name.startswith(("gemini-embedding", "models/gemini-embedding"))
+        or required_model.startswith(
+            ("gemini-embedding", "models/gemini-embedding")
+        )
+    )
 
 
 # Keep old name as alias for backward compat in any other callers
@@ -6628,8 +6635,12 @@ def mine_workspace(
             "must be provided together[/red]"
         )
         raise typer.Exit(1)
-    if max_cost_usd is not None and max_cost_usd <= 0:
-        console.print("[red]--max-cost-usd must be greater than zero[/red]")
+    if max_cost_usd is not None and (
+        not math.isfinite(max_cost_usd) or max_cost_usd <= 0
+    ):
+        console.print(
+            "[red]--max-cost-usd must be finite and greater than zero[/red]"
+        )
         raise typer.Exit(1)
     if exact_model is not None and not exact_model.strip():
         console.print("[red]--exact-model must not be empty[/red]")
@@ -6671,6 +6682,12 @@ def mine_workspace(
         Path(config) if config else None,
         model_profiles_path=profiles_path,
     )
+    if max_cost_usd is not None and _uses_remote_embeddings(cfg):
+        console.print(
+            "[red]remote embeddings are outside the receipt; use local "
+            "embeddings for budgeted mining.[/red]"
+        )
+        raise typer.Exit(1)
     _fail_if_missing_api_keys(cfg, "mine-workspace")
     if live_keycheck and max_cost_usd is None:
         _fail_if_live_key_checks_fail(cfg, "mine-workspace")
@@ -7119,13 +7136,28 @@ async def _mine_workspace_async(
             exact_model=exact_model,
             catalog_entry=catalog_entry,
         )
-    ctx = await ClawFactory.create(
-        config_path=config_p,
-        workspace_dir=target_path,
-        model_profiles_path=profiles_p,
-        exact_mining_model=exact_model,
-        mining_budget_controller=budget_controller,
-    )
+        if budget_controller.receipt.status != "running":
+            terminal_status = budget_controller.receipt.status
+            console.print(f"[yellow]Receipt is already terminal: {terminal_status}[/yellow]")
+            _print_mining_budget_summary(budget_controller)
+            _close_mining_budget(budget_controller)
+            if terminal_status == "failed":
+                raise MiningBudgetError(
+                    "Failed mining receipts cannot be resumed; use a new receipt"
+                )
+            return
+
+    try:
+        ctx = await ClawFactory.create(
+            config_path=config_p,
+            workspace_dir=target_path,
+            model_profiles_path=profiles_p,
+            exact_mining_model=exact_model,
+            mining_budget_controller=budget_controller,
+        )
+    except Exception:
+        _close_mining_budget(budget_controller)
+        raise
 
     try:
         project_name = target_path.name
@@ -7150,6 +7182,9 @@ async def _mine_workspace_async(
 
         if not all_candidates:
             console.print("[yellow]No repos found in any directory.[/yellow]")
+            if budget_controller is not None:
+                budget_controller.mark_status("completed")
+                _print_mining_budget_summary(budget_controller)
             return
 
         skipped_dedup: list = []
@@ -7321,6 +7356,14 @@ async def _mine_workspace_async(
 
     finally:
         await ctx.close()
+        _close_mining_budget(budget_controller)
+
+
+def _close_mining_budget(controller: Any) -> None:
+    """Release a receipt lock without constraining legacy test doubles."""
+    close = getattr(controller, "close", None)
+    if callable(close):
+        close()
 
 
 def _print_mining_budget_summary(controller: Any) -> None:

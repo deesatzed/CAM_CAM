@@ -33,6 +33,7 @@ from claw.evolution.assimilation import (
     _parse_capability_json,
     _parse_synergy_json,
 )
+from claw.mining_budget import MiningBudgetExceededError
 from claw.llm.client import LLMResponse
 
 
@@ -783,6 +784,17 @@ class TestAssimilationJsonMode:
 
         assert result is not None
         assert llm.response_formats == [{"type": "json_object"}]
+
+    @pytest.mark.asyncio
+    async def test_capability_extractor_propagates_budget_stop(self):
+        class BudgetStoppedLLM:
+            async def complete(self, **kwargs):
+                raise MiningBudgetExceededError("hard cap reached")
+
+        extractor = CapabilityExtractor(None, BudgetStoppedLLM(), self._config())
+
+        with pytest.raises(MiningBudgetExceededError, match="hard cap reached"):
+            await extractor.extract_capability(_make_methodology())
 
     @pytest.mark.asyncio
     async def test_capability_extractor_prefers_qwen_route_for_json_work(self):

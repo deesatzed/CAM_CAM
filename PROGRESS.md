@@ -263,6 +263,24 @@ Assumptions:
   broader mining/model gate. The broader gate retained the previously recorded
   non-fatal aiosqlite event-loop cleanup warning. Targeted Ruff checks and
   `git diff --check` passed.
+- Independent pre-merge review found fail-open boundary risks in receipt
+  concurrency, non-finite accounting, terminal-state reuse, remote embeddings,
+  assimilation exception handling, and missing returned-model evidence. All
+  were accepted and mitigated with lifecycle file locking, atomic unique-temp
+  writes plus fsync, strict monetary validation, terminal-state monotonicity,
+  one in-flight capped request, local-only embeddings for capped runs, and
+  budget-error propagation.
+- Added adversarial regressions for corrupt resumed receipts, a second live
+  runner, terminal receipts, factory and empty-discovery exits, remote
+  embeddings, missing returned-model metadata, request serialization, and
+  assimilation stopping at its first cap boundary. The updated focused gate
+  passes 413 tests and the expanded mining/model regression gate passes in
+  full. No paid provider request has been made by these tests.
+- Fresh full-suite verification completed with `4382 passed`, `22 skipped`,
+  and the same four known baseline failures: one installed LanceDB API
+  mismatch, one stale `claw.toml` path expectation, and two unavailable
+  Ganglia fixture databases. Independent re-review of the completed mitigation
+  reported no Critical or Important findings and a merge verdict of yes.
 
 ## Rescue Ladder - step `hard-capped-mining-release-gate` - attempt 1
 

@@ -206,3 +206,22 @@ drift is charged once and rejected. The legacy CLI path is unchanged when the
 three controls are omitted, scan-only never creates a receipt, and the existing
 unbudgeted live LLM key probe is skipped for capped runs so the first paid
 request is always reserved.
+
+## 2026-08-09: A capped mining receipt is a single-writer terminal contract
+
+Decision: hold an OS-level exclusive lock for the full controller lifetime,
+serialize capped LLM requests, and prohibit new reservations or backward state
+transitions after `completed`, `budget-exhausted`, or `failed`. A terminal run
+requires a new receipt. Resume validates every persisted monetary value and
+rejects non-finite, negative, or over-authorization state.
+
+Reason: separate processes, concurrent assimilation calls, or poisoned
+provider/accounting values could otherwise reserve from stale state, overwrite
+attempts, or make cap comparisons fail open.
+
+Safety: capped mining rejects remote embedding routes because those provider
+charges are not represented in the LLM receipt. Every paid response must name
+the returned model explicitly; missing or different model evidence is charged
+once and fails terminally. Budget errors propagate through assimilation, and
+the CLI releases the receipt lock on normal completion, early exit, timeout,
+factory failure, and other exceptions.

@@ -3775,6 +3775,11 @@ class RepoMiner:
                 repository, self.llm_client, self.config,
             )
 
+        if getattr(self.llm_client, "budget_controller", None) is not None:
+            for methodology_id in methodology_ids:
+                await engine.assimilate(methodology_id)
+            return
+
         limit = max(1, min(self._assimilation_parallelism, len(methodology_ids)))
         semaphore = asyncio.Semaphore(limit)
 

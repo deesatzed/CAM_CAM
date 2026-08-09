@@ -7,6 +7,7 @@ import inspect
 import json
 from copy import deepcopy
 
+import pytest
 from typer.testing import CliRunner
 
 
@@ -60,7 +61,8 @@ def test_mine_workspace_budget_options_are_all_or_none(monkeypatch, tmp_path):
         assert "must be provided together" in result.output
 
 
-def test_mine_workspace_rejects_non_positive_budget(tmp_path):
+@pytest.mark.parametrize("budget", ["0", "nan", "inf"])
+def test_mine_workspace_rejects_non_positive_or_nonfinite_budget(tmp_path, budget):
     from claw.cli import app
 
     runner = CliRunner()
@@ -71,7 +73,7 @@ def test_mine_workspace_rejects_non_positive_budget(tmp_path):
             str(tmp_path),
             "--scan-only",
             "--max-cost-usd",
-            "0",
+            budget,
             "--exact-model",
             "x-ai/grok-4.5",
             "--budget-receipt",
@@ -80,7 +82,7 @@ def test_mine_workspace_rejects_non_positive_budget(tmp_path):
     )
 
     assert result.exit_code == 1
-    assert "must be greater than zero" in result.output
+    assert "must be finite and greater than zero" in result.output
 
 
 def test_mine_workspace_scan_only_never_builds_paid_budget(monkeypatch, tmp_path):
@@ -152,6 +154,53 @@ def test_budgeted_mine_workspace_skips_unreserved_live_llm_probe(
 
     assert result.exit_code == 0
     assert live_checks == []
+
+
+@pytest.mark.parametrize(
+    "embedding_model",
+    ["perplexity/pplx-embed-v1-4b", "gemini-embedding-2-preview"],
+)
+def test_budgeted_mine_workspace_rejects_remote_embeddings(
+    monkeypatch,
+    tmp_path,
+    embedding_model,
+):
+    from claw.cli import app
+    from claw.core.config import ClawConfig
+
+    config = ClawConfig()
+    config.embeddings.model = embedding_model
+    config.embeddings.required_model = embedding_model
+    live_calls = []
+
+    async def fake_mine(*args, **kwargs):
+        live_calls.append("mine")
+
+    monkeypatch.setattr("claw.core.config.load_config", lambda *args, **kwargs: config)
+    monkeypatch.setattr(
+        "claw.cli._monolith._fail_if_missing_api_keys",
+        lambda *args, **kwargs: None,
+    )
+    monkeypatch.setattr("claw.cli._monolith._mine_workspace_async", fake_mine)
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        [
+            "mine-workspace",
+            str(tmp_path),
+            "--max-cost-usd",
+            "7",
+            "--exact-model",
+            "x-ai/grok-4.5",
+            "--budget-receipt",
+            str((tmp_path / "run.json").resolve()),
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "remote embeddings are outside the receipt" in result.output
+    assert live_calls == []
 
 
 async def _seed_doctor_audit_db(

@@ -1,5 +1,7 @@
 """Tests for CLAW LLM client and token tracker."""
 
+import asyncio
+
 from types import SimpleNamespace
 
 import httpx
@@ -483,6 +485,109 @@ class TestLLMClientCooldown:
             )
 
         assert budget.events == ["reserve", "complete"]
+
+    async def test_budgeted_response_requires_explicit_returned_model(self):
+        class RecordingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def __init__(self):
+                self.returned_models = []
+
+            def reserve_attempt(self, payload):
+                return SimpleNamespace(attempt_id="attempt-1"), dict(payload)
+
+            def record_failure(self, attempt_id, error):
+                raise AssertionError(error)
+
+            def reconcile_completed(self, attempt_id, **kwargs):
+                self.returned_models.append(kwargs["returned_model"])
+
+        class MissingModelClient:
+            is_closed = False
+
+            async def post(self, url, json, headers):
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-missing-model",
+                        "choices": [
+                            {"message": {"content": "[]"}, "finish_reason": "stop"}
+                        ],
+                        "usage": {"total_tokens": 0, "cost": 0.001},
+                    },
+                )
+
+        budget = RecordingBudget()
+        client = LLMClient(api_key="test-key", budget_controller=budget)
+        client._client = MissingModelClient()
+
+        with pytest.raises(MiningBudgetViolationError, match="did not identify"):
+            await client.complete(
+                [LLMMessage("user", "mine")],
+                model="x-ai/grok-4.5",
+            )
+
+        assert budget.returned_models == [None]
+
+    async def test_budgeted_requests_are_serialized(self):
+        class RecordingBudget:
+            exact_model = "x-ai/grok-4.5"
+
+            def __init__(self):
+                self.next_attempt = 0
+
+            def reserve_attempt(self, payload):
+                self.next_attempt += 1
+                return (
+                    SimpleNamespace(attempt_id=f"attempt-{self.next_attempt}"),
+                    dict(payload),
+                )
+
+            def record_failure(self, attempt_id, error):
+                raise AssertionError(error)
+
+            def reconcile_completed(self, attempt_id, **kwargs):
+                return None
+
+        class ConcurrentClient:
+            is_closed = False
+
+            def __init__(self):
+                self.active = 0
+                self.maximum_active = 0
+
+            async def post(self, url, json, headers):
+                self.active += 1
+                self.maximum_active = max(self.maximum_active, self.active)
+                await asyncio.sleep(0.02)
+                self.active -= 1
+                return httpx.Response(
+                    200,
+                    request=httpx.Request("POST", url),
+                    json={
+                        "id": "gen-serialized",
+                        "model": "x-ai/grok-4.5",
+                        "choices": [
+                            {"message": {"content": "[]"}, "finish_reason": "stop"}
+                        ],
+                        "usage": {"total_tokens": 0, "cost": 0.001},
+                    },
+                )
+
+        transport = ConcurrentClient()
+        client = LLMClient(
+            api_key="test-key",
+            budget_controller=RecordingBudget(),
+        )
+        client._client = transport
+
+        await asyncio.gather(
+            client.complete([LLMMessage("user", "one")], model="x-ai/grok-4.5"),
+            client.complete([LLMMessage("user", "two")], model="x-ai/grok-4.5"),
+        )
+
+        assert transport.maximum_active == 1
 
     async def test_legacy_client_payload_has_no_provider_budget_controls(self):
         class CapturingClient:

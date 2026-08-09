@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import stat
 from pathlib import Path
 
@@ -174,6 +175,7 @@ def test_resume_restores_prior_spend(tmp_path: Path) -> None:
         cost_source="provider",
         request_id="gen-3",
     )
+    controller.close()
 
     resumed = _controller(tmp_path)
 
@@ -198,7 +200,8 @@ def test_resume_rejects_contract_drift(
     entry: ModelCatalogEntry,
     message: str,
 ) -> None:
-    _controller(tmp_path)
+    original = _controller(tmp_path)
+    original.close()
 
     with pytest.raises(MiningBudgetViolationError, match=message):
         MiningBudgetController.open(
@@ -233,3 +236,126 @@ def test_exact_model_mismatch_fails_before_reservation(tmp_path: Path) -> None:
         controller.reserve_attempt({**_payload(), "model": "openai/gpt-4.1-mini"})
 
     assert controller.receipt.attempts == []
+
+
+@pytest.mark.parametrize("authorization", [float("nan"), float("inf"), -1.0, 0.0])
+def test_authorization_must_be_finite_and_positive(
+    tmp_path: Path,
+    authorization: float,
+) -> None:
+    with pytest.raises(MiningBudgetViolationError, match="finite and positive"):
+        _controller(tmp_path, authorization=authorization)
+
+
+@pytest.mark.parametrize("bad_price", [float("nan"), float("inf"), -0.01])
+def test_catalog_prices_must_be_finite_and_nonnegative(
+    tmp_path: Path,
+    bad_price: float,
+) -> None:
+    entry = _grok_entry().model_copy(
+        update={
+            "pricing": _grok_entry().pricing.model_copy(
+                update={"prompt_per_million": bad_price}
+            )
+        }
+    )
+
+    with pytest.raises(MiningBudgetViolationError, match="catalog price"):
+        MiningBudgetController.open(
+            receipt_path=tmp_path / "run.json",
+            authorization_usd=7.0,
+            exact_model="x-ai/grok-4.5",
+            catalog_entry=entry,
+        )
+
+
+@pytest.mark.parametrize("provider_cost", [float("nan"), float("inf"), -0.01])
+def test_invalid_provider_cost_fails_and_retains_reserve(
+    tmp_path: Path,
+    provider_cost: float,
+) -> None:
+    controller = _controller(tmp_path)
+    attempt, _ = controller.reserve_attempt(_payload())
+
+    with pytest.raises(MiningBudgetViolationError, match="provider cost"):
+        controller.reconcile_completed(
+            attempt.attempt_id,
+            returned_model="x-ai/grok-4.5",
+            actual_cost_usd=provider_cost,
+            cost_source="provider",
+            request_id="gen-invalid",
+        )
+
+    failed = controller.receipt.attempts[-1]
+    assert failed.status == "failed"
+    assert failed.actual_cost_usd is None
+    assert controller.receipt.status == "failed"
+    assert math.isfinite(controller.receipt.conservative_spend_usd)
+    assert controller.receipt.conservative_spend_usd == pytest.approx(
+        attempt.maximum_cost_usd
+    )
+
+
+@pytest.mark.parametrize("status", ["completed", "budget-exhausted", "failed"])
+def test_terminal_receipt_cannot_reserve_or_transition_back(
+    tmp_path: Path,
+    status: str,
+) -> None:
+    controller = _controller(tmp_path)
+    controller.mark_status(status)
+
+    with pytest.raises(MiningBudgetViolationError, match="terminal"):
+        controller.reserve_attempt(_payload())
+    with pytest.raises(MiningBudgetViolationError, match="terminal"):
+        controller.mark_status("running")
+
+    assert controller.receipt.status == status
+    assert controller.receipt.attempts == []
+
+
+def test_receipt_lock_rejects_a_second_live_runner(tmp_path: Path) -> None:
+    first = _controller(tmp_path)
+
+    with pytest.raises(MiningBudgetViolationError, match="already in use"):
+        _controller(tmp_path)
+
+    first.close()
+    resumed = _controller(tmp_path)
+    assert resumed.receipt.attempts == []
+    resumed.close()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("authorization_usd", float("nan")),
+        ("maximum_cost_usd", float("inf")),
+        ("actual_cost_usd", -0.01),
+    ],
+)
+def test_resume_rejects_nonfinite_or_negative_receipt_money(
+    tmp_path: Path,
+    field: str,
+    value: float,
+) -> None:
+    controller = _controller(tmp_path)
+    attempt, _ = controller.reserve_attempt(_payload())
+    controller.reconcile_completed(
+        attempt.attempt_id,
+        returned_model="x-ai/grok-4.5",
+        actual_cost_usd=0.01,
+        cost_source="provider",
+        request_id="gen-valid",
+    )
+    controller.close()
+
+    path = tmp_path / "run.json"
+    raw = json.loads(path.read_text())
+    if field == "authorization_usd":
+        raw[field] = value
+    else:
+        raw["attempts"][0][field] = value
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    with pytest.raises(MiningBudgetViolationError, match="receipt.*finite"):
+        _controller(tmp_path)
