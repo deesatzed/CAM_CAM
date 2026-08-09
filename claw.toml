@@ -619,3 +619,13 @@ description = "Go language patterns mined by CAM go brain"
 name = "misc"
 db_path = "/Volumes/WS4TB/repo622sn/instances/misc/claw.db"
 description = "Misc language patterns mined by CAM misc brain"
+
+[[instances.siblings]]
+name = "typescript"
+db_path = "/Volumes/WS4TB/repo622sn/instances/typescript/claw.db"
+description = "TypeScript language patterns mined by CAM typescript brain"
+
+[[instances.siblings]]
+name = "rust"
+db_path = "/Volumes/WS4TB/repo622sn/instances/rust/claw.db"
+description = "Rust language patterns mined by CAM rust brain"

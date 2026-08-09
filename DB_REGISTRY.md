@@ -9,6 +9,8 @@ This file records the database topology selected by the tracked `claw.toml`. It 
 | Live root corpus | `/Volumes/WS4TB/repo622sn/CAM_CAM/claw.db` | `[database].db_path` | 2,668 methodologies; integrity `ok` |
 | Go sibling ganglion | `/Volumes/WS4TB/repo622sn/instances/go/claw.db` | `[[instances.siblings]]`, name `go` | 53 methodologies; integrity `ok` |
 | Misc sibling ganglion | `/Volumes/WS4TB/repo622sn/instances/misc/claw.db` | `[[instances.siblings]]`, name `misc` | 28 methodologies; integrity `ok` |
+| TypeScript sibling ganglion | `/Volumes/WS4TB/repo622sn/instances/typescript/claw.db` | `[[instances.siblings]]`, name `typescript` | 252 methodologies; integrity `ok` |
+| Rust sibling ganglion | `/Volumes/WS4TB/repo622sn/instances/rust/claw.db` | `[[instances.siblings]]`, name `rust` | 73 methodologies; integrity `ok` |
 
 ## Operational Rules
 
