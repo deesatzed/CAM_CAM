@@ -121,6 +121,22 @@ class TestDetectAllRepoLanguages:
         assert len(zones) == 1
         assert "go" in zones
 
+    def test_pure_swift_repo_uses_misc_brain(self, tmp_path):
+        repo = tmp_path / "swift-only"
+        repo.mkdir()
+        for index in range(3):
+            (repo / f"Source{index}.swift").write_text(
+                f"struct Source{index} {{}}\n"
+            )
+        config = ClawConfig()
+        config.mining.extra_code_extensions = [".swift"]
+
+        zones = detect_all_repo_languages(repo, config)
+
+        assert set(zones) == {"misc"}
+        assert zones["misc"].file_count == 3
+        assert zones["misc"].file_extensions == {".swift"}
+
     def test_empty_repo_returns_empty(self, tmp_path):
         repo = tmp_path / "empty"
         repo.mkdir()

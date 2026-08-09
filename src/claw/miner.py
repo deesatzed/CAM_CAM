@@ -638,7 +638,7 @@ _LANGUAGE_TO_BRAIN: dict[str, str] = {
     "go": "go",
     "rust": "rust",
     # Everything else → misc
-    "java": "misc", "kotlin": "misc", "ruby": "misc",
+    "java": "misc", "kotlin": "misc", "ruby": "misc", "swift": "misc",
     "elixir": "misc", "clojure": "misc", "unknown": "misc",
 }
 
@@ -649,7 +649,7 @@ _EXT_TO_LANGUAGE: dict[str, str] = {
     ".js": "javascript", ".jsx": "javascript",
     ".go": "go",
     ".rs": "rust",
-    ".java": "java", ".kt": "kotlin",
+    ".java": "java", ".kt": "kotlin", ".swift": "swift",
     ".rb": "ruby", ".ex": "elixir", ".exs": "elixir",
     ".c": "misc", ".cpp": "misc", ".cc": "misc", ".h": "misc", ".hpp": "misc",
 }
