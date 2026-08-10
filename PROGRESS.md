@@ -379,4 +379,8 @@ Assumptions:
   later suite file changes fixture ordering.
 - Focused model/profile/tournament/self-enhancement verification passed with
   `88 passed`; no paid provider request was made by these tests.
-- A bounded self-enhancement run remains a separately approved operational gate.
+- A manager-approved, supervised self-enhancement run executed one task in a
+  disposable copy with `--max-tasks 1 --skip-swap`. CAM's candidate validation
+  rejected the generated `src/claw/memory/auto_fix.py` change after its focused
+  regression failed 5 tests. No live source, database, model profile, or
+  configuration was swapped; the failed candidate is not being adopted.
