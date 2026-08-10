@@ -4566,6 +4566,33 @@ def status(
     asyncio.run(_status_async(config))
 
 
+@app.command(name="brief-query")
+def brief_query(
+    query: str = typer.Argument(..., help="Read-only methodology search query"),
+    db: Path = typer.Option(..., "--db", help="Explicit primary claw.db path"),
+    limit: int = typer.Option(10, "--limit", "-n", min=1, max=20, help="Maximum results"),
+    output_json: bool = typer.Option(False, "--json", help="Render machine-readable JSON"),
+) -> None:
+    """Search one CAM primary corpus without recording retrieval usage."""
+    from claw.briefing.read_only_query import ReadOnlyQueryError, query_primary_corpus
+
+    try:
+        payload = query_primary_corpus(db, query, limit=limit)
+    except ReadOnlyQueryError as exc:
+        if output_json:
+            typer.echo(json.dumps({"status": "error", "error": str(exc)}, sort_keys=True))
+        else:
+            typer.echo(f"Development Brief query error: {exc}", err=True)
+        raise typer.Exit(2)
+
+    if output_json:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    typer.echo(f"Development Brief primary-corpus results: {len(payload['results'])}")
+    for result in payload["results"]:
+        typer.echo(f"- {result['methodology_id']}: {result['problem_description']}")
+
+
 async def _status_async(config_path: Optional[str]) -> None:
     from claw.core.factory import ClawFactory
 

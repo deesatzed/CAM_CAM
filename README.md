@@ -179,6 +179,17 @@ cam mine-workspace ~/Projects ~/Archive --max-repos 15 # Extract patterns
 cam learn search "error handling"                       # Find what YOU already wrote
 ```
 
+### Read-only Development Brief recall
+
+CAM_Codx can request a primary-corpus method lookup without recording
+retrieval usage or opening federated siblings. Supply the database path
+explicitly; this command does not mine, call a provider, or write to the
+database:
+
+```bash
+cam brief-query "durable import retry" --db /absolute/path/to/claw.db --json
+```
+
 ### Use Case 2: Build with Battle-Tested Patterns
 
 You need retry logic. Instead of writing from scratch, CAM retrieves patterns from real repos.
