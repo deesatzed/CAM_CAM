@@ -240,3 +240,17 @@ Safety: this adds no model, prompt, database, or fallback path. A pure-Swift
 regression test proves the existing `misc` path is selected. Paid verification
 used the residual exposure from the already-approved `$7` batch, with
 `x-ai/grok-4.5`, a fresh terminal receipt, and the authoritative database pinned.
+
+## 2026-08-10: Tournament reports must prove parent-plan lineage
+
+Decision: adaptive tournament advancement rejects a report unless its fixture
+count and every quality receipt match the frozen parent plan's call IDs, model
+IDs, and fixture IDs. Repeat-stage fixture identity comes from the root plan,
+not a mutable suite ordering.
+
+Reason: a hand-edited eligible summary or changed suite ordering could otherwise
+advance a model without selection-grade evidence or compare repeat output to a
+different first-round request.
+
+Safety: this is a fail-closed validation change only. It does not change model
+selection, provider routing, profile activation, or the live corpus.

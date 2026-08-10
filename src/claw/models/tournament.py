@@ -244,6 +244,12 @@ class TournamentPlanner:
             )
         if report.run_id != parent.run_id:
             raise ValueError("Quality report run does not match the parent plan")
+        if report.expected_fixtures != len({call.fixture_name for call in parent.calls}):
+            raise ValueError(
+                "Quality report fixture count does not match the frozen parent plan"
+            )
+        if suite.name != parent.suite_name:
+            raise ValueError("Benchmark suite does not match the parent tournament plan")
         if next_stage == "repeat":
             if root is None or root.stage != "first-round":
                 raise ValueError("Repeat planning requires the root first-round plan")
@@ -258,11 +264,42 @@ class TournamentPlanner:
         if dirty:
             raise ValueError(f"Benchmark fixtures must be clean: {', '.join(sorted(dirty))}")
 
+        parent_calls_by_id = {call.call_id: call for call in parent.calls}
+        reported_calls_by_id: dict[str, Any] = {}
+        for quality_call in report.calls:
+            if quality_call.call_id in reported_calls_by_id:
+                raise ValueError(f"Duplicate quality receipt {quality_call.call_id}")
+            frozen_call = parent_calls_by_id.get(quality_call.call_id)
+            if frozen_call is None:
+                raise ValueError(
+                    f"Quality receipt {quality_call.call_id} is not in the parent plan"
+                )
+            if (
+                quality_call.model_id != frozen_call.model_id
+                or quality_call.fixture_name != frozen_call.fixture_name
+            ):
+                raise ValueError(
+                    f"Quality receipt lineage drift for {quality_call.call_id}"
+                )
+            reported_calls_by_id[quality_call.call_id] = quality_call
+
         report_by_model = {model.model_id: model for model in report.models}
         excluded: dict[str, list[str]] = {}
         for model_id in parent.selected_candidates:
             summary = report_by_model.get(model_id)
-            if summary is None or summary.completed_calls != report.expected_fixtures:
+            expected_call_ids = {
+                call.call_id for call in parent.calls if call.model_id == model_id
+            }
+            reported_call_ids = {
+                call_id
+                for call_id, quality_call in reported_calls_by_id.items()
+                if quality_call.model_id == model_id
+            }
+            if (
+                summary is None
+                or summary.completed_calls != len(expected_call_ids)
+                or reported_call_ids != expected_call_ids
+            ):
                 excluded[model_id] = ["missing_expected_calls"]
             elif not summary.eligible:
                 excluded[model_id] = list(
@@ -290,7 +327,11 @@ class TournamentPlanner:
             ]
         else:
             stage_names = [
-                next(item.name for item in suite.fixtures if item.stage == "first-round")
+                next(
+                    fixture.repo_name
+                    for fixture in root.fixtures  # type: ignore[union-attr]
+                    if fixture.stage == "first-round"
+                )
             ]
         stage_fixtures = [by_name[name] for name in stage_names]
         prior_spend = parent.prior_spend_usd + (

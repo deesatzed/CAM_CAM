@@ -368,3 +368,15 @@ Assumptions:
   decision or scanner/miner eligibility fix.
 - Full evidence is recorded in
   `docs/reports/2026-08-09-priority15-grok-mining-results.md`.
+
+## 2026-08-10 CAM_Codx manager integration gate
+
+- CAM_Codx now owns the packet/approval workflow; CAM_CAM remains the runtime
+  owner. No model profile or live corpus write occurs from the manager itself.
+- Hardened tournament advancement to reject quality reports whose fixture count,
+  receipt IDs, model IDs, or fixture IDs do not match the frozen parent plan.
+- Repeat-stage fixture selection now follows the root first-round plan even if a
+  later suite file changes fixture ordering.
+- Focused model/profile/tournament/self-enhancement verification passed with
+  `88 passed`; no paid provider request was made by these tests.
+- A bounded self-enhancement run remains a separately approved operational gate.

@@ -10,10 +10,38 @@ from claw.cli import app
 from claw.llm.client import LLMClient, LLMResponse
 from claw.models.benchmark import BenchmarkPlanner, BenchmarkSuite, MiningPromptFixture
 from claw.models.catalog import ModelCatalog
-from claw.models.scoring import BenchmarkQualityReport, ModelQualitySummary
+from claw.models.scoring import (
+    BenchmarkQualityReport,
+    CallQualityReceipt,
+    ModelQualitySummary,
+)
 from claw.models.tournament import TournamentStagePlan
 
 runner = CliRunner()
+
+
+def _quality_calls_for_plan(
+    plan: TournamentStagePlan,
+    model_id: str,
+) -> list[CallQualityReceipt]:
+    return [
+        CallQualityReceipt(
+            candidate_code=f"candidate-{call.call_id}",
+            call_id=call.call_id,
+            model_id=model_id,
+            fixture_name=call.fixture_name,
+            envelope="findings-wrapper",
+            quality=95.0,
+            finding_count=5,
+            hard_failures=[],
+            cost_usd=0.01,
+            duration_seconds=2.0,
+            transport="chat-completions",
+            finish_reason="stop",
+        )
+        for call in plan.calls
+        if call.model_id == model_id
+    ]
 
 
 def _write_config(path: Path) -> None:
@@ -335,11 +363,14 @@ def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     )
     assert duplicate_plan.exit_code != 0
     assert "already contains frozen evidence" in duplicate_plan.output
+    parent_plan = TournamentStagePlan.model_validate_json(
+        (first_output / "plan.json").read_text()
+    )
     report = BenchmarkQualityReport(
         run_id=parent["run_id"],
         expected_fixtures=3,
         actual_cost_usd=0.01,
-        calls=[],
+        calls=_quality_calls_for_plan(parent_plan, "openai/gpt-5.6-luna"),
         models=[
             ModelQualitySummary(
                 model_id="openai/gpt-5.6-luna",
@@ -391,6 +422,12 @@ def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
             "run_id": heldout["run_id"],
             "expected_fixtures": 2,
             "actual_cost_usd": 0.01,
+            "calls": _quality_calls_for_plan(
+                TournamentStagePlan.model_validate_json(
+                    (heldout_output / "plan.json").read_text()
+                ),
+                "openai/gpt-5.6-luna",
+            ),
             "models": [
                 report.models[0].model_copy(update={"completed_calls": 2})
             ],

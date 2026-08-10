@@ -8,7 +8,11 @@ from pydantic import ValidationError
 
 from claw.models.benchmark import BenchmarkSuite, MiningPromptFixture
 from claw.models.catalog import ModelCatalog
-from claw.models.scoring import BenchmarkQualityReport, ModelQualitySummary
+from claw.models.scoring import (
+    BenchmarkQualityReport,
+    CallQualityReceipt,
+    ModelQualitySummary,
+)
 from claw.models.tournament import (
     TournamentPlanner,
     TournamentStagePlan,
@@ -152,6 +156,43 @@ def _model_summary(
     )
 
 
+def _quality_calls(
+    plan: TournamentStagePlan,
+    model_ids: set[str],
+    *,
+    hard_failures: dict[str, list[str]] | None = None,
+    omit: dict[str, int] | None = None,
+) -> list[CallQualityReceipt]:
+    hard_failures = hard_failures or {}
+    omit = omit or {}
+    seen: dict[str, int] = {}
+    calls: list[CallQualityReceipt] = []
+    for frozen in plan.calls:
+        if frozen.model_id not in model_ids:
+            continue
+        seen[frozen.model_id] = seen.get(frozen.model_id, 0) + 1
+        if seen[frozen.model_id] <= omit.get(frozen.model_id, 0):
+            continue
+        failures = hard_failures.get(frozen.model_id, [])
+        calls.append(
+            CallQualityReceipt(
+                candidate_code=f"candidate-{frozen.call_id}",
+                call_id=frozen.call_id,
+                model_id=frozen.model_id,
+                fixture_name=frozen.fixture_name,
+                envelope="findings-wrapper",
+                quality=0.0 if failures else 90.0,
+                finding_count=0 if failures else 5,
+                hard_failures=failures,
+                cost_usd=frozen.maximum_cost_usd,
+                duration_seconds=2.0,
+                transport="chat-completions",
+                finish_reason="stop",
+            )
+        )
+    return calls
+
+
 def test_ranking_prefers_quality_floor_then_average_then_cost_per_finding() -> None:
     summaries = [
         _model_summary(
@@ -214,7 +255,16 @@ def test_heldout_advance_uses_eligible_rank_and_actual_parent_spend() -> None:
         run_id=parent.run_id,
         expected_fixtures=3,
         actual_cost_usd=0.1,
-        calls=[],
+        calls=_quality_calls(
+            parent,
+            {
+                "openai/gpt-5.6-luna",
+                "z-ai/glm-5.2",
+                "qwen/qwen3.8-max",
+                "moonshotai/kimi-k3",
+            },
+            hard_failures={"moonshotai/kimi-k3": ["truncated_response"]},
+        ),
         models=models,
     )
 
@@ -261,7 +311,11 @@ def test_advance_never_ranks_an_eligible_flag_with_missing_calls() -> None:
         run_id=parent.run_id,
         expected_fixtures=3,
         actual_cost_usd=0.1,
-        calls=[],
+        calls=_quality_calls(
+            parent,
+            {"openai/gpt-5.6-luna", "moonshotai/kimi-k3"},
+            omit={"moonshotai/kimi-k3": 1},
+        ),
         models=[valid, contradictory],
     )
 
@@ -303,7 +357,10 @@ def test_repeat_advance_reuses_original_first_round_request_controls() -> None:
         run_id=first.run_id,
         expected_fixtures=3,
         actual_cost_usd=0.1,
-        calls=[],
+        calls=_quality_calls(
+            first,
+            {"openai/gpt-5.6-luna", "z-ai/glm-5.2"},
+        ),
         models=finalists,
     )
     heldout = TournamentPlanner().plan_advance(
@@ -318,7 +375,10 @@ def test_repeat_advance_reuses_original_first_round_request_controls() -> None:
         run_id=heldout.run_id,
         expected_fixtures=2,
         actual_cost_usd=0.1,
-        calls=[],
+        calls=_quality_calls(
+            heldout,
+            {"openai/gpt-5.6-luna", "z-ai/glm-5.2"},
+        ),
         models=[
             summary.model_copy(update={"completed_calls": 2}) for summary in finalists
         ],
@@ -352,3 +412,65 @@ def test_repeat_advance_reuses_original_first_round_request_controls() -> None:
         assert repeated.parameters == original.parameters
         assert repeated.reasoning_effort == original.reasoning_effort
         assert repeated.transport == original.transport
+
+
+def test_repeat_advance_uses_root_fixture_when_current_suite_order_changes() -> None:
+    suite = BenchmarkSuite.load(Path("benchmarks/mining-v1.toml"))
+    fixtures = _fixtures()
+    catalog = _catalog()
+    first = TournamentPlanner().plan_first_round(
+        suite, fixtures, catalog, authorization_usd=5.0, prior_spend_usd=2.0
+    )
+    model_id = "openai/gpt-5.6-luna"
+    first_report = BenchmarkQualityReport(
+        run_id=first.run_id,
+        expected_fixtures=3,
+        actual_cost_usd=0.1,
+        calls=_quality_calls(first, {model_id}),
+        models=[_model_summary(model_id, floor=92, average=94, cost=0.02, findings=8)],
+    )
+    heldout = TournamentPlanner().plan_advance(
+        parent=first,
+        report=first_report,
+        suite=suite,
+        fixtures=fixtures,
+        catalog=catalog,
+        next_stage="heldout",
+    )
+    heldout_report = BenchmarkQualityReport(
+        run_id=heldout.run_id,
+        expected_fixtures=2,
+        actual_cost_usd=0.1,
+        calls=_quality_calls(heldout, {model_id}),
+        models=[
+            _model_summary(
+                model_id,
+                floor=92,
+                average=94,
+                cost=0.02,
+                findings=8,
+                latency=2.0,
+                # This summary is for the held-out stage, which has two calls.
+            ).model_copy(update={"completed_calls": 2})
+        ],
+    )
+    reordered = suite.model_copy(
+        update={"fixtures": [suite.fixtures[1], suite.fixtures[0], *suite.fixtures[2:]]}
+    )
+
+    repeat = TournamentPlanner().plan_advance(
+        parent=heldout,
+        root=first,
+        report=heldout_report,
+        suite=reordered,
+        fixtures=fixtures,
+        catalog=catalog,
+        next_stage="repeat",
+    )
+
+    assert [fixture.repo_name for fixture in first.fixtures] == [
+        "Codx_LoopKit",
+        "atomic-agent",
+        "RedaktSafe",
+    ]
+    assert [fixture.repo_name for fixture in repeat.fixtures] == ["Codx_LoopKit"]
