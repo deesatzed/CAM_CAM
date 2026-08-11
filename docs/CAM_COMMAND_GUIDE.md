@@ -99,6 +99,20 @@ cam enhance /path/to/repo --dry-run
 cam enhance /path/to/repo
 ```
 
+### If you need early project or rescue evidence without changing anything
+
+Use CAM_Codx's Development Brief for the decision and `cam brief-query` as its
+read-only primary-corpus lookup. The command needs an explicit database path:
+
+```bash
+cam brief-query "durable import retry" --db /absolute/path/to/claw.db --json
+```
+
+It does not mine, call a provider, initialize schema, record retrieval usage,
+query federated siblings, or edit a target repository. CAM_Codx adds the target
+inspection and labels advice as direct precedent, transferable analogy, or new
+hypothesis. See [CAM_Codx integration](integrations/CAM_CODEX.md).
+
 ### If you want CAM to study outside repos and create a new app
 
 ```bash
@@ -149,6 +163,36 @@ Use grouped commands for advanced or supporting workflows:
 The older flat commands still work. The grouped paths are the preferred UX.
 
 ## Top-Level Commands
+
+## `cam brief-query`
+
+Purpose:
+Read a supplied primary `claw.db` for a narrow, provenance-bearing methodology
+lookup without the normal retrieval side effects.
+
+What it does:
+- opens the exact `--db` path with SQLite read-only immutable access
+- queries FTS rows directly and returns source/provenance fields
+- avoids schema initialization, WAL, embeddings, telemetry, federation,
+  provider calls, and mining
+
+Syntax:
+
+```bash
+cam brief-query QUERY --db /absolute/path/to/claw.db --json
+```
+
+Example use case:
+You are starting an import workflow and want CAM_Codx to find prior methods
+without mutating the knowledge corpus.
+
+```bash
+cam brief-query "durable import retry" --db /absolute/path/to/claw.db --json
+```
+
+Use this as the runtime component of CAM_Codx's Development Brief, not as a
+claim that a search result is automatically applicable. The Development Brief
+adds target inspection, evidence labels, limitations, and a smallest next step.
 
 ## `cam chat`
 

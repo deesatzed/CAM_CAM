@@ -181,14 +181,24 @@ cam learn search "error handling"                       # Find what YOU already 
 
 ### Read-only Development Brief recall
 
-CAM_Codx can request a primary-corpus method lookup without recording
-retrieval usage or opening federated siblings. Supply the database path
-explicitly; this command does not mine, call a provider, or write to the
-database:
+`cam brief-query` is the narrow runtime seam for CAM_Codx's Development Brief.
+Use the Development Brief when you are deciding what to build, want to reuse
+prior work without repeating mistakes, or need to decide whether a repository
+should continue, be mitigated, or be re-developed. It keeps the developer-facing
+advice in CAM_Codx and the database access in CAM_CAM.
+
+CAM_Codx calls this command against one explicit primary corpus without
+recording retrieval usage or opening federated siblings. Supply the database
+path explicitly; this command does not mine, call a provider, initialize
+schema, enable WAL, or write to the database:
 
 ```bash
 cam brief-query "durable import retry" --db /absolute/path/to/claw.db --json
 ```
+
+For the full new-project and continue/rescue workflow, including evidence
+labels and the later scan-only expansion gate, see CAM_Codx's
+[`CAM_DEVELOPMENT_BRIEF.md`](https://github.com/deesatzed/CAM_Codx/blob/main/docs/CAM_DEVELOPMENT_BRIEF.md).
 
 ### Use Case 2: Build with Battle-Tested Patterns
 

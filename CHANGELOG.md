@@ -6,6 +6,19 @@ All notable changes to CAM-PULSE are documented here.
 
 ## [Unreleased]
 
+### Added — Read-only Development Brief query
+- **`cam brief-query QUERY --db /absolute/path/to/claw.db --json`**
+  (`src/claw/briefing/read_only_query.py`, `src/claw/cli/_monolith.py`): a
+  primary-corpus lookup for CAM_Codx's Development Brief. It opens only the
+  exact database path through a read-only immutable SQLite URI and returns
+  FTS-backed provenance JSON.
+- The command deliberately bypasses normal retrieval tracking, schema setup,
+  WAL, embeddings, federation, provider calls, and mining. It is not a broader
+  corpus search or a project mutation mechanism.
+- Fixture-backed query tests, CLI help, schema tests, and integration wiring
+  passed in the focused 78-test verification gate. The no-mutation assertion is
+  limited to a synthetic fixture database rather than a live corpus.
+
 ### Added — Targeted task execution
 - **`cam enhance --task-id <uuid>`** (`src/claw/cli/_monolith.py`, `src/claw/cycle.py`): run exactly one cycle against a specific pending task id instead of the highest-priority task. Skips the evaluate/plan phases entirely. Used when you want to exercise a pre-seeded task (for example, an A/B test task) without CAM re-ranking the queue.
 - `MicroClaw.__init__` accepts `target_task_id: Optional[str] = None`. The first call to `grab()` consumes it (fetches that task by id, resets to `None`); subsequent calls fall back to `get_next_task()`.

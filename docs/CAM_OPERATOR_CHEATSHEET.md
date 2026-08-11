@@ -64,6 +64,37 @@ Use this when:
 - you want CAM to inspect before acting
 - you want a safe first pass
 
+## 3b. Recall Prior Work Before Starting or Rescuing a Project
+
+For the developer-facing recommendation, start in Codex with:
+
+```text
+Use cam-codx-development-brief to help me start this new project from relevant prior work.
+```
+
+or:
+
+```text
+Use cam-codx-development-brief to decide whether this in-progress repository should continue, be mitigated, or be re-developed.
+```
+
+The runtime lookup behind that brief is explicitly read-only:
+
+```bash
+.venv/bin/cam brief-query "durable import retry" \
+  --db /absolute/path/to/claw.db --json
+```
+
+Use this when:
+- you want useful precedents and pitfalls before a project plan exists
+- you want an honest continue/mitigate/re-develop recommendation
+- you do not want to mine, spend, edit code, write retrieval telemetry, or
+  search sibling corpora
+
+The raw command returns provenance-bearing methods. CAM_Codx labels the advice
+as a direct precedent, transferable analogy, or new hypothesis; a hit is not
+automatic permission to copy code or change a project.
+
 ## 4. Mine Outside Repos For Reusable Patterns
 
 Preview only, no model calls:

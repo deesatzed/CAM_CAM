@@ -9,6 +9,33 @@ https://github.com/deesatzed/CAM_Codx
 Use CAM_Codx when a Codex session should consume CAM outputs, continue from a
 generated `CAM_CODEX_GOAL.md`, or harden a standalone generated product repo.
 
+## Development Brief Handoff
+
+Use CAM_Codx's `cam-codx-development-brief` skill before implementation when a
+developer needs to shape a new project from prior work, or decide whether an
+in-progress project should **continue**, be **mitigated**, or be
+**re-developed**.
+
+CAM_Codx inspects the named target and turns the results into a concise brief.
+CAM_CAM supplies only the raw, provenance-bearing primary-corpus hits through:
+
+```bash
+cam brief-query "durable import retry" --db /absolute/path/to/claw.db --json
+```
+
+The command opens the supplied SQLite database in read-only immutable mode. It
+does not initialize schema, write retrieval telemetry, load embeddings, query
+federated siblings, mine repositories, call a provider, run target tests, or
+edit code. CAM_Codx labels resulting advice as a **direct precedent**,
+**transferable analogy**, or **new hypothesis** rather than treating every hit
+as proven reuse.
+
+Additional repository roots are never implicit. CAM_Codx can render a later,
+scan-only proposal only after the operator names an approved parent and the
+relocation gate passes. See
+[CAM Development Brief](https://github.com/deesatzed/CAM_Codx/blob/main/docs/CAM_DEVELOPMENT_BRIEF.md)
+for the full workflow and boundaries.
+
 ## Repo Necromancer Handoff
 
 Repo Necromancer lives in CAM_CAM and writes packet artifacts such as:

@@ -398,3 +398,17 @@ Assumptions:
   `tests/test_integration_wiring.py` with `78 passed`; `brief-query --help`
   passed. The no-mutation assertion covers only a synthetic test database, not
   a live corpus.
+
+## 2026-08-11 Development Brief Documentation Alignment
+
+- Updated the runtime README, CAM_Codx integration handoff, command guide,
+  operator cheat sheet, and changelog to make `cam brief-query` discoverable as
+  the runtime component of CAM_Codx's Development Brief.
+- The operator surfaces now state the explicit-primary-database, read-only
+  boundary and direct users to CAM_Codx for target inspection, evidence labels,
+  and continue/mitigate/re-develop guidance.
+- Re-verified the focused Development Brief gate (`78 passed`) and
+  `PYTHONPATH=src python -m claw.cli brief-query --help`; `git diff --check`
+  passed.
+- This documentation pass changed no runtime code, SQLite database, model
+  profile, provider configuration, or mining state.
