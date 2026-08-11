@@ -384,3 +384,17 @@ Assumptions:
   rejected the generated `src/claw/memory/auto_fix.py` change after its focused
   regression failed 5 tests. No live source, database, model profile, or
   configuration was swapped; the failed candidate is not being adopted.
+
+## 2026-08-10 Read-only Development Brief query
+
+- Added `cam brief-query QUERY --db /absolute/path/to/claw.db --json` as the
+  narrow runtime seam for CAM_Codx Development Brief recall.
+- The command opens only the explicitly supplied primary database using a
+  read-only immutable SQLite URI, returns FTS provenance JSON, and does not
+  initialize schema, enable WAL, record retrieval usage, load embeddings, call
+  a provider, or query sibling corpora.
+- Fixture-backed proof passed `4` query tests. Final focused verification ran
+  `tests/test_read_only_brief_query.py`, `tests/test_tool_schemas.py`, and
+  `tests/test_integration_wiring.py` with `78 passed`; `brief-query --help`
+  passed. The no-mutation assertion covers only a synthetic test database, not
+  a live corpus.
