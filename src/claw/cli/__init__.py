@@ -28,6 +28,7 @@ from __future__ import annotations
 # Re-export everything from the monolith for backward compatibility.
 # The star-import covers all non-underscore names (public API).
 from claw.cli._monolith import *  # noqa: F401, F403
+from claw.cli.capability_manifest import build_capability_manifest as build_capability_manifest
 
 # Explicit re-exports of underscore-prefixed names that tests and
 # production code access via `from claw.cli import _xxx` or `cli._xxx`.
@@ -187,6 +188,7 @@ from claw.cli._monolith import (  # noqa: F811
     # ---------------------------------------------------------------
     pulse_freshness,
     pulse_refresh,
+    doctor_capabilities,
     mine_workspace,
     mine_self,
     pulse_ingest_hf,

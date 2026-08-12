@@ -9880,6 +9880,27 @@ def doctor_routing(
     asyncio.run(_doctor_routing_async(config_path=config))
 
 
+@doctor_app.command(name="capabilities")
+def doctor_capabilities(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Output the registered CAM command manifest as JSON",
+    ),
+) -> None:
+    """Inventory CAM's command surface without loading runtime state."""
+    from claw.cli.capability_manifest import build_capability_manifest
+
+    payload = build_capability_manifest(app)
+    if json_output:
+        typer.echo(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        return
+
+    for item in payload["items"]:
+        hidden = " hidden" if item["hidden"] else ""
+        typer.echo(f"{item['kind']:7} {item['path']}{hidden}")
+
+
 async def _doctor_routing_async(config_path: Optional[str]) -> None:
     from claw.core.config import load_config
     from claw.db.engine import DatabaseEngine

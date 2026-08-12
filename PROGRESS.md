@@ -431,3 +431,14 @@ Assumptions:
   brief-query tests with `PYTHONPATH=src`, followed by `git diff --check`.
   CAM_CAM's `.venv` does not include pytest, so the test runner was the system
   Python with imports pinned to this checkout.
+
+## 2026-08-12 CAM command capability manifest
+
+- Added a deterministic schema-version-1 inventory of all registered Typer
+  command and group paths, including effective hidden status and nested paths.
+- Exposed the inventory through read-only `cam doctor capabilities --json`;
+  regression coverage blocks config, database, provider, and filesystem side
+  effects.
+- TDD RED failed on the missing helper and command as expected. Focused GREEN
+  passed `3` manifest tests, and the combined manifest/CLI UX gate passed
+  `50` tests.
