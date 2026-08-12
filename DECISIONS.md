@@ -254,3 +254,18 @@ different first-round request.
 
 Safety: this is a fail-closed validation change only. It does not change model
 selection, provider routing, profile activation, or the live corpus.
+
+## 2026-08-12: Treat Direct CAM_CAM Use As The Troubleshooting Surface
+
+Decision: CAM_Codx is the normal user-facing control plane for every CAM_CAM
+capability. Direct CAM_CAM commands remain supported for runtime
+troubleshooting, development, recovery, regression isolation, and expert
+scripts.
+
+Reason: the runtime has a broad, useful command surface, but requiring normal
+users to choose among low-level commands and overlapping Codex skills exposes
+internal architecture instead of desired outcomes.
+
+Safety: CAM_CAM retains runtime, provider, model, database, CAM-SEQ,
+self-enhancement, and evolution ownership. The CAM_Codx manager does not grant
+implicit mining, spend, promotion, swap, rollback, or code-mutation authority.

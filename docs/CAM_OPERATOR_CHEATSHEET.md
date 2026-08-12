@@ -1,8 +1,13 @@
 # CAM Operator Cheat Sheet
 
-This is the short version.
+This is the direct CAM_CAM troubleshooting and runtime-development reference.
 
-Use this when you do not want the full command reference and just need the commands that matter most in normal operation.
+Normal developer work should begin in CAM_Codx. The approved target is one
+CAM_Codx skill that manages all CAM_CAM features; that consolidation is not yet
+implemented, so current CAM_Codx specialized skills remain valid.
+
+Use this when CAM_Codx setup or routing is broken, when developing CAM_CAM, or
+when isolating one raw runtime capability.
 
 ## Start Here
 
@@ -24,6 +29,9 @@ Preferred mental split:
   - `cam forge ...`
   - `cam security ...`
 
+`cam chat` is currently complete only for mining guidance. It does not route
+build/create or fix/enhance requests, so it is not the normal front door.
+
 ## 1. Check That CAM Is Healthy
 
 ```bash
@@ -35,9 +43,9 @@ Preferred mental split:
 Use this when:
 - you just cloned the repo
 - you are not sure the DB/runtime is healthy
-- you want to verify the guided front door starts cleanly
+- you want to verify the raw mining guide starts cleanly
 
-## 2. Let CAM Guide The Command Choice
+## 2. Diagnose The Interactive Mining Guide
 
 ```bash
 .venv/bin/cam chat
@@ -50,8 +58,11 @@ I want to mine the folder ./folderx
 ```
 
 Use this when:
-- you know the goal but not the exact flags
-- you want CAM to ask the missing questions before it builds the command
+- you need help constructing a mining command
+- you are testing the current raw chat implementation
+
+For assess, plan, build, fix, verify, record, models, evolution, or setup,
+begin in CAM_Codx instead.
 
 ## 3. Study One Repo Before Changing It
 

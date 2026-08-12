@@ -1,13 +1,19 @@
 # CAM_Codx Integration
 
-CAM_CAM is the runtime engine. CAM_Codx is the Codex-native workflow hub:
+CAM_CAM is the runtime engine. CAM_Codx is the normal Codex-native control
+plane:
 
 ```text
 https://github.com/deesatzed/CAM_Codx
 ```
 
-Use CAM_Codx when a Codex session should consume CAM outputs, continue from a
-generated `CAM_CODEX_GOAL.md`, or harden a standalone generated product repo.
+Use CAM_Codx for normal SWE, mining, knowledge, model, self-enhancement,
+evolution, setup, and evidence workflows. Direct CAM_CAM commands are for
+runtime troubleshooting, development, recovery, and regression isolation.
+
+The approved 2026-08-12 target consolidates CAM_Codx's specialized skills into
+one `cam-codx` skill. That target is designed and planned but not yet
+implemented; this document must not imply otherwise.
 
 ## Development Brief Handoff
 

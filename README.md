@@ -72,12 +72,18 @@ cd forge-ui && npm ci && npm run dev
 
 CAM_Codx is a separate companion repo at `https://github.com/deesatzed/CAM_Codx.git`; it is not the CAM_CAM product repo. Its current new-user status is audited in the launch-refresh report.
 
-## Use CAM_CAM From Codex
+## Use CAM Through CAM_Codx
 
-CAM_CAM is the runtime engine. CAM_Codx is the Codex-native workflow hub. Start
-in CAM_Codx when you want Codex to consume CAM outputs, continue from a
-generated `CAM_CODEX_GOAL.md`, or harden a standalone product repo created from
-CAM evidence.
+CAM_CAM is the runtime engine. CAM_Codx is the normal Codex-native control
+plane. Start in CAM_Codx for routine SWE, mining, knowledge, model management,
+self-enhancement, evolution, setup, and evidence workflows. Use the CAM_CAM CLI
+directly for runtime troubleshooting, development, recovery, and regression
+isolation.
+
+The one-skill CAM_Codx control plane was approved on 2026-08-12 and is not yet
+implemented. Until it lands, CAM_Codx's four specialized skills remain the
+current supported workflow. See the CAM_Codx capability audit and design before
+claiming the unified UX is available.
 
 Repo Necromancer stays in CAM_CAM because it profiles repos, records evidence,
 and writes packets. CAM_Codx explains how Codex should use those packets and

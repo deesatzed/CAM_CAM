@@ -1,8 +1,9 @@
 # GOAL.md
 
-This file records the 2026-06-19 CAM_CAM product enhancement run. That run is
-historical context for the current public repo; the active final public cleanup
-contract lives in `/Volumes/WS4TB/repo622sn/CAM_Codx/GOAL.md`.
+This file records the 2026-06-19 CAM_CAM product enhancement run and is
+historical context. The active cross-repo control-plane contract lives in
+`/Volumes/WS4TB/waswiki/CAM_Codx/GOAL.md`; its approved design preserves
+CAM_CAM as the runtime owner and makes CAM_Codx the normal user-facing manager.
 
 ## Outcome
 

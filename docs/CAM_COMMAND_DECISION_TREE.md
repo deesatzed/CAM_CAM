@@ -1,12 +1,20 @@
 # CAM Command Decision Tree
 
+> **Troubleshooting/runtime reference:** normal developer work should begin in
+> CAM_Codx. The direct commands below remain supported for isolating CAM_CAM
+> behavior, recovery, runtime development, and expert scripting.
+
+> `cam chat` is not currently a complete general router. It guides and can run
+> mining, but create/build and enhance/fix requests are explicitly not wired.
+> Do not use it as evidence that CAM_Codx-style full routing exists.
+
 Use this when the main question is simple:
 
 > Which CAM command should I use for the job I have right now?
 
 ## Fast Rule
 
-- `chat` = let CAM ask the missing questions and build the right command
+- `chat` = interactive mining guide; other intents are incomplete
 - `mine` = learn from outside repos
 - `evaluate` = inspect a repo
 - `preflight` = clarify a build/repair contract before execution
@@ -15,7 +23,7 @@ Use this when the main question is simple:
 - `create` = turn a request into a spec-backed build task
 - `validate` = verify the result
 
-If you are unsure where to start, start with:
+If you are unsure where to start, use CAM_Codx. For raw mining diagnosis only:
 
 ```bash
 cam chat
@@ -151,7 +159,8 @@ cam validate --spec-file data/create_specs/<spec-file>.json --max-minutes 5
 
 ## Final Mental Model
 
-- If you are not sure which flags you need: start with `chat`
+- For normal user routing, start with CAM_Codx; use `chat` only for its current
+  mining guide or runtime troubleshooting
 - If the target already exists: start with `evaluate`
 - If the task is ambiguous or expensive: run `preflight` before execution
 - If the target does not exist yet: start with `mine` + `ideate` + `create`

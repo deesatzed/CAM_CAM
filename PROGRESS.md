@@ -412,3 +412,22 @@ Assumptions:
   passed.
 - This documentation pass changed no runtime code, SQLite database, model
   profile, provider configuration, or mining state.
+
+## 2026-08-12 CAM_Codx Control-Plane Documentation Alignment
+
+- Audited the complete registered Typer command tree, nested groups, and hidden
+  compatibility aliases for the CAM_Codx capability inventory.
+- Confirmed that `cam chat` executes the mining route but reports build/create
+  and fix/enhance routes as not wired.
+- Approved CAM_Codx as the normal manager for all CAM_CAM capabilities while
+  preserving direct CAM_CAM usage for troubleshooting, runtime development,
+  recovery, regression isolation, and existing expert scripts.
+- Updated the README, raw command decision tree, operator cheat sheet,
+  CAM_Codx integration guide, historical GOAL pointer, and decision record.
+- These are truth-alignment changes only. No runtime command, database, model,
+  provider, configuration, or feature flag changed; the unified CAM_Codx skill
+  is not yet implemented.
+- Focused documentation-truth verification passed `51` CLI UX and read-only
+  brief-query tests with `PYTHONPATH=src`, followed by `git diff --check`.
+  CAM_CAM's `.venv` does not include pytest, so the test runner was the system
+  Python with imports pinned to this checkout.
