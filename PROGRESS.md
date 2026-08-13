@@ -442,3 +442,8 @@ Assumptions:
 - TDD RED failed on the missing helper and command as expected. Focused GREEN
   passed `3` manifest tests, and the combined manifest/CLI UX gate passed
   `50` tests.
+- Review hardening added regressions for Typer's unnamed-group flattening and
+  actionable, deterministically sorted duplicate-path diagnostics. A fresh
+  subprocess proof now installs filesystem, SQLite, network, and child-process
+  tripwires before importing the CLI, with isolated home/config/cache/temp
+  paths and content-hashed sentinels.

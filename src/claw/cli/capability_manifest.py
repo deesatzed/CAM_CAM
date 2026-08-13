@@ -36,9 +36,13 @@ def _inventory(
         solved = solve_typer_info_defaults(group)
         name = solved.name
         child_prefix = prefix
-        child_hidden = parent_hidden or bool(solved.hidden)
+        # Typer flattens an unnamed subgroup into its parent command.  Hidden
+        # status belongs to an emitted group, so it must not leak through a
+        # group that Click never exposes as an invocation path.
+        child_hidden = parent_hidden
         if name:
             child_prefix = (*prefix, name)
+            child_hidden = parent_hidden or bool(solved.hidden)
             items.append(
                 {
                     "path": " ".join(child_prefix),
@@ -65,5 +69,11 @@ def build_capability_manifest(application: Typer) -> dict[str, Any]:
     )
     paths = [item["path"] for item in items]
     if len(paths) != len(set(paths)):
-        raise ValueError("Typer command tree contains duplicate invocation paths")
+        duplicates = sorted(
+            path for path in set(paths) if paths.count(path) > 1
+        )
+        raise ValueError(
+            "Typer command tree contains duplicate invocation paths: "
+            + ", ".join(duplicates)
+        )
     return {"schema_version": 1, "items": items}
