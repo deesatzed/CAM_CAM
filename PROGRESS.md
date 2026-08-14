@@ -447,3 +447,38 @@ Assumptions:
   subprocess proof now installs filesystem, SQLite, network, and child-process
   tripwires before importing the CLI, with isolated home/config/cache/temp
   paths and content-hashed sentinels.
+
+## 2026-08-14 managed source-to-outcome SWE runs
+
+- Added `claw.managed_runs`, a persistence-only service over existing CAM-SEQ
+  task plans, application packets, pair events, landing events, outcome events,
+  run connectomes, edges, and run events. No table, migration, provider client,
+  build path, or parallel knowledge store was added.
+- A run can be started or safely continued with one plan; attach a pinned
+  mining receipt; record direct-precedent, transferable-analogy, or
+  new-hypothesis candidates as selected, rejected, deferred, or
+  needs-inspection; link an approved packet/pair; record target-relative
+  landings; and render a deterministic source-to-outcome report.
+- Outcomes preserve the approved four-state vocabulary: `verified_success`,
+  `verified_partial`, `verified_failure`, and `not_verified`. Only a verified
+  success may increment positive component evidence or be recipe-eligible.
+  Failed verification increments negative evidence; partial and unverified
+  results remain non-positive. A corrected proof must name the exact latest
+  outcome it supersedes, so the failed evidence remains visible.
+- Added hidden `cam managed-run JSON --config PATH` for CAM_Codx and direct
+  runtime troubleshooting. The JSON is one subprocess-list argument; the seam
+  initializes no agent/provider layer and does not execute build, enhance,
+  validation, mining, promotion, or configuration logic.
+- TDD RED stopped at the intended missing `claw.managed_runs` module. GREEN is
+  `11 passed` for managed-run and CAM-SEQ foundation coverage and `67 passed`
+  across the selected CLI manifest/UX, managed-run, CAM-SEQ, and application
+  packet surface. Focused Ruff checks for the new module/tests, CLI help, and
+  `git diff --check` pass. Tests used only in-memory fixture databases.
+- The hidden command increases the live manifest to `140` paths with `16`
+  hidden entries. The CAM_Codx registry remains pinned to the Task 2 manifest;
+  Task 8 must register this canonical managed seam before cross-repository
+  gates can pass. This is recorded as planned integration work, not current
+  cross-repo compatibility.
+- The approved release-plan path `tests/planning/test_application_packet.py`
+  does not exist in this checkout; verification used the current
+  `tests/test_application_packet.py` truth path.

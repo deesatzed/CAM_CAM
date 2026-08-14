@@ -189,6 +189,9 @@ async def test_camseq_foundation_round_trip(repository):
         recipe_eligible=False,
     )
     await repository.save_outcome_event(outcome)
+    persisted_outcomes = await repository.list_run_outcome_events("run_001")
+    assert persisted_outcomes[0].success is True
+    assert persisted_outcomes[0].recipe_eligible is False
 
     connectome = RunConnectome(
         run_id="run_001",

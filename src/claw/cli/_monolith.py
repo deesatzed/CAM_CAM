@@ -39,6 +39,7 @@ from typing import Any, Optional
 import time as _time
 
 import click
+from pydantic import ValidationError
 import typer
 from rich.console import Console
 from rich.live import Live
@@ -67,6 +68,112 @@ ROOT_DIR = Path(__file__).resolve().parents[3]
 _IDEA_DIR = ROOT_DIR / "data" / "ideation"
 _PREFLIGHT_DIR = ROOT_DIR / "data" / "preflights"
 _CAMIFY_DIR = ROOT_DIR / "data" / "camify"
+
+
+async def _managed_run_async(request_json: str, config: str) -> dict[str, Any]:
+    """Execute one persistence-only managed-run request without provider setup."""
+    from claw.core.config import load_config
+    from claw.core.models import LandingOrigin, TaskPlanRecord
+    from claw.db.engine import DatabaseEngine
+    from claw.db.repository import Repository
+    from claw.managed_runs import (
+        CandidateDecision,
+        ManagedOutcome,
+        ManagedRunService,
+        MiningReceiptLink,
+    )
+
+    try:
+        request = json.loads(request_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"managed-run request is not valid JSON: {exc.msg}") from exc
+    if not isinstance(request, dict):
+        raise ValueError("managed-run request must be one JSON object")
+    operation = request.get("operation")
+    if not isinstance(operation, str):
+        raise ValueError("managed-run request requires a string operation")
+
+    config_path = Path(config).expanduser().resolve()
+    cfg = load_config(config_path)
+    if cfg.database.db_path != ":memory:":
+        db_path = Path(cfg.database.db_path).expanduser()
+        if not db_path.is_absolute():
+            db_path = config_path.parent / db_path
+        cfg.database.db_path = str(db_path.resolve())
+    engine = DatabaseEngine(cfg.database)
+    await engine.connect()
+    try:
+        service = ManagedRunService(Repository(engine))
+        run_id = request.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            raise ValueError("managed-run request requires a non-empty run_id")
+        if operation == "start":
+            result = await service.start_run(
+                run_id, TaskPlanRecord.model_validate(request.get("plan"))
+            )
+            return result.model_dump(mode="json")
+        if operation == "link-mining-receipt":
+            result = await service.link_mining_receipt(
+                run_id, MiningReceiptLink.model_validate(request.get("receipt"))
+            )
+            return result.model_dump(mode="json")
+        if operation == "decision":
+            result = await service.record_candidate_decision(
+                run_id, CandidateDecision.model_validate(request.get("decision"))
+            )
+            return result.model_dump(mode="json")
+        if operation == "pair":
+            packet_id = request.get("packet_id")
+            if not isinstance(packet_id, str) or not packet_id:
+                raise ValueError("pair operation requires packet_id")
+            result = await service.link_packet_pair(run_id, packet_id)
+            return result.model_dump(mode="json")
+        if operation == "landing":
+            landing = request.get("landing")
+            if not isinstance(landing, dict):
+                raise ValueError("landing operation requires a landing object")
+            result = await service.record_landing(
+                run_id,
+                packet_id=str(landing.get("packet_id", "")),
+                slot_id=str(landing.get("slot_id", "")),
+                file_path=str(landing.get("file_path", "")),
+                symbol=landing.get("symbol"),
+                diff_hunk_id=landing.get("diff_hunk_id"),
+                origin=LandingOrigin(landing.get("origin")),
+            )
+            return result.model_dump(mode="json")
+        if operation == "outcome":
+            packet_id = request.get("packet_id")
+            slot_id = request.get("slot_id")
+            if not isinstance(packet_id, str) or not isinstance(slot_id, str):
+                raise ValueError("outcome operation requires packet_id and slot_id")
+            result = await service.record_outcome(
+                run_id,
+                packet_id=packet_id,
+                slot_id=slot_id,
+                outcome=ManagedOutcome.model_validate(request.get("outcome")),
+            )
+            return result.model_dump(mode="json")
+        if operation == "report":
+            return await service.source_to_outcome_report(run_id)
+        raise ValueError(f"unsupported managed-run operation: {operation}")
+    finally:
+        await engine.close()
+
+
+@app.command(name="managed-run", hidden=True)
+def managed_run(
+    request_json: str = typer.Argument(
+        help="One JSON object describing a fixed managed-run persistence operation"
+    ),
+    config: str = typer.Option("claw.toml", "--config", help="Path to claw.toml"),
+) -> None:
+    """Persistence-only CAM_Codx/troubleshooting seam; does not execute builds."""
+    try:
+        result = asyncio.run(_managed_run_async(request_json, config))
+    except (ValueError, ValidationError) as exc:
+        raise typer.BadParameter(str(exc)) from exc
+    typer.echo(json.dumps(result, sort_keys=True))
 
 
 def _find_default_claw_toml() -> Optional[Path]:

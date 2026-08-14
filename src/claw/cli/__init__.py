@@ -64,6 +64,7 @@ from claw.cli._monolith import (  # noqa: F811
     # Helper functions used by tests via `from claw.cli import _xxx`
     # ---------------------------------------------------------------
     _setup_logging,
+    _managed_run_async,
     _required_api_keys_for_command,
     _display_task_status,
     _classify_assimilation_stage,

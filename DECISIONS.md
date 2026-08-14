@@ -269,3 +269,24 @@ internal architecture instead of desired outcomes.
 Safety: CAM_CAM retains runtime, provider, model, database, CAM-SEQ,
 self-enhancement, and evolution ownership. The CAM_Codx manager does not grant
 implicit mining, spend, promotion, swap, rollback, or code-mutation authority.
+
+## 2026-08-14: Managed SWE runs reuse CAM-SEQ persistence
+
+Decision: expose a persistence-only managed-run service over the existing
+`task_plans`, `application_packets`, `pair_events`, `landing_events`,
+`outcome_events`, `run_connectomes`, edges, and `run_events`. Candidate
+decisions and mining-receipt links use typed `run_events` because no dedicated
+table represents them. No parallel reuse database or schema migration is
+introduced.
+
+Reason: CAM_Codx needs one visible chain from mined source evidence through
+selection, landing, verification, and later recall. The runtime already owns
+the necessary evidence structures; a second store would create duplicate truth
+and drift.
+
+Safety: the hidden `managed-run` CLI accepts one JSON argument as a list-form
+subprocess value and performs persistence only. It does not mine, call a
+provider, edit a target, build, enhance, validate, promote, or change runtime
+configuration. Only `verified_success` may add positive component evidence or
+be recipe-eligible; partial, failed, and unverified outcomes remain neutral or
+negative evidence. Corrections must explicitly supersede the latest outcome.
