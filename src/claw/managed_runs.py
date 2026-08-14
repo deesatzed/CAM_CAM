@@ -90,8 +90,24 @@ class VerificationEvidence(BaseModel):
     gate_id: str = Field(min_length=1)
     command_argv: list[str] = Field(min_length=1)
     exit_code: int
+    target_path: str = Field(min_length=1)
+    target_revision: str = Field(min_length=1)
     receipt_path: str = Field(min_length=1)
     receipt_sha256: str
+
+    @field_validator("gate_id", "target_revision")
+    @classmethod
+    def validate_identity_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("verification identity fields must not be blank")
+        return value
+
+    @field_validator("exit_code", mode="before")
+    @classmethod
+    def validate_exit_code(cls, value: Any) -> int:
+        if type(value) is not int:
+            raise ValueError("verification exit_code must be an integer")
+        return value
 
     @field_validator("command_argv")
     @classmethod
@@ -99,6 +115,14 @@ class VerificationEvidence(BaseModel):
         if not all(isinstance(item, str) and item for item in value):
             raise ValueError("verification command_argv must contain non-empty strings")
         return value
+
+    @field_validator("target_path")
+    @classmethod
+    def validate_target_path(cls, value: str) -> str:
+        path = Path(value).expanduser()
+        if not path.is_absolute():
+            raise ValueError("verification target_path must be absolute")
+        return str(path.resolve(strict=False))
 
     @field_validator("receipt_path")
     @classmethod
@@ -176,6 +200,67 @@ def _verified_file(path_value: str, expected_sha256: str, label: str) -> Path:
     if actual != expected_sha256:
         raise ValueError(f"{label} digest does not match the stored receipt")
     return path
+
+
+def _verify_execution_receipt(
+    evidence: VerificationEvidence,
+    plan: TaskPlanRecord,
+) -> None:
+    """Bind a hashed verification receipt to its exact asserted execution."""
+    path = _verified_file(
+        evidence.receipt_path,
+        evidence.receipt_sha256,
+        f"verification receipt for gate {evidence.gate_id}",
+    )
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("verification receipt must be valid UTF-8 JSON") from exc
+    if not isinstance(payload, dict):
+        raise ValueError("verification receipt must be one JSON object")
+    if payload.get("schema_version") != "cam.verification-receipt.v1":
+        raise ValueError("verification receipt has an unsupported schema_version")
+
+    receipt_gate = payload.get("gate_id")
+    receipt_argv = payload.get("command_argv")
+    receipt_exit = payload.get("exit_code")
+    receipt_revision = payload.get("target_revision")
+    if not isinstance(receipt_gate, str) or not receipt_gate.strip():
+        raise ValueError("verification receipt gate_id must be a non-empty string")
+    if not isinstance(receipt_argv, list) or not receipt_argv or not all(
+        isinstance(item, str) and item for item in receipt_argv
+    ):
+        raise ValueError("verification receipt command_argv must be a non-empty string list")
+    if type(receipt_exit) is not int:
+        raise ValueError("verification receipt exit_code must be an integer")
+    if not isinstance(receipt_revision, str) or not receipt_revision.strip():
+        raise ValueError("verification receipt target_revision must be a non-empty string")
+    raw_receipt_target = payload.get("target_path")
+    if not isinstance(raw_receipt_target, str):
+        raise ValueError("verification receipt target_path must be a string")
+    receipt_target = Path(raw_receipt_target).expanduser()
+    if not receipt_target.is_absolute():
+        raise ValueError("verification receipt target_path must be absolute")
+    receipt_target_path = str(receipt_target.resolve(strict=False))
+    if (
+        receipt_gate != evidence.gate_id
+        or receipt_argv != evidence.command_argv
+        or receipt_exit != evidence.exit_code
+        or receipt_target_path != evidence.target_path
+        or receipt_revision != evidence.target_revision
+    ):
+        raise ValueError(
+            "verification receipt does not match its gate, argv, exit, target, or revision"
+        )
+
+    if plan.workspace_dir is None:
+        raise ValueError("verification receipt requires a managed plan target path")
+    plan_target = str(Path(plan.workspace_dir).expanduser().resolve(strict=False))
+    plan_revision = plan.plan_json.get("target_revision")
+    if not isinstance(plan_revision, str) or not plan_revision:
+        raise ValueError("verification receipt requires a managed plan target revision")
+    if evidence.target_path != plan_target or evidence.target_revision != plan_revision:
+        raise ValueError("verification receipt target identity differs from the managed plan")
 
 
 def _evidence_delta(status: OutcomeStatus) -> tuple[int, int]:
@@ -540,13 +625,13 @@ class ManagedRunService:
                     )
                 evidence_gates: set[str] = set()
                 for evidence in outcome.verification_evidence:
-                    _verified_file(
-                        evidence.receipt_path,
-                        evidence.receipt_sha256,
-                        f"verification receipt for gate {evidence.gate_id}",
-                    )
+                    _verify_execution_receipt(evidence, plan)
                     if evidence.exit_code != 0:
                         raise ValueError("verified_success evidence must have exit_code 0")
+                    if evidence.gate_id in evidence_gates:
+                        raise ValueError(
+                            "positive evidence cannot duplicate a verification gate"
+                        )
                     evidence_gates.add(evidence.gate_id)
                 if not required_gates or not required_gates.issubset(evidence_gates):
                     raise ValueError(
@@ -554,11 +639,15 @@ class ManagedRunService:
                     )
 
             events = await self.repository.list_run_events(run_id)
-            classified = [
+            all_classified = [
                 event
                 for event in events
                 if event.event_type == self._OUTCOME_EVENT
-                and event.payload.get("packet_id") == packet_id
+            ]
+            classified = [
+                event
+                for event in all_classified
+                if event.payload.get("packet_id") == packet_id
                 and event.slot_id == slot_id
             ]
             typed_outcomes = await self.repository.list_run_outcome_events(run_id)
@@ -643,7 +732,7 @@ class ManagedRunService:
                 failure_delta=new_failure - old_failure,
             )
             active_statuses: dict[str, OutcomeStatus] = {}
-            for event in [*classified, classification]:
+            for event in [*all_classified, classification]:
                 active_statuses[event.slot_id] = OutcomeStatus(event.payload["status"])
             connectome.status = _aggregate_status(plan, active_statuses)
             await self.repository.save_run_connectome(connectome)

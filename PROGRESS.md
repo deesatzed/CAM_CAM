@@ -511,3 +511,15 @@ Assumptions:
 - Hardened verification passes `40` database/managed-run/CAM-SEQ tests and `96`
   selected database, CLI manifest/UX, managed-run, CAM-SEQ, and application
   packet tests. New-module Ruff checks, CLI help, and `git diff --check` pass.
+- The first hardened quality re-review found two remaining defects: successful
+  multi-slot runs stored status from only the current slot, and a caller could
+  hash an unrelated file while separately asserting gate/command/result data.
+- Added RED regressions for two-slot success, partial, and failure aggregation;
+  unrelated JSON receipts; and mismatches in each gate, argv, exit, target, and
+  target-revision field. `cam.verification-receipt.v1` is now parsed and must
+  match the outcome and digest-bound plan target identity exactly. Stored run
+  status is recomputed from every slot's active classified outcome.
+- Final second-review remediation verification passes `51` focused
+  database/managed-run/CAM-SEQ tests and `107` selected database, CLI
+  manifest/UX, managed-run, CAM-SEQ, and application-packet tests. Focused Ruff
+  and `git diff --check` also pass.

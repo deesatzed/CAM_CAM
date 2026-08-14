@@ -116,18 +116,48 @@ async def _seed_packet(repository) -> tuple[TaskPlanRecord, ApplicationPacket, C
         status="reviewed",
         summary={"total_slots": 1},
         approved_slot_ids=[slot.slot_id],
-        plan_json={"plan_id": "plan_retry", "slots": [{"slot_id": slot.slot_id}]},
+        plan_json={
+            "plan_id": "plan_retry",
+            "target_revision": "target-commit-abc123",
+            "slots": [{"slot_id": slot.slot_id}],
+        },
     )
     return plan, packet, card
 
 
-def _verification_evidence(tmp_path, name: str = "verify.json") -> VerificationEvidence:
+def _verification_evidence(
+    tmp_path,
+    name: str = "verify.json",
+    *,
+    gate_id: str = "tests",
+    command_argv: list[str] | None = None,
+    exit_code: int = 0,
+    target_path: str = "/tmp/target",
+    target_revision: str = "target-commit-abc123",
+) -> VerificationEvidence:
+    argv = command_argv or ["python", "-m", "pytest", "-q", "tests/test_client.py"]
     receipt = tmp_path / name
-    receipt.write_text('{"exit_code":0,"gate_id":"tests"}\n', encoding="utf-8")
+    receipt.write_text(
+        json.dumps(
+            {
+                "schema_version": "cam.verification-receipt.v1",
+                "gate_id": gate_id,
+                "command_argv": argv,
+                "exit_code": exit_code,
+                "target_path": target_path,
+                "target_revision": target_revision,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     return VerificationEvidence(
-        gate_id="tests",
-        command_argv=["python", "-m", "pytest", "-q", "tests/test_client.py"],
-        exit_code=0,
+        gate_id=gate_id,
+        command_argv=argv,
+        exit_code=exit_code,
+        target_path=target_path,
+        target_revision=target_revision,
         receipt_path=str(receipt),
         receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
     )
@@ -140,6 +170,33 @@ async def _mark_packet_verified(repository, packet: ApplicationPacket) -> None:
             gate.status = "pass"
             gate.details = ["receipt-backed test command passed"]
     await repository.save_application_packet(packet)
+
+
+async def _add_second_packet(
+    repository,
+    plan: TaskPlanRecord,
+    packet: ApplicationPacket,
+) -> ApplicationPacket:
+    second = packet.model_copy(deep=True)
+    second.packet_id = "packet_timeout"
+    second.slot = SlotSpec(
+        slot_id="slot_timeout",
+        slot_barcode="slot:timeout",
+        name="timeout boundary",
+        abstract_job="bound_request_duration",
+        risk=SlotRisk.NORMAL,
+        constraints=["async"],
+        target_stack=["python", "httpx"],
+        proof_expectations=["tests"],
+    )
+    second.expected_landing_sites = [
+        ExpectedLandingSite(file_path="src/client.py", symbol="timeout")
+    ]
+    await repository.save_application_packet(second)
+    plan.approved_slot_ids.append(second.slot.slot_id)
+    plan.summary["total_slots"] = 2
+    plan.plan_json["slots"].append({"slot_id": second.slot.slot_id})
+    return second
 
 
 async def test_managed_run_persists_source_to_outcome_chain(repository, tmp_path) -> None:
@@ -543,6 +600,200 @@ async def test_positive_outcome_requires_stored_packet_and_receipt_proof(
     unchanged = await repository.get_component_card(card.id)
     assert unchanged is not None
     assert unchanged.success_count == 0
+
+
+async def test_positive_outcome_rejects_hashed_but_semantically_unrelated_receipt(
+    repository, tmp_path
+) -> None:
+    plan, packet, card = await _seed_packet(repository)
+    service = ManagedRunService(repository)
+    await service.start_run("run_unrelated_receipt", plan)
+    await service.record_candidate_decision(
+        "run_unrelated_receipt",
+        CandidateDecision(
+            candidate_id=card.id,
+            label=AssessmentLabel.DIRECT_PRECEDENT,
+            decision=SelectionDecision.SELECTED,
+            reason="Reviewed selection.",
+            provenance=["example/donor@abc123:src/retry.py:retry"],
+            slot_id=packet.slot.slot_id,
+        ),
+    )
+    await service.link_packet_pair("run_unrelated_receipt", packet.packet_id)
+    await _mark_packet_verified(repository, packet)
+    unrelated = tmp_path / "unrelated.json"
+    unrelated.write_text('{"project":"not a verification receipt"}\n', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="verification receipt"):
+        await service.record_outcome(
+            "run_unrelated_receipt",
+            packet_id=packet.packet_id,
+            slot_id=packet.slot.slot_id,
+            outcome=ManagedOutcome(
+                status=OutcomeStatus.VERIFIED_SUCCESS,
+                test_refs=["tests/test_client.py::test_retry"],
+                verification_evidence=[
+                    VerificationEvidence(
+                        gate_id="tests",
+                        command_argv=["python", "-m", "pytest", "-q"],
+                        exit_code=0,
+                        target_path="/tmp/target",
+                        target_revision="target-commit-abc123",
+                        receipt_path=str(unrelated),
+                        receipt_sha256=hashlib.sha256(unrelated.read_bytes()).hexdigest(),
+                    )
+                ],
+                recipe_eligible=True,
+                trust_delta=1,
+            ),
+        )
+
+    unchanged = await repository.get_component_card(card.id)
+    assert unchanged is not None
+    assert unchanged.success_count == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "wrong_value", "bind_wrong_value"),
+    [
+        ("gate_id", "other-gate", False),
+        ("command_argv", ["python", "-m", "pytest", "tests/other.py"], False),
+        ("exit_code", 1, False),
+        ("target_path", "/tmp/other-target", False),
+        ("target_revision", "other-commit", False),
+        ("target_path", "/tmp/other-target", True),
+        ("target_revision", "other-commit", True),
+    ],
+)
+async def test_positive_outcome_binds_every_verification_receipt_identity_field(
+    repository, tmp_path, field: str, wrong_value: object, bind_wrong_value: bool
+) -> None:
+    plan, packet, card = await _seed_packet(repository)
+    service = ManagedRunService(repository)
+    run_id = f"run_receipt_{field}"
+    await service.start_run(run_id, plan)
+    await service.record_candidate_decision(
+        run_id,
+        CandidateDecision(
+            candidate_id=card.id,
+            label=AssessmentLabel.DIRECT_PRECEDENT,
+            decision=SelectionDecision.SELECTED,
+            reason="Reviewed selection.",
+            provenance=["example/donor@abc123:src/retry.py:retry"],
+            slot_id=packet.slot.slot_id,
+        ),
+    )
+    await service.link_packet_pair(run_id, packet.packet_id)
+    await _mark_packet_verified(repository, packet)
+    expected = {
+        "schema_version": "cam.verification-receipt.v1",
+        "gate_id": "tests",
+        "command_argv": ["python", "-m", "pytest", "-q"],
+        "exit_code": 0,
+        "target_path": "/tmp/target",
+        "target_revision": "target-commit-abc123",
+    }
+    receipt_payload = dict(expected)
+    receipt_payload[field] = wrong_value
+    evidence_values = dict(expected)
+    if bind_wrong_value:
+        evidence_values[field] = wrong_value
+    receipt = tmp_path / f"mismatch-{field}.json"
+    receipt.write_text(json.dumps(receipt_payload) + "\n", encoding="utf-8")
+
+    message = (
+        "verification receipt target identity differs"
+        if bind_wrong_value
+        else "verification receipt does not match"
+    )
+    with pytest.raises(ValueError, match=message):
+        await service.record_outcome(
+            run_id,
+            packet_id=packet.packet_id,
+            slot_id=packet.slot.slot_id,
+            outcome=ManagedOutcome(
+                status=OutcomeStatus.VERIFIED_SUCCESS,
+                test_refs=["tests/test_client.py::test_retry"],
+                verification_evidence=[
+                    VerificationEvidence(
+                        gate_id=str(evidence_values["gate_id"]),
+                        command_argv=list(evidence_values["command_argv"]),
+                        exit_code=int(evidence_values["exit_code"]),
+                        target_path=str(evidence_values["target_path"]),
+                        target_revision=str(evidence_values["target_revision"]),
+                        receipt_path=str(receipt),
+                        receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
+                    )
+                ],
+                recipe_eligible=True,
+                trust_delta=1,
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    ("second_status", "expected_status"),
+    [
+        (OutcomeStatus.VERIFIED_SUCCESS, "verified_success"),
+        (OutcomeStatus.VERIFIED_PARTIAL, "verified_partial"),
+        (OutcomeStatus.VERIFIED_FAILURE, "verified_failure"),
+    ],
+)
+async def test_multi_slot_run_persists_the_aggregate_status(
+    repository, tmp_path, second_status: OutcomeStatus, expected_status: str
+) -> None:
+    plan, first, card = await _seed_packet(repository)
+    second = await _add_second_packet(repository, plan, first)
+    service = ManagedRunService(repository)
+    await service.start_run("run_multi", plan)
+
+    for packet in (first, second):
+        await service.record_candidate_decision(
+            "run_multi",
+            CandidateDecision(
+                candidate_id=card.id,
+                label=AssessmentLabel.DIRECT_PRECEDENT,
+                decision=SelectionDecision.SELECTED,
+                reason=f"Reviewed selection for {packet.slot.slot_id}.",
+                provenance=["example/donor@abc123:src/retry.py:retry"],
+                slot_id=packet.slot.slot_id,
+            ),
+        )
+        await service.link_packet_pair("run_multi", packet.packet_id)
+
+    await _mark_packet_verified(repository, first)
+    await service.record_outcome(
+        "run_multi",
+        packet_id=first.packet_id,
+        slot_id=first.slot.slot_id,
+        outcome=ManagedOutcome(
+            status=OutcomeStatus.VERIFIED_SUCCESS,
+            test_refs=["tests/test_client.py::test_retry"],
+            verification_evidence=[_verification_evidence(tmp_path, "first.json")],
+            trust_delta=1,
+        ),
+    )
+    if second_status is OutcomeStatus.VERIFIED_SUCCESS:
+        await _mark_packet_verified(repository, second)
+        evidence = [_verification_evidence(tmp_path, "second.json")]
+    else:
+        evidence = []
+    await service.record_outcome(
+        "run_multi",
+        packet_id=second.packet_id,
+        slot_id=second.slot.slot_id,
+        outcome=ManagedOutcome(
+            status=second_status,
+            verifier_findings=[f"second slot: {second_status.value}"],
+            test_refs=["tests/test_client.py::test_timeout"],
+            verification_evidence=evidence,
+            trust_delta=1 if second_status is OutcomeStatus.VERIFIED_SUCCESS else 0,
+        ),
+    )
+
+    report = await service.source_to_outcome_report("run_multi")
+    assert report["status"] == expected_status
+    assert set(report["active_outcomes"]) == {"slot_retry", "slot_timeout"}
 
 
 async def test_verified_success_is_final_inside_one_run(repository, tmp_path) -> None:

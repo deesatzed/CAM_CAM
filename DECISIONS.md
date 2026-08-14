@@ -303,3 +303,10 @@ A non-success may be corrected only by an explicitly superseding
 the same transaction rather than accumulated. A verified success is final for
 that run. Later contradictory evidence must open a new run, avoiding stale
 positive outcome rows that older CAM consumers could still treat as reusable.
+
+Verification evidence uses `cam.verification-receipt.v1`. The content-hashed
+receipt must repeat the exact gate identifier, list-form command argv, exit
+code, canonical target path, and immutable target revision asserted by the
+outcome; the target identity must also match the digest-bound managed plan.
+The run status is recomputed from the latest outcome for every slot, not merely
+the slot written most recently.
