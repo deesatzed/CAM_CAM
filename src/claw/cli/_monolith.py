@@ -94,12 +94,19 @@ async def _managed_run_async(request_json: str, config: str) -> dict[str, Any]:
         raise ValueError("managed-run request requires a string operation")
 
     config_path = Path(config).expanduser().resolve()
+    if not config_path.is_file():
+        raise ValueError("managed-run config must name an existing file")
     cfg = load_config(config_path)
     if cfg.database.db_path != ":memory:":
         db_path = Path(cfg.database.db_path).expanduser()
         if not db_path.is_absolute():
             db_path = config_path.parent / db_path
-        cfg.database.db_path = str(db_path.resolve())
+        db_path = db_path.resolve()
+        if not db_path.is_file():
+            raise ValueError(
+                "managed-run database must already exist; refusing to create a typo path"
+            )
+        cfg.database.db_path = str(db_path)
     engine = DatabaseEngine(cfg.database)
     await engine.connect()
     try:

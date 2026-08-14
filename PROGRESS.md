@@ -482,3 +482,32 @@ Assumptions:
 - The approved release-plan path `tests/planning/test_application_packet.py`
   does not exist in this checkout; verification used the current
   `tests/test_application_packet.py` truth path.
+- Specification and quality review rejected the first implementation because
+  plan identity omitted approval-bearing fields, the plan was duplicated in a
+  run event, proof was caller-asserted, revisions accumulated recall counters,
+  and repository calls committed each half of multi-record operations.
+- The hardened implementation binds the complete reviewed plan by SHA-256 on
+  its connectome edge. Candidate decisions explicitly supersede the latest
+  slot decision, exact receipt/decision/pair/landing/outcome retries are
+  idempotent, pairing uses the latest slot selection, and all supplied mining
+  and verification receipts must exist and match their recorded SHA-256.
+- Positive evidence now requires a stored `VERIFIED` application packet,
+  every required packet proof gate in `pass`, a matching receipt-backed gate
+  record with list-form argv and exit code zero, and at least one test
+  reference. Caller text alone cannot strengthen trust or enable a recipe.
+- Failure-to-success correction atomically replaces the active component
+  counters (`failure -1`, `success +1`) while keeping the original failed
+  outcome as history. A success cannot be superseded inside the same run;
+  contradictory later evidence must start a new run, preventing older CAM
+  consumers from seeing a superseded positive row.
+- Fixed `DatabaseEngine.transaction()` so repository-style writes no longer
+  auto-commit inside a transaction. `BEGIN IMMEDIATE` plus an engine lock makes
+  validation and writes one unit, hides partial state from other tasks, rolls
+  back normal errors and cancellation, and rejects nested transactions. Forced
+  start-edge, pair-edge, and outcome-event failures leave no partial rows.
+- Aggregate run status is derived from all approved slots instead of the most
+  recently written slot. The hidden CLI refuses missing config/database paths
+  rather than creating a database at a typo, and does not initialize providers.
+- Hardened verification passes `40` database/managed-run/CAM-SEQ tests and `96`
+  selected database, CLI manifest/UX, managed-run, CAM-SEQ, and application
+  packet tests. New-module Ruff checks, CLI help, and `git diff --check` pass.

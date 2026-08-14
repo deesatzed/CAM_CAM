@@ -128,6 +128,11 @@ class DatabaseEngine:
     def __init__(self, config: DatabaseConfig):
         self.config = config
         self._conn: Optional[aiosqlite.Connection] = None
+        self._write_lock = asyncio.Lock()
+        self._transaction_owner: asyncio.Task[Any] | None = None
+
+    def _owns_transaction(self) -> bool:
+        return self._transaction_owner is asyncio.current_task()
 
     async def connect(self) -> None:
         """Open the SQLite connection with WAL mode and dict row factory."""
@@ -787,10 +792,15 @@ class DatabaseEngine:
         """
         async def _do() -> None:
             await self.conn.execute(query, params or [])
-            await self.conn.commit()
+            if not self._owns_transaction():
+                await self.conn.commit()
 
         try:
-            await _retry_on_locked(_do)
+            if self._owns_transaction():
+                await _retry_on_locked(_do)
+            else:
+                async with self._write_lock:
+                    await _retry_on_locked(_do)
         except (sqlite3.OperationalError, DatabaseError):
             raise
         except Exception as e:
@@ -806,11 +816,15 @@ class DatabaseEngine:
         """
         async def _do() -> int:
             cursor = await self.conn.execute(query, params or [])
-            await self.conn.commit()
+            if not self._owns_transaction():
+                await self.conn.commit()
             return cursor.lastrowid or 0
 
         try:
-            return await _retry_on_locked(_do)
+            if self._owns_transaction():
+                return await _retry_on_locked(_do)
+            async with self._write_lock:
+                return await _retry_on_locked(_do)
         except (sqlite3.OperationalError, DatabaseError):
             raise
         except Exception as e:
@@ -824,12 +838,18 @@ class DatabaseEngine:
         self, query: str, params: Optional[Sequence[Any]] = None
     ) -> Optional[dict[str, Any]]:
         """Execute a query and return the first row as a dict, or None."""
-        try:
+        async def _do() -> Optional[dict[str, Any]]:
             cursor = await self.conn.execute(query, params or [])
             row = await cursor.fetchone()
             if row is None:
                 return None
             return dict(row)
+
+        try:
+            if self._owns_transaction():
+                return await _do()
+            async with self._write_lock:
+                return await _do()
         except Exception as e:
             raise DatabaseError(f"Query failed: {e}") from e
 
@@ -837,10 +857,16 @@ class DatabaseEngine:
         self, query: str, params: Optional[Sequence[Any]] = None
     ) -> list[dict[str, Any]]:
         """Execute a query and return all rows as dicts."""
-        try:
+        async def _do() -> list[dict[str, Any]]:
             cursor = await self.conn.execute(query, params or [])
             rows = await cursor.fetchall()
             return [dict(r) for r in rows]
+
+        try:
+            if self._owns_transaction():
+                return await _do()
+            async with self._write_lock:
+                return await _do()
         except Exception as e:
             raise DatabaseError(f"Query failed: {e}") from e
 
@@ -852,19 +878,30 @@ class DatabaseEngine:
     async def transaction(self):
         """Context manager for explicit transactions.
 
-        The BEGIN and COMMIT are retried if the database is locked. If lock
-        contention occurs *during* the transaction body (between BEGIN and
-        COMMIT), individual execute() calls inside the block handle their own
-        retries.  If COMMIT itself fails after retries, the transaction is
-        rolled back and the exception propagates.
+        BEGIN IMMEDIATE serializes writers before validation reads. Repository
+        execute calls made by the owning task do not auto-commit; all other
+        reads and writes wait on the engine lock until the unit commits or
+        rolls back. Nested transactions fail closed.
         """
-        await _retry_on_locked(self.conn.execute, "BEGIN")
+        task = asyncio.current_task()
+        if task is None:
+            raise DatabaseError("transaction requires a running asyncio task")
+        if self._transaction_owner is task:
+            raise DatabaseError("nested transactions are not supported")
+        await self._write_lock.acquire()
         try:
-            yield self
-            await _retry_on_locked(self.conn.commit)
-        except Exception:
-            await self.conn.rollback()
-            raise
+            await _retry_on_locked(self.conn.execute, "BEGIN IMMEDIATE")
+            self._transaction_owner = task
+            try:
+                yield self
+                await _retry_on_locked(self.conn.commit)
+            except BaseException:
+                await self.conn.rollback()
+                raise
+            finally:
+                self._transaction_owner = None
+        finally:
+            self._write_lock.release()
 
     async def close(self) -> None:
         """Close the database connection."""

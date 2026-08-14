@@ -1,5 +1,6 @@
 """Tests for CLAW database engine, schema, and repository."""
 
+import asyncio
 import struct
 
 import pytest
@@ -77,6 +78,57 @@ class TestDatabaseEngine:
             )
         row = await db_engine.fetch_one("SELECT * FROM projects WHERE id = ?", ["p1"])
         assert row is not None
+
+    async def test_transaction_rolls_back_repository_style_execute(self, db_engine):
+        with pytest.raises(RuntimeError, match="fixture rollback"):
+            async with db_engine.transaction():
+                await db_engine.execute(
+                    "INSERT INTO projects (id, name, repo_path) VALUES (?, ?, ?)",
+                    ["p_rollback", "must disappear", "/tmp/rollback"],
+                )
+                raise RuntimeError("fixture rollback")
+
+        row = await db_engine.fetch_one(
+            "SELECT * FROM projects WHERE id = ?", ["p_rollback"]
+        )
+        assert row is None
+
+    async def test_transaction_hides_partial_state_from_other_tasks(self, db_engine):
+        inserted = asyncio.Event()
+        release = asyncio.Event()
+
+        async def writer():
+            async with db_engine.transaction():
+                await db_engine.execute(
+                    "INSERT INTO projects (id, name, repo_path) VALUES (?, ?, ?)",
+                    ["p_atomic", "atomic", "/tmp/atomic"],
+                )
+                inserted.set()
+                await release.wait()
+
+        writer_task = asyncio.create_task(writer())
+        await inserted.wait()
+        reader_task = asyncio.create_task(
+            db_engine.fetch_one("SELECT * FROM projects WHERE id = ?", ["p_atomic"])
+        )
+        await asyncio.sleep(0)
+        assert not reader_task.done()
+        release.set()
+        await writer_task
+        assert (await reader_task)["name"] == "atomic"
+
+    async def test_transaction_rolls_back_cancellation(self, db_engine):
+        with pytest.raises(asyncio.CancelledError):
+            async with db_engine.transaction():
+                await db_engine.execute(
+                    "INSERT INTO projects (id, name, repo_path) VALUES (?, ?, ?)",
+                    ["p_cancel", "cancel", "/tmp/cancel"],
+                )
+                raise asyncio.CancelledError
+
+        assert await db_engine.fetch_one(
+            "SELECT * FROM projects WHERE id = ?", ["p_cancel"]
+        ) is None
 
     async def test_fts5_queryable(self, db_engine):
         await db_engine.execute(

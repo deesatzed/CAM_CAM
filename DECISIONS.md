@@ -289,4 +289,17 @@ subprocess value and performs persistence only. It does not mine, call a
 provider, edit a target, build, enhance, validate, promote, or change runtime
 configuration. Only `verified_success` may add positive component evidence or
 be recipe-eligible; partial, failed, and unverified outcomes remain neutral or
-negative evidence. Corrections must explicitly supersede the latest outcome.
+negative evidence. Positive evidence also requires a stored verified packet,
+passed required proof gates, and existing content-hash-matched proof receipts.
+
+Managed start, decision, receipt, pair, landing, and outcome writes run inside
+`BEGIN IMMEDIATE` units of work. Repository calls no longer auto-commit while
+the owning task is inside that transaction, and other tasks cannot observe
+partial state. Plan binding uses one connectome edge carrying a digest of every
+authorization-bearing plan field; it is not duplicated in `run_events`.
+
+A non-success may be corrected only by an explicitly superseding
+`verified_success`; active component success/failure counters are replaced in
+the same transaction rather than accumulated. A verified success is final for
+that run. Later contradictory evidence must open a new run, avoiding stale
+positive outcome rows that older CAM consumers could still treat as reusable.

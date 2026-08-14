@@ -7,9 +7,11 @@ verify, mine, promote, or create a parallel knowledge store.
 from __future__ import annotations
 
 import enum
+import hashlib
+import json
 import math
 import re
-from pathlib import PurePath, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -18,6 +20,7 @@ from claw.core.models import (
     LandingEvent,
     LandingOrigin,
     OutcomeEvent,
+    PacketStatus,
     PairEvent,
     RunConnectome,
     RunEvent,
@@ -74,6 +77,7 @@ class CandidateDecision(BaseModel):
     provenance: list[str] = Field(min_length=1)
     limitations: list[str] = Field(default_factory=list)
     slot_id: str | None = None
+    supersedes_decision_id: str | None = None
 
     @model_validator(mode="after")
     def selected_candidate_names_slot(self) -> "CandidateDecision":
@@ -82,11 +86,43 @@ class CandidateDecision(BaseModel):
         return self
 
 
+class VerificationEvidence(BaseModel):
+    gate_id: str = Field(min_length=1)
+    command_argv: list[str] = Field(min_length=1)
+    exit_code: int
+    receipt_path: str = Field(min_length=1)
+    receipt_sha256: str
+
+    @field_validator("command_argv")
+    @classmethod
+    def validate_argv(cls, value: list[str]) -> list[str]:
+        if not all(isinstance(item, str) and item for item in value):
+            raise ValueError("verification command_argv must contain non-empty strings")
+        return value
+
+    @field_validator("receipt_path")
+    @classmethod
+    def validate_receipt_path(cls, value: str) -> str:
+        if not PurePath(value).is_absolute():
+            raise ValueError("verification receipt_path must be absolute")
+        return value
+
+    @field_validator("receipt_sha256")
+    @classmethod
+    def validate_receipt_sha256(cls, value: str) -> str:
+        if re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            raise ValueError(
+                "verification receipt_sha256 must be 64 lowercase hexadecimal characters"
+            )
+        return value
+
+
 class ManagedOutcome(BaseModel):
     status: OutcomeStatus
     verifier_findings: list[str] = Field(default_factory=list)
     test_refs: list[str] = Field(default_factory=list)
     negative_memory_updates: list[str] = Field(default_factory=list)
+    verification_evidence: list[VerificationEvidence] = Field(default_factory=list)
     recipe_eligible: bool = False
     trust_delta: float = 0.0
     supersedes_outcome_id: str | None = None
@@ -96,6 +132,8 @@ class ManagedOutcome(BaseModel):
     def validate_trust_delta(cls, value: float) -> float:
         if not math.isfinite(value):
             raise ValueError("trust_delta must be finite")
+        if value < -1 or value > 1:
+            raise ValueError("trust_delta must be between -1 and 1")
         return value
 
     @model_validator(mode="after")
@@ -115,23 +153,61 @@ def _model_json(value: Any) -> dict[str, Any]:
 
 
 def _plan_identity(plan: TaskPlanRecord) -> dict[str, Any]:
-    return {
-        "id": plan.id,
-        "task_text": plan.task_text,
-        "workspace_dir": plan.workspace_dir,
-        "branch": plan.branch,
-        "target_brain": plan.target_brain,
-        "execution_mode": plan.execution_mode,
-        "check_commands": plan.check_commands,
-        "task_archetype": plan.task_archetype,
-        "plan_json": plan.plan_json,
-    }
+    return plan.model_dump(
+        mode="json",
+        exclude={"created_at", "updated_at"},
+    )
+
+
+def _digest_json(payload: Any) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _stable_id(prefix: str, payload: Any) -> str:
+    return f"{prefix}_{_digest_json(payload)[:24]}"
+
+
+def _verified_file(path_value: str, expected_sha256: str, label: str) -> Path:
+    path = Path(path_value).expanduser()
+    if not path.is_absolute() or not path.is_file():
+        raise ValueError(f"{label} must name an existing absolute file")
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected_sha256:
+        raise ValueError(f"{label} digest does not match the stored receipt")
+    return path
+
+
+def _evidence_delta(status: OutcomeStatus) -> tuple[int, int]:
+    if status is OutcomeStatus.VERIFIED_SUCCESS:
+        return 1, 0
+    if status is OutcomeStatus.VERIFIED_FAILURE:
+        return 0, 1
+    return 0, 0
+
+
+def _aggregate_status(
+    plan: TaskPlanRecord,
+    active_outcomes: dict[str, OutcomeStatus],
+) -> str:
+    if not active_outcomes:
+        return "planning"
+    values = list(active_outcomes.values())
+    if OutcomeStatus.VERIFIED_FAILURE in values:
+        return OutcomeStatus.VERIFIED_FAILURE.value
+    if OutcomeStatus.VERIFIED_PARTIAL in values:
+        return OutcomeStatus.VERIFIED_PARTIAL.value
+    approved = set(plan.approved_slot_ids)
+    if approved and approved.issubset(active_outcomes) and all(
+        active_outcomes[slot] is OutcomeStatus.VERIFIED_SUCCESS for slot in approved
+    ):
+        return OutcomeStatus.VERIFIED_SUCCESS.value
+    return OutcomeStatus.NOT_VERIFIED.value
 
 
 class ManagedRunService:
     """Persist and render one reviewed SWE Run using Repository methods."""
 
-    _START_EVENT = "managed_run_started"
     _RECEIPT_EVENT = "managed_mining_receipt_linked"
     _DECISION_EVENT = "managed_candidate_decision"
     _OUTCOME_EVENT = "managed_outcome_classified"
@@ -143,16 +219,26 @@ class ManagedRunService:
         connectome = await self.repository.get_run_connectome(run_id)
         if connectome is None:
             raise ValueError(f"unknown managed run: {run_id}")
-        starts = [
-            event
-            for event in await self.repository.list_run_events(run_id)
-            if event.event_type == self._START_EVENT
+        plan_edges = [
+            edge
+            for edge in await self.repository.list_run_connectome_edges(connectome.id)
+            if edge["edge_type"] == "managed_plan"
         ]
-        if len(starts) != 1 or not starts[0].payload.get("plan_id"):
-            raise ValueError(f"run is not bound to exactly one managed plan: {run_id}")
-        plan = await self.repository.get_task_plan(str(starts[0].payload["plan_id"]))
+        if len(plan_edges) != 1:
+            raise ValueError(f"run is not bound to exactly one managed plan edge: {run_id}")
+        try:
+            metadata = json.loads(plan_edges[0]["metadata_json"])
+        except (TypeError, json.JSONDecodeError) as exc:
+            raise ValueError("managed plan edge metadata is invalid") from exc
+        plan_id = metadata.get("plan_id")
+        plan_sha256 = metadata.get("plan_sha256")
+        if not isinstance(plan_id, str) or not isinstance(plan_sha256, str):
+            raise ValueError("managed plan edge lacks its plan identity and digest")
+        plan = await self.repository.get_task_plan(plan_id)
         if plan is None:
-            raise ValueError(f"managed run plan is missing: {starts[0].payload['plan_id']}")
+            raise ValueError(f"managed run plan is missing: {plan_id}")
+        if _digest_json(_plan_identity(plan)) != plan_sha256:
+            raise ValueError("managed run plan changed after it was bound")
         if connectome.task_archetype != plan.task_archetype:
             raise ValueError("managed run and plan task archetypes do not match")
         return connectome, plan
@@ -160,129 +246,185 @@ class ManagedRunService:
     async def start_run(self, run_id: str, plan: TaskPlanRecord) -> RunConnectome:
         if not run_id.strip():
             raise ValueError("run_id must not be empty")
-        existing = await self.repository.get_run_connectome(run_id)
-        if existing is not None:
-            _connectome, saved_plan = await self._context(run_id)
-            if _plan_identity(saved_plan) != _plan_identity(plan):
-                raise ValueError("managed run already belongs to a different plan")
-            return existing
+        async with self.repository.engine.transaction():
+            existing = await self.repository.get_run_connectome(run_id)
+            if existing is not None:
+                _connectome, saved_plan = await self._context(run_id)
+                if _plan_identity(saved_plan) != _plan_identity(plan):
+                    raise ValueError("managed run already belongs to a different plan")
+                return existing
 
-        saved_plan = await self.repository.get_task_plan(plan.id)
-        if saved_plan is not None and _plan_identity(saved_plan) != _plan_identity(plan):
-            raise ValueError("plan id already exists with different content")
-        await self.repository.save_task_plan(plan)
-        connectome = await self.repository.save_run_connectome(
-            RunConnectome(
-                run_id=run_id,
-                task_archetype=plan.task_archetype,
-                status="planning",
+            saved_plan = await self.repository.get_task_plan(plan.id)
+            if saved_plan is not None and _plan_identity(saved_plan) != _plan_identity(plan):
+                raise ValueError("plan id already exists with different content")
+            await self.repository.save_task_plan(plan)
+            connectome = await self.repository.save_run_connectome(
+                RunConnectome(
+                    run_id=run_id,
+                    task_archetype=plan.task_archetype,
+                    status="planning",
+                )
             )
-        )
-        await self.repository.save_run_connectome_edge(
-            connectome.id,
-            source_node=f"plan:{plan.id}",
-            target_node=f"run:{run_id}",
-            edge_type="managed_plan",
-            metadata={"plan_id": plan.id},
-        )
-        await self.repository.save_run_event(
-            RunEvent(
-                run_id=run_id,
-                event_type=self._START_EVENT,
-                payload={"plan_id": plan.id},
+            await self.repository.save_run_connectome_edge(
+                connectome.id,
+                source_node=f"plan:{plan.id}",
+                target_node=f"run:{run_id}",
+                edge_type="managed_plan",
+                metadata={
+                    "plan_id": plan.id,
+                    "plan_sha256": _digest_json(_plan_identity(plan)),
+                },
             )
-        )
-        return connectome
+            return connectome
 
     async def link_mining_receipt(
         self, run_id: str, receipt: MiningReceiptLink
     ) -> RunEvent:
-        await self._context(run_id)
-        existing = [
-            event
-            for event in await self.repository.list_run_events(run_id)
-            if event.event_type == self._RECEIPT_EVENT
-            and event.payload.get("receipt_id") == receipt.receipt_id
-        ]
-        payload = receipt.model_dump(mode="json")
-        if existing:
-            if len(existing) != 1 or existing[0].payload != payload:
-                raise ValueError("mining receipt id is already bound to different evidence")
-            return existing[0]
-        return await self.repository.save_run_event(
-            RunEvent(run_id=run_id, event_type=self._RECEIPT_EVENT, payload=payload)
+        _verified_file(
+            receipt.receipt_path,
+            receipt.receipt_sha256,
+            "mining receipt path",
         )
+        payload = receipt.model_dump(mode="json")
+        async with self.repository.engine.transaction():
+            await self._context(run_id)
+            existing = [
+                event
+                for event in await self.repository.list_run_events(run_id)
+                if event.event_type == self._RECEIPT_EVENT
+                and event.payload.get("receipt_id") == receipt.receipt_id
+            ]
+            if existing:
+                if len(existing) != 1 or existing[0].payload != payload:
+                    raise ValueError(
+                        "mining receipt id is already bound to different evidence"
+                    )
+                return existing[0]
+            return await self.repository.save_run_event(
+                RunEvent(
+                    id=_stable_id("receipt", {"run_id": run_id, **payload}),
+                    run_id=run_id,
+                    event_type=self._RECEIPT_EVENT,
+                    payload=payload,
+                )
+            )
 
     async def record_candidate_decision(
         self, run_id: str, decision: CandidateDecision
     ) -> RunEvent:
-        await self._context(run_id)
-        if decision.decision is SelectionDecision.SELECTED:
-            card = await self.repository.get_component_card(decision.candidate_id)
-            if card is None:
-                raise ValueError("selected candidate does not exist in component cards")
-        return await self.repository.save_run_event(
-            RunEvent(
-                run_id=run_id,
-                slot_id=decision.slot_id,
-                event_type=self._DECISION_EVENT,
-                payload=decision.model_dump(mode="json"),
+        payload = decision.model_dump(mode="json")
+        event_id = _stable_id("decision", {"run_id": run_id, **payload})
+        async with self.repository.engine.transaction():
+            await self._context(run_id)
+            if decision.decision is SelectionDecision.SELECTED:
+                card = await self.repository.get_component_card(decision.candidate_id)
+                if card is None:
+                    raise ValueError("selected candidate does not exist in component cards")
+            decisions = [
+                event
+                for event in await self.repository.list_run_events(run_id)
+                if event.event_type == self._DECISION_EVENT
+            ]
+            exact = [event for event in decisions if event.id == event_id]
+            if exact:
+                if len(exact) != 1 or exact[0].payload != payload:
+                    raise ValueError("candidate decision identity collision")
+                return exact[0]
+            if decision.slot_id is not None:
+                slot_history = [
+                    event for event in decisions if event.slot_id == decision.slot_id
+                ]
+                if slot_history:
+                    if decision.supersedes_decision_id != slot_history[-1].id:
+                        raise ValueError(
+                            "a changed slot decision must explicitly supersede the latest decision"
+                        )
+                elif decision.supersedes_decision_id is not None:
+                    raise ValueError("superseded slot decision does not exist")
+            elif decision.supersedes_decision_id is not None:
+                raise ValueError("decision supersession requires a slot_id")
+            return await self.repository.save_run_event(
+                RunEvent(
+                    id=event_id,
+                    run_id=run_id,
+                    slot_id=decision.slot_id,
+                    event_type=self._DECISION_EVENT,
+                    payload=payload,
+                )
             )
-        )
 
     async def link_packet_pair(self, run_id: str, packet_id: str) -> PairEvent:
-        connectome, plan = await self._context(run_id)
-        packet = await self.repository.get_application_packet(packet_id)
-        if packet is None:
-            raise ValueError(f"unknown application packet: {packet_id}")
-        if packet.plan_id != plan.id or packet.task_archetype != plan.task_archetype:
-            raise ValueError("application packet does not belong to the managed plan")
-        if packet.status.value not in {"approved", "executing", "verified"}:
-            raise ValueError("application packet must be approved before pairing")
-        if packet.slot.slot_id not in plan.approved_slot_ids:
-            raise ValueError("application packet slot is not approved by the managed plan")
-        decisions = [
-            event
-            for event in await self.repository.list_run_events(run_id)
-            if event.event_type == self._DECISION_EVENT
-            and event.payload.get("candidate_id") == packet.selected.component_id
-            and event.payload.get("slot_id") == packet.slot.slot_id
-        ]
-        if (
-            not decisions
-            or decisions[-1].payload.get("decision")
-            != SelectionDecision.SELECTED.value
-        ):
-            raise ValueError("packet component lacks a current selected decision")
+        async with self.repository.engine.transaction():
+            connectome, plan = await self._context(run_id)
+            packet = await self.repository.get_application_packet(packet_id)
+            if packet is None:
+                raise ValueError(f"unknown application packet: {packet_id}")
+            if packet.plan_id != plan.id or packet.task_archetype != plan.task_archetype:
+                raise ValueError("application packet does not belong to the managed plan")
+            if packet.status.value not in {"approved", "executing", "verified"}:
+                raise ValueError("application packet must be approved before pairing")
+            if packet.slot.slot_id not in plan.approved_slot_ids:
+                raise ValueError("application packet slot is not approved by the managed plan")
+            slot_decisions = [
+                event
+                for event in await self.repository.list_run_events(run_id)
+                if event.event_type == self._DECISION_EVENT
+                and event.slot_id == packet.slot.slot_id
+            ]
+            if (
+                not slot_decisions
+                or slot_decisions[-1].payload.get("decision")
+                != SelectionDecision.SELECTED.value
+                or slot_decisions[-1].payload.get("candidate_id")
+                != packet.selected.component_id
+            ):
+                raise ValueError("packet component is not the current slot selection")
 
-        existing = await self.repository.list_run_pair_events(run_id)
-        same_slot = [event for event in existing if event.slot_id == packet.slot.slot_id]
-        if same_slot:
-            pair = same_slot[-1]
-            if pair.packet_id == packet_id and pair.component_id == packet.selected.component_id:
-                return pair
-            raise ValueError("managed run slot is already paired to different evidence")
-
-        pair = await self.repository.save_pair_event(
-            PairEvent(
-                run_id=run_id,
-                slot_id=packet.slot.slot_id,
-                slot_barcode=packet.slot.slot_barcode,
-                packet_id=packet.packet_id,
-                component_id=packet.selected.component_id,
-                source_barcode=packet.selected.receipt.source_barcode,
-                confidence=packet.selected.confidence,
-                confidence_basis=packet.selected.confidence_basis,
-            )
-        )
-        await self.repository.save_run_connectome_edge(
-            connectome.id,
-            source_node=packet.selected.component_id,
-            target_node=packet.slot.slot_id,
-            edge_type="selected_for_slot",
-            metadata={"packet_id": packet.packet_id, "pair_id": pair.id},
-        )
-        return pair
+            pair_payload = {
+                "run_id": run_id,
+                "slot_id": packet.slot.slot_id,
+                "packet_id": packet.packet_id,
+                "component_id": packet.selected.component_id,
+            }
+            pair_id = _stable_id("pair", pair_payload)
+            existing = await self.repository.list_run_pair_events(run_id)
+            same_slot = [
+                event for event in existing if event.slot_id == packet.slot.slot_id
+            ]
+            if same_slot:
+                pair = same_slot[-1]
+                if pair.id != pair_id:
+                    raise ValueError(
+                        "managed run slot is already paired to different evidence"
+                    )
+            else:
+                pair = await self.repository.save_pair_event(
+                    PairEvent(
+                        id=pair_id,
+                        run_id=run_id,
+                        slot_id=packet.slot.slot_id,
+                        slot_barcode=packet.slot.slot_barcode,
+                        packet_id=packet.packet_id,
+                        component_id=packet.selected.component_id,
+                        source_barcode=packet.selected.receipt.source_barcode,
+                        confidence=packet.selected.confidence,
+                        confidence_basis=packet.selected.confidence_basis,
+                    )
+                )
+            edges = await self.repository.list_run_connectome_edges(connectome.id)
+            if not any(
+                edge["edge_type"] == "selected_for_slot"
+                and json.loads(edge["metadata_json"]).get("pair_id") == pair.id
+                for edge in edges
+            ):
+                await self.repository.save_run_connectome_edge(
+                    connectome.id,
+                    source_node=packet.selected.component_id,
+                    target_node=packet.slot.slot_id,
+                    edge_type="selected_for_slot",
+                    metadata={"packet_id": packet.packet_id, "pair_id": pair.id},
+                )
+            return pair
 
     async def record_landing(
         self,
@@ -295,26 +437,47 @@ class ManagedRunService:
         symbol: str | None = None,
         diff_hunk_id: str | None = None,
     ) -> LandingEvent:
-        await self._context(run_id)
         relative = PurePosixPath(file_path)
         if not file_path or relative.is_absolute() or ".." in relative.parts:
             raise ValueError("landing file_path must be a safe target-relative path")
-        pairs = await self.repository.list_run_pair_events(run_id)
-        if not any(
-            pair.packet_id == packet_id and pair.slot_id == slot_id for pair in pairs
-        ):
-            raise ValueError("landing does not match a managed packet/slot pair")
-        return await self.repository.save_landing_event(
-            LandingEvent(
-                run_id=run_id,
-                slot_id=slot_id,
-                packet_id=packet_id,
-                file_path=file_path,
-                symbol=symbol,
-                diff_hunk_id=diff_hunk_id,
-                origin=origin,
+        payload = {
+            "run_id": run_id,
+            "packet_id": packet_id,
+            "slot_id": slot_id,
+            "file_path": file_path,
+            "symbol": symbol,
+            "diff_hunk_id": diff_hunk_id,
+            "origin": origin.value,
+        }
+        landing_id = _stable_id("landing", payload)
+        async with self.repository.engine.transaction():
+            await self._context(run_id)
+            pairs = await self.repository.list_run_pair_events(run_id)
+            if not any(
+                pair.packet_id == packet_id and pair.slot_id == slot_id
+                for pair in pairs
+            ):
+                raise ValueError("landing does not match a managed packet/slot pair")
+            existing = await self.repository.list_run_landing_events(run_id)
+            exact = [event for event in existing if event.id == landing_id]
+            if exact:
+                if len(exact) != 1 or _model_json(exact[0]) | {
+                    "created_at": None
+                } != payload | {"id": landing_id, "created_at": None}:
+                    raise ValueError("landing identity collision")
+                return exact[0]
+            return await self.repository.save_landing_event(
+                LandingEvent(
+                    id=landing_id,
+                    run_id=run_id,
+                    slot_id=slot_id,
+                    packet_id=packet_id,
+                    file_path=file_path,
+                    symbol=symbol,
+                    diff_hunk_id=diff_hunk_id,
+                    origin=origin,
+                )
             )
-        )
 
     async def record_outcome(
         self,
@@ -324,45 +487,132 @@ class ManagedRunService:
         slot_id: str,
         outcome: ManagedOutcome,
     ) -> OutcomeEvent:
-        connectome, _plan = await self._context(run_id)
-        pairs = await self.repository.list_run_pair_events(run_id)
-        matching_pairs = [
-            pair
-            for pair in pairs
-            if pair.packet_id == packet_id and pair.slot_id == slot_id
-        ]
-        if len(matching_pairs) != 1:
-            raise ValueError("outcome does not match exactly one managed packet/slot pair")
-
-        classified = [
-            event
-            for event in await self.repository.list_run_events(run_id)
-            if event.event_type == self._OUTCOME_EVENT
-            and event.payload.get("packet_id") == packet_id
-            and event.slot_id == slot_id
-        ]
-        if classified:
-            latest_id = classified[-1].payload.get("outcome_id")
-            if outcome.supersedes_outcome_id != latest_id:
-                raise ValueError(
-                    "a corrected outcome must explicitly supersede the latest outcome"
-                )
-        elif outcome.supersedes_outcome_id is not None:
-            raise ValueError("superseded outcome does not exist in this managed run")
-
-        typed = OutcomeEvent(
-            run_id=run_id,
-            slot_id=slot_id,
-            packet_id=packet_id,
-            success=outcome.status is OutcomeStatus.VERIFIED_SUCCESS,
-            verifier_findings=outcome.verifier_findings,
-            test_refs=outcome.test_refs,
-            negative_memory_updates=outcome.negative_memory_updates,
-            recipe_eligible=outcome.recipe_eligible,
+        outcome_payload = outcome.model_dump(mode="json")
+        outcome_id = _stable_id(
+            "outcome",
+            {
+                "run_id": run_id,
+                "packet_id": packet_id,
+                "slot_id": slot_id,
+                "outcome": outcome_payload,
+            },
         )
-        await self.repository.save_outcome_event(typed)
-        await self.repository.save_run_event(
-            RunEvent(
+        async with self.repository.engine.transaction():
+            connectome, plan = await self._context(run_id)
+            packet = await self.repository.get_application_packet(packet_id)
+            if packet is None or packet.slot.slot_id != slot_id:
+                raise ValueError("outcome packet/slot identity is missing or inconsistent")
+            pairs = await self.repository.list_run_pair_events(run_id)
+            matching_pairs = [
+                pair
+                for pair in pairs
+                if pair.packet_id == packet_id and pair.slot_id == slot_id
+            ]
+            if len(matching_pairs) != 1:
+                raise ValueError(
+                    "outcome does not match exactly one managed packet/slot pair"
+                )
+            if (
+                packet.plan_id != plan.id
+                or packet.task_archetype != plan.task_archetype
+                or packet.selected.component_id != matching_pairs[0].component_id
+            ):
+                raise ValueError("outcome packet changed after the managed pair was bound")
+
+            if outcome.status is OutcomeStatus.VERIFIED_SUCCESS:
+                if packet.status is not PacketStatus.VERIFIED:
+                    raise ValueError(
+                        "positive evidence requires a stored verified application packet"
+                    )
+                required_gates = {
+                    gate.gate_id
+                    for gate in packet.proof_plan
+                    if gate.required
+                }
+                passed_gates = {
+                    gate.gate_id
+                    for gate in packet.proof_plan
+                    if gate.required and gate.status == "pass"
+                }
+                if required_gates != passed_gates:
+                    raise ValueError(
+                        "positive evidence requires every stored packet proof gate to pass"
+                    )
+                evidence_gates: set[str] = set()
+                for evidence in outcome.verification_evidence:
+                    _verified_file(
+                        evidence.receipt_path,
+                        evidence.receipt_sha256,
+                        f"verification receipt for gate {evidence.gate_id}",
+                    )
+                    if evidence.exit_code != 0:
+                        raise ValueError("verified_success evidence must have exit_code 0")
+                    evidence_gates.add(evidence.gate_id)
+                if not required_gates or not required_gates.issubset(evidence_gates):
+                    raise ValueError(
+                        "positive evidence requires receipt-backed proof for every gate"
+                    )
+
+            events = await self.repository.list_run_events(run_id)
+            classified = [
+                event
+                for event in events
+                if event.event_type == self._OUTCOME_EVENT
+                and event.payload.get("packet_id") == packet_id
+                and event.slot_id == slot_id
+            ]
+            typed_outcomes = await self.repository.list_run_outcome_events(run_id)
+            typed_by_id = {event.id: event for event in typed_outcomes}
+            exact = [event for event in classified if event.payload.get("outcome_id") == outcome_id]
+            if exact:
+                typed = typed_by_id.get(outcome_id)
+                if len(exact) != 1 or typed is None:
+                    raise ValueError("managed outcome identity is incomplete or duplicated")
+                return typed
+            unclassified = [
+                event
+                for event in typed_outcomes
+                if event.packet_id == packet_id
+                and event.slot_id == slot_id
+                and event.id not in {item.payload.get("outcome_id") for item in classified}
+            ]
+            if unclassified:
+                raise ValueError("unclassified typed outcome requires operator recovery")
+
+            previous_status: OutcomeStatus | None = None
+            if classified:
+                latest = classified[-1]
+                latest_id = latest.payload.get("outcome_id")
+                previous_status = OutcomeStatus(latest.payload.get("status"))
+                if outcome.supersedes_outcome_id != latest_id:
+                    raise ValueError(
+                        "a corrected outcome must explicitly supersede the latest outcome"
+                    )
+                if previous_status is OutcomeStatus.VERIFIED_SUCCESS:
+                    raise ValueError(
+                        "verified_success is final for this run; reverify in a new run"
+                    )
+                if outcome.status is not OutcomeStatus.VERIFIED_SUCCESS:
+                    raise ValueError(
+                        "only verified_success may correct a prior non-success outcome"
+                    )
+            elif outcome.supersedes_outcome_id is not None:
+                raise ValueError("superseded outcome does not exist in this managed run")
+
+            typed = OutcomeEvent(
+                id=outcome_id,
+                run_id=run_id,
+                slot_id=slot_id,
+                packet_id=packet_id,
+                success=outcome.status is OutcomeStatus.VERIFIED_SUCCESS,
+                verifier_findings=outcome.verifier_findings,
+                test_refs=outcome.test_refs,
+                negative_memory_updates=outcome.negative_memory_updates,
+                recipe_eligible=outcome.recipe_eligible,
+            )
+            await self.repository.save_outcome_event(typed)
+            classification = RunEvent(
+                id=_stable_id("outcome-classification", outcome_id),
                 run_id=run_id,
                 slot_id=slot_id,
                 event_type=self._OUTCOME_EVENT,
@@ -371,18 +621,33 @@ class ManagedRunService:
                     "packet_id": packet_id,
                     "status": outcome.status.value,
                     "trust_delta": outcome.trust_delta,
+                    "recipe_eligible": outcome.recipe_eligible,
+                    "verification_evidence": [
+                        item.model_dump(mode="json")
+                        for item in outcome.verification_evidence
+                    ],
                     "supersedes_outcome_id": outcome.supersedes_outcome_id,
                 },
             )
-        )
-        component_id = matching_pairs[0].component_id
-        if outcome.status is OutcomeStatus.VERIFIED_SUCCESS:
-            await self.repository.update_component_outcome(component_id, True)
-        elif outcome.status is OutcomeStatus.VERIFIED_FAILURE:
-            await self.repository.update_component_outcome(component_id, False)
-        connectome.status = outcome.status.value
-        await self.repository.save_run_connectome(connectome)
-        return typed
+            await self.repository.save_run_event(classification)
+
+            old_success, old_failure = (
+                _evidence_delta(previous_status)
+                if previous_status is not None
+                else (0, 0)
+            )
+            new_success, new_failure = _evidence_delta(outcome.status)
+            await self.repository.adjust_component_outcome_counts(
+                matching_pairs[0].component_id,
+                success_delta=new_success - old_success,
+                failure_delta=new_failure - old_failure,
+            )
+            active_statuses: dict[str, OutcomeStatus] = {}
+            for event in [*classified, classification]:
+                active_statuses[event.slot_id] = OutcomeStatus(event.payload["status"])
+            connectome.status = _aggregate_status(plan, active_statuses)
+            await self.repository.save_run_connectome(connectome)
+            return typed
 
     async def source_to_outcome_report(self, run_id: str) -> dict[str, Any]:
         connectome, plan = await self._context(run_id)
@@ -419,16 +684,32 @@ class ManagedRunService:
                 {
                     "status": event.payload["status"],
                     "trust_delta": event.payload["trust_delta"],
+                    "recipe_eligible": event.payload.get("recipe_eligible", False),
+                    "verification_evidence": event.payload.get(
+                        "verification_evidence", []
+                    ),
                     "supersedes_outcome_id": event.payload.get("supersedes_outcome_id"),
                 }
             )
             outcomes.append(rendered)
             active[typed.slot_id] = rendered
 
+        aggregate = _aggregate_status(
+            plan,
+            {
+                slot_id: OutcomeStatus(item["status"])
+                for slot_id, item in active.items()
+            },
+        )
+        if connectome.status != aggregate:
+            raise ValueError(
+                "managed run stored status disagrees with its active slot outcomes"
+            )
+
         return {
             "schema_version": 1,
             "run_id": run_id,
-            "status": connectome.status,
+            "status": aggregate,
             "plan": _model_json(plan),
             "mining_receipts": receipts,
             "candidate_decisions": decisions,

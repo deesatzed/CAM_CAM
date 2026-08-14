@@ -2990,6 +2990,22 @@ class Repository:
                 [component_id],
             )
 
+    async def adjust_component_outcome_counts(
+        self,
+        component_id: str,
+        *,
+        success_delta: int,
+        failure_delta: int,
+    ) -> None:
+        """Replace active managed evidence without making counters negative."""
+        await self.engine.execute(
+            """UPDATE component_cards
+               SET success_count = MAX(0, success_count + ?),
+                   failure_count = MAX(0, failure_count + ?)
+               WHERE id = ?""",
+            [success_delta, failure_delta, component_id],
+        )
+
     async def save_component_fit(self, fit: ComponentFit) -> ComponentFit:
         await self.engine.execute(
             """INSERT INTO component_fit
