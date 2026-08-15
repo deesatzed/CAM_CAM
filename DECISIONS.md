@@ -306,7 +306,8 @@ positive outcome rows that older CAM consumers could still treat as reusable.
 
 Verification evidence uses `cam.verification-receipt.v1`. The content-hashed
 receipt must repeat the exact gate identifier, list-form command argv, exit
-code, canonical target path, and immutable target revision asserted by the
-outcome; the target identity must also match the digest-bound managed plan.
-The run status is recomputed from the latest outcome for every slot, not merely
-the slot written most recently.
+code, canonical target path, immutable target revision, plan ID, and full
+managed-plan SHA-256 asserted by the outcome. Hashing, UTF-8 decoding, and JSON
+parsing operate on one captured byte buffer; the target and plan identities
+must match the digest-bound managed plan. The run status is recomputed from the
+latest outcome for every slot, not merely the slot written most recently.

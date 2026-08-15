@@ -523,3 +523,20 @@ Assumptions:
   database/managed-run/CAM-SEQ tests and `107` selected database, CLI
   manifest/UX, managed-run, CAM-SEQ, and application-packet tests. Focused Ruff
   and `git diff --check` also pass.
+
+## 2026-08-15 Task 7 crash-recovery receipt hardening
+
+- Recreated the lost temporary feature worktree from the durable local
+  `feat/cam-codx-control-plane` branch without modifying the SSD checkout.
+- Added RED/GREEN regression proof that verification reads a receipt once: the
+  exact captured bytes are SHA-256 hashed, UTF-8 decoded, and JSON parsed
+  without reopening the path. This closes the receipt TOCTOU gap identified by
+  the recovered autonomous goal.
+- `cam.verification-receipt.v1` and typed verification evidence now each bind
+  the exact `plan_id` and full SHA-256 of the authorization-bearing managed
+  plan, in addition to gate, list-form argv, exit code, canonical target, and
+  immutable target revision.
+- Focused Task 7 gate: `31 passed` for `test_managed_runs.py` and
+  `test_camseq_foundation.py`; `git diff --check` passed. Pytest could not
+  create its optional `.pytest_cache` inside the recovery clone because of the
+  managed sandbox, but test execution and fixture database writes succeeded.

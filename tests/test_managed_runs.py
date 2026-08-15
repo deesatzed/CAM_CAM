@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -33,6 +34,7 @@ from claw.managed_runs import (
     SelectionDecision,
     VerificationEvidence,
 )
+import claw.managed_runs as managed_runs
 
 
 async def _seed_packet(repository) -> tuple[TaskPlanRecord, ApplicationPacket, ComponentCard]:
@@ -134,6 +136,7 @@ def _verification_evidence(
     exit_code: int = 0,
     target_path: str = "/tmp/target",
     target_revision: str = "target-commit-abc123",
+    plan: TaskPlanRecord | None = None,
 ) -> VerificationEvidence:
     argv = command_argv or ["python", "-m", "pytest", "-q", "tests/test_client.py"]
     receipt = tmp_path / name
@@ -144,8 +147,16 @@ def _verification_evidence(
                 "gate_id": gate_id,
                 "command_argv": argv,
                 "exit_code": exit_code,
-                "target_path": target_path,
-                "target_revision": target_revision,
+            "target_path": target_path,
+            "target_revision": target_revision,
+            **(
+                {
+                    "plan_id": plan.id,
+                    "plan_sha256": managed_runs._digest_json(managed_runs._plan_identity(plan)),
+                }
+                if plan is not None
+                else {}
+            ),
             },
             sort_keys=True,
         )
@@ -158,6 +169,12 @@ def _verification_evidence(
         exit_code=exit_code,
         target_path=target_path,
         target_revision=target_revision,
+        plan_id=plan.id if plan is not None else None,
+        plan_sha256=(
+            managed_runs._digest_json(managed_runs._plan_identity(plan))
+            if plan is not None
+            else None
+        ),
         receipt_path=str(receipt),
         receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
     )
@@ -302,7 +319,7 @@ async def test_managed_run_persists_source_to_outcome_chain(repository, tmp_path
             status=OutcomeStatus.VERIFIED_SUCCESS,
             verifier_findings=[],
             test_refs=["tests/test_client.py::test_retry_cancellation"],
-            verification_evidence=[_verification_evidence(tmp_path)],
+            verification_evidence=[_verification_evidence(tmp_path, plan=plan)],
             recipe_eligible=True,
             trust_delta=1,
             supersedes_outcome_id=failed.id,
@@ -316,7 +333,7 @@ async def test_managed_run_persists_source_to_outcome_chain(repository, tmp_path
             status=OutcomeStatus.VERIFIED_SUCCESS,
             verifier_findings=[],
             test_refs=["tests/test_client.py::test_retry_cancellation"],
-            verification_evidence=[_verification_evidence(tmp_path)],
+            verification_evidence=[_verification_evidence(tmp_path, plan=plan)],
             recipe_eligible=True,
             trust_delta=1,
             supersedes_outcome_id=failed.id,
@@ -543,7 +560,7 @@ async def test_corrected_outcome_requires_explicit_latest_supersession(
             outcome=ManagedOutcome(
                 status=OutcomeStatus.VERIFIED_SUCCESS,
                 test_refs=["tests/test_client.py::test_retry"],
-                verification_evidence=[_verification_evidence(tmp_path)],
+                verification_evidence=[_verification_evidence(tmp_path, plan=plan)],
                 trust_delta=1,
             ),
         )
@@ -555,7 +572,7 @@ async def test_corrected_outcome_requires_explicit_latest_supersession(
         outcome=ManagedOutcome(
             status=OutcomeStatus.VERIFIED_SUCCESS,
             test_refs=["tests/test_client.py::test_retry"],
-            verification_evidence=[_verification_evidence(tmp_path)],
+            verification_evidence=[_verification_evidence(tmp_path, plan=plan)],
             trust_delta=1,
             supersedes_outcome_id=first.id,
         ),
@@ -590,7 +607,7 @@ async def test_positive_outcome_requires_stored_packet_and_receipt_proof(
             outcome=ManagedOutcome(
                 status=OutcomeStatus.VERIFIED_SUCCESS,
                 test_refs=["caller asserted test string"],
-                verification_evidence=[_verification_evidence(tmp_path)],
+                verification_evidence=[_verification_evidence(tmp_path, plan=plan)],
                 recipe_eligible=True,
                 trust_delta=1,
             ),
@@ -653,6 +670,38 @@ async def test_positive_outcome_rejects_hashed_but_semantically_unrelated_receip
     assert unchanged.success_count == 0
 
 
+async def test_verification_receipt_is_hashed_and_parsed_from_one_read(
+    repository, tmp_path, monkeypatch
+) -> None:
+    plan, _packet, _card = await _seed_packet(repository)
+    evidence = _verification_evidence(tmp_path, plan=plan)
+    original_read_bytes = Path.read_bytes
+    reads: list[Path] = []
+
+    def read_bytes_once(path: Path) -> bytes:
+        reads.append(path)
+        return original_read_bytes(path)
+
+    def second_read_forbidden(*_args, **_kwargs):
+        raise AssertionError("verification receipt must not be reopened after hashing")
+
+    monkeypatch.setattr(managed_runs.Path, "read_bytes", read_bytes_once)
+    monkeypatch.setattr(managed_runs.Path, "read_text", second_read_forbidden)
+
+    managed_runs._verify_execution_receipt(evidence, plan)
+
+    assert reads == [Path(evidence.receipt_path)]
+
+
+async def test_verification_receipt_requires_the_managed_plan_identity(
+    repository, tmp_path
+) -> None:
+    plan, _packet, _card = await _seed_packet(repository)
+
+    with pytest.raises(ValueError, match="managed plan identity"):
+        managed_runs._verify_execution_receipt(_verification_evidence(tmp_path), plan)
+
+
 @pytest.mark.parametrize(
     ("field", "wrong_value", "bind_wrong_value"),
     [
@@ -692,6 +741,8 @@ async def test_positive_outcome_binds_every_verification_receipt_identity_field(
         "exit_code": 0,
         "target_path": "/tmp/target",
         "target_revision": "target-commit-abc123",
+        "plan_id": plan.id,
+        "plan_sha256": managed_runs._digest_json(managed_runs._plan_identity(plan)),
     }
     receipt_payload = dict(expected)
     receipt_payload[field] = wrong_value
@@ -721,6 +772,8 @@ async def test_positive_outcome_binds_every_verification_receipt_identity_field(
                         exit_code=int(evidence_values["exit_code"]),
                         target_path=str(evidence_values["target_path"]),
                         target_revision=str(evidence_values["target_revision"]),
+                        plan_id=str(evidence_values["plan_id"]),
+                        plan_sha256=str(evidence_values["plan_sha256"]),
                         receipt_path=str(receipt),
                         receipt_sha256=hashlib.sha256(receipt.read_bytes()).hexdigest(),
                     )
@@ -769,13 +822,13 @@ async def test_multi_slot_run_persists_the_aggregate_status(
         outcome=ManagedOutcome(
             status=OutcomeStatus.VERIFIED_SUCCESS,
             test_refs=["tests/test_client.py::test_retry"],
-            verification_evidence=[_verification_evidence(tmp_path, "first.json")],
+            verification_evidence=[_verification_evidence(tmp_path, "first.json", plan=plan)],
             trust_delta=1,
         ),
     )
     if second_status is OutcomeStatus.VERIFIED_SUCCESS:
         await _mark_packet_verified(repository, second)
-        evidence = [_verification_evidence(tmp_path, "second.json")]
+        evidence = [_verification_evidence(tmp_path, "second.json", plan=plan)]
     else:
         evidence = []
     await service.record_outcome(
@@ -820,7 +873,7 @@ async def test_verified_success_is_final_inside_one_run(repository, tmp_path) ->
         outcome=ManagedOutcome(
             status=OutcomeStatus.VERIFIED_SUCCESS,
             test_refs=["tests/test_client.py::test_retry"],
-            verification_evidence=[_verification_evidence(tmp_path)],
+            verification_evidence=[_verification_evidence(tmp_path, plan=plan)],
             recipe_eligible=True,
             trust_delta=1,
         ),

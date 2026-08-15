@@ -92,6 +92,8 @@ class VerificationEvidence(BaseModel):
     exit_code: int
     target_path: str = Field(min_length=1)
     target_revision: str = Field(min_length=1)
+    plan_id: str | None = None
+    plan_sha256: str | None = None
     receipt_path: str = Field(min_length=1)
     receipt_sha256: str
 
@@ -139,6 +141,14 @@ class VerificationEvidence(BaseModel):
                 "verification receipt_sha256 must be 64 lowercase hexadecimal characters"
             )
         return value
+
+    @model_validator(mode="after")
+    def plan_identity_is_complete_when_supplied(self) -> "VerificationEvidence":
+        if (self.plan_id is None) != (self.plan_sha256 is None):
+            raise ValueError("verification plan identity must include both plan_id and plan_sha256")
+        if self.plan_sha256 is not None and re.fullmatch(r"[0-9a-f]{64}", self.plan_sha256) is None:
+            raise ValueError("verification plan_sha256 must be 64 lowercase hexadecimal characters")
+        return self
 
 
 class ManagedOutcome(BaseModel):
@@ -192,13 +202,24 @@ def _stable_id(prefix: str, payload: Any) -> str:
     return f"{prefix}_{_digest_json(payload)[:24]}"
 
 
-def _verified_file(path_value: str, expected_sha256: str, label: str) -> Path:
+def _read_verified_file(
+    path_value: str, expected_sha256: str, label: str
+) -> tuple[Path, bytes]:
     path = Path(path_value).expanduser()
     if not path.is_absolute() or not path.is_file():
         raise ValueError(f"{label} must name an existing absolute file")
-    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    try:
+        contents = path.read_bytes()
+    except OSError as exc:
+        raise ValueError(f"{label} could not be read") from exc
+    actual = hashlib.sha256(contents).hexdigest()
     if actual != expected_sha256:
         raise ValueError(f"{label} digest does not match the stored receipt")
+    return path, contents
+
+
+def _verified_file(path_value: str, expected_sha256: str, label: str) -> Path:
+    path, _contents = _read_verified_file(path_value, expected_sha256, label)
     return path
 
 
@@ -207,14 +228,14 @@ def _verify_execution_receipt(
     plan: TaskPlanRecord,
 ) -> None:
     """Bind a hashed verification receipt to its exact asserted execution."""
-    path = _verified_file(
+    _path, receipt_bytes = _read_verified_file(
         evidence.receipt_path,
         evidence.receipt_sha256,
         f"verification receipt for gate {evidence.gate_id}",
     )
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        payload = json.loads(receipt_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("verification receipt must be valid UTF-8 JSON") from exc
     if not isinstance(payload, dict):
         raise ValueError("verification receipt must be one JSON object")
@@ -225,6 +246,8 @@ def _verify_execution_receipt(
     receipt_argv = payload.get("command_argv")
     receipt_exit = payload.get("exit_code")
     receipt_revision = payload.get("target_revision")
+    receipt_plan_id = payload.get("plan_id")
+    receipt_plan_sha256 = payload.get("plan_sha256")
     if not isinstance(receipt_gate, str) or not receipt_gate.strip():
         raise ValueError("verification receipt gate_id must be a non-empty string")
     if not isinstance(receipt_argv, list) or not receipt_argv or not all(
@@ -235,6 +258,12 @@ def _verify_execution_receipt(
         raise ValueError("verification receipt exit_code must be an integer")
     if not isinstance(receipt_revision, str) or not receipt_revision.strip():
         raise ValueError("verification receipt target_revision must be a non-empty string")
+    if not isinstance(receipt_plan_id, str) or not receipt_plan_id.strip():
+        raise ValueError("verification receipt lacks managed plan identity")
+    if not isinstance(receipt_plan_sha256, str) or re.fullmatch(
+        r"[0-9a-f]{64}", receipt_plan_sha256
+    ) is None:
+        raise ValueError("verification receipt lacks managed plan identity")
     raw_receipt_target = payload.get("target_path")
     if not isinstance(raw_receipt_target, str):
         raise ValueError("verification receipt target_path must be a string")
@@ -255,6 +284,16 @@ def _verify_execution_receipt(
 
     if plan.workspace_dir is None:
         raise ValueError("verification receipt requires a managed plan target path")
+    expected_plan_sha256 = _digest_json(_plan_identity(plan))
+    if (
+        evidence.plan_id != plan.id
+        or evidence.plan_sha256 != expected_plan_sha256
+        or receipt_plan_id != plan.id
+        or receipt_plan_sha256 != expected_plan_sha256
+        or receipt_plan_id != evidence.plan_id
+        or receipt_plan_sha256 != evidence.plan_sha256
+    ):
+        raise ValueError("verification receipt managed plan identity differs from the managed plan")
     plan_target = str(Path(plan.workspace_dir).expanduser().resolve(strict=False))
     plan_revision = plan.plan_json.get("target_revision")
     if not isinstance(plan_revision, str) or not plan_revision:
