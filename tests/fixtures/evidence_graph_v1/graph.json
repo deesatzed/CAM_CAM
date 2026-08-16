@@ -1,0 +1,72 @@
+{
+  "schema_version": "cam.evidence-graph.v1",
+  "nodes": [
+    {"node_id": "source_file:auth_service", "node_type": "source_file", "canonical_name": "src/auth_service.py"},
+    {"node_id": "symbol:validate_token", "node_type": "symbol", "canonical_name": "validate_token"},
+    {"node_id": "test:test_validate_token", "node_type": "test", "canonical_name": "test_validate_token_rejects_empty_value"},
+    {"node_id": "outcome:token_validation", "node_type": "outcome", "canonical_name": "token-validation"},
+    {"node_id": "methodology:auth_pattern", "node_type": "methodology", "canonical_name": "token validation pattern"},
+    {"node_id": "methodology:legacy_token_pattern", "node_type": "methodology", "canonical_name": "legacy token pattern", "aliases": ["token pattern"]}
+  ],
+  "edges": [
+    {
+      "edge_id": "edge:declares:validate_token",
+      "source_id": "source_file:auth_service",
+      "target_id": "symbol:validate_token",
+      "edge_type": "declares",
+      "evidence_class": "explicit",
+      "confidence": 1.0,
+      "factual_path_eligible": true,
+      "evidence": [{"source_uri": "fixture:src/auth_service.py", "source_revision": "fixture-auth-v1", "content_sha256": "1111111111111111111111111111111111111111111111111111111111111111", "extraction_method": "fixture_ast"}]
+    },
+    {
+      "edge_id": "edge:covered_by:test_validate_token",
+      "source_id": "symbol:validate_token",
+      "target_id": "test:test_validate_token",
+      "edge_type": "covered_by",
+      "evidence_class": "explicit",
+      "confidence": 1.0,
+      "factual_path_eligible": true,
+      "evidence": [{"source_uri": "fixture:tests/test_auth_service.py", "source_revision": "fixture-auth-v1", "content_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "extraction_method": "fixture_reference"}]
+    },
+    {
+      "edge_id": "edge:verifies:token_validation",
+      "source_id": "symbol:validate_token",
+      "target_id": "outcome:token_validation",
+      "edge_type": "verified_by",
+      "evidence_class": "explicit",
+      "confidence": 1.0,
+      "factual_path_eligible": true,
+      "evidence": [{"source_uri": "fixture:outcomes/token-validation.json", "source_revision": "fixture-auth-v1", "content_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "extraction_method": "fixture_outcome_receipt"}]
+    },
+    {
+      "edge_id": "edge:supports:auth_pattern",
+      "source_id": "outcome:token_validation",
+      "target_id": "methodology:auth_pattern",
+      "edge_type": "supports",
+      "evidence_class": "explicit",
+      "confidence": 1.0,
+      "factual_path_eligible": true,
+      "evidence": [{"source_uri": "fixture:outcomes/token-validation.json", "source_revision": "fixture-auth-v1", "content_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "extraction_method": "fixture_outcome_receipt"}]
+    },
+    {
+      "edge_id": "edge:legacy:co_retrieval",
+      "source_id": "methodology:auth_pattern",
+      "target_id": "methodology:legacy_token_pattern",
+      "edge_type": "co_retrieval",
+      "evidence_class": "association",
+      "confidence": 0.7,
+      "factual_path_eligible": false,
+      "evidence": [{"source_uri": "legacy:methodology_links", "source_revision": "legacy-import-20260816", "content_sha256": "4444444444444444444444444444444444444444444444444444444444444444", "extraction_method": "legacy_association_import"}]
+    }
+  ],
+  "entity_resolution": [
+    {
+      "entity_key": "methodology:token-pattern",
+      "candidate_node_ids": ["methodology:auth_pattern", "methodology:legacy_token_pattern"],
+      "decision": "unresolved",
+      "confidence": 0.42,
+      "evidence": [{"source_uri": "fixture:README.md", "source_revision": "fixture-auth-v1", "content_sha256": "5555555555555555555555555555555555555555555555555555555555555555", "extraction_method": "fixture_alias_blocking"}]
+    }
+  ]
+}

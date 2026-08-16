@@ -553,3 +553,21 @@ Assumptions:
   passed (`22 passed`). Optional pytest-cache creation remains sandbox-blocked.
 - Next action: pin this new canonical command in the CAM_Codx capability
   registry and expose only its read-only manager packet.
+
+## 2026-08-16 Sparse evidence graph: Phase 1 baseline
+
+- Created the pure `claw.knowledge_graph.contract` versioned contract and a
+  deterministic six-node fixture corpus with source, test, outcome,
+  methodology, and legacy-association evidence. It neither accesses `claw.db`
+  nor changes current hybrid retrieval.
+- TDD RED was the absent `claw.knowledge_graph` module. GREEN proves explicit
+  and association edges remain distinct, association cannot be factual-path
+  eligible, and fixture health metrics are deterministic (`3 passed`).
+- Recorded the inventory/classification in
+  `docs/knowledge_graph_phase1_baseline.md`: `co_retrieval` remains
+  association-only; contradiction, competition, and assimilation edges remain
+  inferred and excluded until receipt-backed; repository topology remains
+  presentation-only.
+- Next action: run the adjacent legacy graph regressions and inspect the Phase
+  1 diff. Phase 2 is deferred: no extractor, migration, live-data scan, or
+  CAM_Codx graph packet has been started.

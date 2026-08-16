@@ -311,3 +311,20 @@ managed-plan SHA-256 asserted by the outcome. Hashing, UTF-8 decoding, and JSON
 parsing operate on one captured byte buffer; the target and plan identities
 must match the digest-bound managed plan. The run status is recomputed from the
 latest outcome for every slot, not merely the slot written most recently.
+
+## 2026-08-16: Preserve legacy methodology links as associations, not facts
+
+Decision: Phase 1 introduces a separate, pure `cam.evidence-graph.v1` contract
+instead of changing `methodology_links` or migrating its rows. Legacy
+`co_retrieval` links are association signals and cannot be eligible for factual
+graph paths. Existing inferred relationship types remain excluded until they
+carry receipt-backed provenance under the new contract.
+
+Reason: the legacy table stores a type, aggregate strength, and timestamps but
+not an immutable source revision, extraction method, confidence rationale, or
+per-edge evidence receipt. Treating those rows as verified facts would invent
+provenance and violate the sparse graph goal.
+
+Safety: Phase 1 uses only deterministic fixtures; it does not open or write a
+live corpus, invoke a provider/model, alter existing retrieval, or add a schema
+migration. Any later upgrade is additive and must preserve legacy behavior.
