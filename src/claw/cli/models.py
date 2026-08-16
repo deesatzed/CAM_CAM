@@ -24,6 +24,7 @@ from claw.models.benchmark import (
 )
 from claw.models.catalog import ModelCatalog, OpenRouterCatalogClient
 from claw.models.candidate_set import load_candidate_set
+from claw.models.comparison import compare_to_baseline
 from claw.models.profiles import (
     PromotionReceipt,
     activate_profile,
@@ -436,6 +437,30 @@ def report_benchmark(
     output.write_text(content)
     os.chmod(output, 0o600)
     typer.echo(f"Report: {output}")
+
+
+@benchmark_app.command("compare")
+def compare_benchmark(
+    baseline_model: str = typer.Option(..., "--baseline-model"),
+    candidate_model: str = typer.Option(..., "--candidate-model"),
+    first_round_report: Path = typer.Option(..., "--first-round-report"),
+    heldout_report: Path = typer.Option(..., "--heldout-report"),
+    repeat_report: Path = typer.Option(..., "--repeat-report"),
+) -> None:
+    """Compare completed benchmark reports; this never promotes a model."""
+    reports = {
+        "first-round": BenchmarkQualityReport.model_validate_json(
+            first_round_report.read_text()
+        ),
+        "heldout": BenchmarkQualityReport.model_validate_json(heldout_report.read_text()),
+        "repeat": BenchmarkQualityReport.model_validate_json(repeat_report.read_text()),
+    }
+    verdict = compare_to_baseline(
+        baseline_model=baseline_model,
+        candidate_model=candidate_model,
+        reports=reports,
+    )
+    typer.echo(verdict.model_dump_json(indent=2))
 
 
 def _selection_report_markdown(report: TournamentSelectionReport) -> str:

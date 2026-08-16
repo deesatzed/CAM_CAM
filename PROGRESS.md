@@ -540,3 +540,16 @@ Assumptions:
   `test_camseq_foundation.py`; `git diff --check` passed. Pytest could not
   create its optional `.pytest_cache` inside the recovery clone because of the
   managed sandbox, but test execution and fixture database writes succeeded.
+
+## 2026-08-16 Model comparison verdict command
+
+- Added the read-only `cam models benchmark compare` adapter over the existing
+  evidence-only baseline comparison. It accepts the three completed stage
+  reports and emits a `better`, `not_better`, `rejected`, or `inconclusive`
+  verdict; it cannot call a provider, write a profile, or promote a model.
+- Test-first evidence: the CLI test initially failed because `compare` was not
+  registered. After the adapter, `tests/test_models_cli.py`,
+  `tests/test_model_comparison.py`, and `tests/test_cli_capability_manifest.py`
+  passed (`22 passed`). Optional pytest-cache creation remains sandbox-blocked.
+- Next action: pin this new canonical command in the CAM_Codx capability
+  registry and expose only its read-only manager packet.

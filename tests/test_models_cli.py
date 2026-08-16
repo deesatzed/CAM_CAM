@@ -317,6 +317,66 @@ def test_benchmark_plan_accepts_candidate_set_with_matching_baseline(tmp_path: P
     assert "NO PAID CALLS MADE" in result.output
 
 
+def test_benchmark_compare_emits_non_promoting_baseline_verdict(tmp_path: Path) -> None:
+    baseline = "z-ai/glm-5.2"
+    candidate = "openai/gpt-5.6-luna"
+    report_paths: dict[str, Path] = {}
+    for stage in ("first-round", "heldout", "repeat"):
+        report = BenchmarkQualityReport(
+            run_id=stage,
+            expected_fixtures=1,
+            actual_cost_usd=0.04,
+            calls=[],
+            models=[
+                ModelQualitySummary(
+                    model_id=baseline,
+                    completed_calls=1,
+                    average_quality=80.0,
+                    worst_quality=80.0,
+                    total_cost_usd=0.02,
+                    cost_per_finding_usd=0.004,
+                    average_sync_latency_seconds=1.0,
+                    finding_count=5,
+                    hard_failures=[],
+                    eligible=True,
+                ),
+                ModelQualitySummary(
+                    model_id=candidate,
+                    completed_calls=1,
+                    average_quality=90.0,
+                    worst_quality=90.0,
+                    total_cost_usd=0.02,
+                    cost_per_finding_usd=0.004,
+                    average_sync_latency_seconds=1.0,
+                    finding_count=5,
+                    hard_failures=[],
+                    eligible=True,
+                ),
+            ],
+        )
+        path = tmp_path / f"{stage}.json"
+        path.write_text(report.model_dump_json())
+        report_paths[stage] = path
+
+    result = runner.invoke(
+        app,
+        [
+            "models", "benchmark", "compare",
+            "--baseline-model", baseline,
+            "--candidate-model", candidate,
+            "--first-round-report", str(report_paths["first-round"]),
+            "--heldout-report", str(report_paths["heldout"]),
+            "--repeat-report", str(report_paths["repeat"]),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    verdict = json.loads(result.output)
+    assert verdict["status"] == "better"
+    assert verdict["stage_evidence"] == ["first-round", "heldout", "repeat"]
+    assert "promote" not in result.output.lower()
+
+
 def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     tmp_path: Path,
 ) -> None:
