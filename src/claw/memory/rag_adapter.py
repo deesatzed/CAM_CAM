@@ -333,12 +333,14 @@ def read_lancedb(path: Path) -> list[RAGDocument]:
         )
 
     db = ldb.connect(str(path))
-    table_names = db.table_names()
+    table_names = db.list_tables().tables
 
     docs: list[RAGDocument] = []
     for table_name in table_names:
         table = db.open_table(table_name)
-        rows = table.to_pandas()
+        # LanceDB 0.33 delegates ``to_pandas`` through a LanceDataset method
+        # that no longer exists.  Its public Arrow result remains stable.
+        rows = table.to_arrow().to_pandas()
 
         # Find the content column
         content_col = None
