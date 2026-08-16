@@ -6,10 +6,13 @@ from claw.models.catalog import (
     ModelPricing,
     OpenRouterCatalogClient,
 )
+from claw.models.candidate_set import ImportedCandidateSet, load_candidate_set
 
 __all__ = [
     "ModelCatalog",
     "ModelCatalogEntry",
     "ModelPricing",
     "OpenRouterCatalogClient",
+    "ImportedCandidateSet",
+    "load_candidate_set",
 ]
