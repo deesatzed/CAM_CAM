@@ -85,6 +85,22 @@ def test_first_round_plan_prices_only_executable_calls_and_prior_spend() -> None
     assert "private prompt" not in serialized
 
 
+def test_first_round_plan_accepts_a_validated_baseline_and_candidate_subset() -> None:
+    suite = BenchmarkSuite.load(Path("benchmarks/mining-v1.toml"))
+
+    plan = TournamentPlanner().plan_first_round(
+        suite,
+        _fixtures(),
+        _catalog(),
+        authorization_usd=5.0,
+        candidates=["z-ai/glm-5.2", "openai/gpt-5.6-luna"],
+    )
+
+    assert plan.selected_candidates == ["z-ai/glm-5.2", "openai/gpt-5.6-luna"]
+    assert {call.model_id for call in plan.calls} == set(plan.selected_candidates)
+    assert len(plan.calls) == 6
+
+
 def test_stage_plan_rejects_a_call_from_another_stage() -> None:
     suite = BenchmarkSuite.load(Path("benchmarks/mining-v1.toml"))
     plan = TournamentPlanner().plan_first_round(

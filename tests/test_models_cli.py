@@ -275,6 +275,48 @@ def test_benchmark_plan_is_no_spend_and_writes_hashed_manifest(tmp_path: Path) -
     assert "private source" not in plan_text
 
 
+def test_benchmark_plan_accepts_candidate_set_with_matching_baseline(tmp_path: Path) -> None:
+    suite_path = Path(__file__).parent.parent / "benchmarks" / "mining-v1.toml"
+    catalog_path = Path(__file__).parent / "fixtures" / "openrouter_models.json"
+    fixture_path = tmp_path / "fixtures.json"
+    candidate_set_path = tmp_path / "candidate-set.json"
+    output_path = tmp_path / "run"
+    names = ["Codx_LoopKit", "atomic-agent", "RedaktSafe", "OpenCLI", "OpenViking"]
+    fixture_path.write_text(json.dumps([
+        MiningPromptFixture(
+            repo_path=f"/private/{name}", repo_name=name, git_head="a" * 40,
+            dirty_paths=[], brain="python", prompt=f"prompt {name}",
+            prompt_sha256=f"prompt-{name}", repo_content=f"source {name}",
+            repo_content_sha256=f"content-{name}", source_manifest=["README.md"],
+            repo_bytes=100, file_count=1, estimated_tokens=1000, token_budget=512,
+            domain_info={}, overlap={},
+        ).model_dump(mode="json") for name in names
+    ]))
+    candidate_set_path.write_text(json.dumps({
+        "schema_version": 1,
+        "catalog_fetched_at_utc": "2026-08-16T00:00:00Z",
+        "lookback_start_utc": "2026-07-17T00:00:00Z",
+        "lookback_end_utc": "2026-08-16T00:00:00Z",
+        "baseline_model": "z-ai/glm-5.2",
+        "selected_model_ids": ["z-ai/glm-5.2", "openai/gpt-5.6-luna"],
+        "catalog_digest": "a" * 64,
+    }))
+
+    result = runner.invoke(
+        app,
+        [
+            "models", "benchmark", "plan", str(suite_path), "--fixtures", str(fixture_path),
+            "--catalog-snapshot", str(catalog_path), "--candidate-set", str(candidate_set_path),
+            "--baseline-model", "z-ai/glm-5.2", "--budget-usd", "5", "--output", str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    plan = TournamentStagePlan.model_validate_json((output_path / "plan.json").read_text())
+    assert plan.selected_candidates == ["z-ai/glm-5.2", "openai/gpt-5.6-luna"]
+    assert "NO PAID CALLS MADE" in result.output
+
+
 def test_benchmark_plan_and_advance_are_stage_specific_and_no_spend(
     tmp_path: Path,
 ) -> None:

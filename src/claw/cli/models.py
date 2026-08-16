@@ -23,6 +23,7 @@ from claw.models.benchmark import (
     MiningPromptFixture,
 )
 from claw.models.catalog import ModelCatalog, OpenRouterCatalogClient
+from claw.models.candidate_set import load_candidate_set
 from claw.models.profiles import (
     PromotionReceipt,
     activate_profile,
@@ -149,6 +150,8 @@ def plan_benchmark(
     stage: str = typer.Option("first-round", "--stage"),
     fixtures: Path = typer.Option(..., "--fixtures"),
     catalog_snapshot: Path | None = typer.Option(None, "--catalog-snapshot"),
+    candidate_set: Path | None = typer.Option(None, "--candidate-set"),
+    baseline_model: str | None = typer.Option(None, "--baseline-model"),
     budget_usd: float = typer.Option(5.0, "--budget-usd", min=0.01),
     prior_spend_usd: float = typer.Option(0.0, "--prior-spend-usd", min=0.0),
     output: Path = typer.Option(Path("data/model_benchmarks/planned"), "--output"),
@@ -163,12 +166,23 @@ def plan_benchmark(
         catalog = _load_catalog_snapshot(catalog_snapshot)
     else:
         catalog = asyncio.run(OpenRouterCatalogClient().fetch())
+    candidates: list[str] | None = None
+    if candidate_set is not None:
+        if baseline_model is None:
+            raise typer.BadParameter("--baseline-model is required with --candidate-set")
+        imported = load_candidate_set(candidate_set, catalog=catalog)
+        if imported.baseline_model != baseline_model:
+            raise typer.BadParameter("--baseline-model must match the candidate-set baseline")
+        candidates = list(imported.selected_model_ids)
+    elif baseline_model is not None:
+        raise typer.BadParameter("--baseline-model requires --candidate-set")
     plan = TournamentPlanner().plan_first_round(
         benchmark_suite,
         prompt_fixtures,
         catalog,
         authorization_usd=budget_usd,
         prior_spend_usd=prior_spend_usd,
+        candidates=candidates,
     )
     if output.exists() and any(output.iterdir()):
         raise typer.BadParameter("Output directory already contains frozen evidence")

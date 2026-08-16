@@ -161,6 +161,7 @@ class TournamentPlanner:
         *,
         authorization_usd: float,
         prior_spend_usd: float = 0.0,
+        candidates: list[str] | None = None,
     ) -> TournamentStagePlan:
         if authorization_usd <= 0:
             raise ValueError("Tournament authorization must be positive")
@@ -174,13 +175,19 @@ class TournamentPlanner:
         if dirty:
             raise ValueError(f"Benchmark fixtures must be clean: {', '.join(sorted(dirty))}")
 
+        selected_candidates = list(candidates) if candidates is not None else list(suite.candidates)
+        if not selected_candidates:
+            raise ValueError("Tournament requires at least one candidate")
+        if len(selected_candidates) != len(set(selected_candidates)):
+            raise ValueError("Tournament candidates must be unique")
+
         first_names = [
             item.name for item in suite.fixtures if item.stage == "first-round"
         ]
         first_round = [by_name[name] for name in first_names]
         calls = self._freeze_calls(
             stage="first-round",
-            candidates=suite.candidates,
+            candidates=selected_candidates,
             fixtures=first_round,
             catalog=catalog,
         )
@@ -192,11 +199,11 @@ class TournamentPlanner:
                 f"${authorization_usd:.4f}"
             )
 
-        entries = {model_id: catalog.require(model_id) for model_id in suite.candidates}
+        entries = {model_id: catalog.require(model_id) for model_id in selected_candidates}
         now = datetime.now(UTC)
         seed = f"{suite.name}|first-round|{catalog.digest}|" + "|".join(
             fixture.prompt_sha256 for fixture in first_round
-        )
+        ) + "|" + "|".join(selected_candidates)
         return TournamentStagePlan(
             run_id=(
                 f"{now.strftime('%Y%m%dT%H%M%SZ')}-"
@@ -212,15 +219,15 @@ class TournamentPlanner:
                 digest=catalog.digest,
                 model_digests={
                     model_id: entries[model_id].catalog_digest
-                    for model_id in suite.candidates
+                    for model_id in selected_candidates
                 },
             ),
             catalog_prices={
-                model_id: entries[model_id].pricing for model_id in suite.candidates
+                model_id: entries[model_id].pricing for model_id in selected_candidates
             },
             fixtures=[_fixture_receipt(fixture, "first-round") for fixture in first_round],
             calls=calls,
-            selected_candidates=list(suite.candidates),
+            selected_candidates=selected_candidates,
         )
 
     def plan_advance(
