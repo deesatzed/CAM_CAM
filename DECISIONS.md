@@ -328,3 +328,19 @@ provenance and violate the sparse graph goal.
 Safety: Phase 1 uses only deterministic fixtures; it does not open or write a
 live corpus, invoke a provider/model, alter existing retrieval, or add a schema
 migration. Any later upgrade is additive and must preserve legacy behavior.
+
+## 2026-08-16: Start extraction with exact local Python structure only
+
+Decision: the first Phase 2 extractor reads a supplied local fixture root and
+emits only AST declarations, imported test-function calls, and explicitly named
+JSON outcome references. Each edge receives a receipt with the exact source
+bytes' SHA-256, relative source URI, caller-supplied immutable revision, and
+extraction method.
+
+Reason: these are deterministic, inspectable relationships that can establish
+the receipt contract before a database schema, broad language support, entity
+resolution, or inference layer is introduced.
+
+Safety: unsupported imports, calls, and outcomes create no edge. The extractor
+does not execute target code, invoke a provider, load an embedding model, read
+`claw.db`, mutate files, or treat prose/similarity/co-retrieval as evidence.

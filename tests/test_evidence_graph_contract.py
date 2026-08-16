@@ -14,7 +14,6 @@ from claw.knowledge_graph.contract import (
     graph_health,
 )
 
-
 FIXTURE = Path(__file__).parent / "fixtures" / "evidence_graph_v1" / "graph.json"
 
 
@@ -25,7 +24,9 @@ def test_fixture_graph_preserves_explicit_and_association_evidence() -> None:
     assert {node.node_type for node in graph.nodes} >= {
         "source_file", "symbol", "test", "outcome"
     }
-    associations = [edge for edge in graph.edges if edge.evidence_class == EvidenceClass.ASSOCIATION]
+    associations = [
+        edge for edge in graph.edges if edge.evidence_class == EvidenceClass.ASSOCIATION
+    ]
     assert [edge.edge_type for edge in associations] == ["co_retrieval"]
     assert associations[0].factual_path_eligible is False
     assert all(edge.evidence for edge in graph.edges)

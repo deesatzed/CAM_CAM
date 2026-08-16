@@ -571,3 +571,20 @@ Assumptions:
 - Next action: run the adjacent legacy graph regressions and inspect the Phase
   1 diff. Phase 2 is deferred: no extractor, migration, live-data scan, or
   CAM_Codx graph packet has been started.
+
+## 2026-08-16 Sparse evidence graph: Phase 2 local extraction slice
+
+- Added `extract_evidence_graph(root, source_revision=...)`, a deterministic
+  local-only Python extractor. It emits receipt-backed explicit `declares`,
+  `covered_by`, and `verified_by` edges from AST structure, imported test calls,
+  and named outcome references.
+- TDD RED was the missing extractor module. GREEN proves fixture nodes and
+  edges, exact SHA-256 provenance from the source bytes read, explicit-only
+  evidence class, and factual-path eligibility (`4` graph-specific tests).
+- Broader adjacent graph verification passed `269` tests with Ruff and
+  `git diff --check` green. No database migration, live corpus scan, provider
+  call, embedding, model-assisted resolution, graph traversal, or CAM_Codx
+  route was added.
+- Next decision: design an additive persistence/import seam for the extracted
+  contract and legacy association labels, with a rollback path, before any
+  live-data ingestion or graph query surface.

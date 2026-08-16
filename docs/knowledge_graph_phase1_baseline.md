@@ -55,7 +55,10 @@ entity-resolution quality, or a production graph-health claim.
 ## Deferred To Phase 2+
 
 - Structured AST/import/test/outcome extractors and content hashes from actual
-  source files.
+  source files. **The first local-fixture slice is now implemented:**
+  `extract_evidence_graph` reads exact bytes and emits only explicit Python
+  declaration, imported-test-call, and named-outcome edges; unsupported
+  relationships are omitted rather than inferred.
 - Entity blocking, similarity scoring, merge/split review ledger, and optional
   bounded model review.
 - Persistent graph tables/migration decision and a backward-compatible legacy
