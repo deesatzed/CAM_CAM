@@ -675,3 +675,18 @@ Assumptions:
   `git diff --check` clean.
 - Next action: add the single CAM_Codx-managed read-only packet and registry
   route over this command, preserving CAM_Codx-first normal UX.
+
+## 2026-08-17 Sparse evidence graph: Phase 7 model-free entity candidates
+
+- Added `resolve_methodology_entities(...)` with first-token blocking,
+  deterministic token/sequence similarity, and stable candidate keys. It
+  emits receipt-backed `merge` proposals only for isolated high-similarity
+  pairs and keeps close candidates `unresolved` for review.
+- The resolver does not apply merges/splits, mutate aliases, write the
+  database, invoke a provider, load embeddings, or inspect live corpus state.
+- TDD proof covers receipt retention, deterministic candidate IDs, merge
+  proposal semantics, and ambiguity preservation (`2` resolver tests). Graph
+  Ruff and `git diff --check` remain clean.
+- Next action: run the combined graph gate, commit/push this resolver slice,
+  then decide whether a bounded live-import adapter is justified or whether
+  to stop at fixture/local proof.

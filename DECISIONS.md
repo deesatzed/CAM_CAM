@@ -411,3 +411,19 @@ or expose provider/model/database setup in normal UX.
 Safety: the command refuses a missing database path, opens no provider, does
 not initialize a factory or create schema, and performs no writes. Association
 opt-in and expected-revision checks remain explicit in the underlying service.
+
+## 2026-08-17: Keep entity resolution model-free and review-first
+
+Decision: add deterministic methodology blocking on the first normalized token
+and transparent Jaccard/sequence similarity scoring. High-confidence isolated
+pairs are emitted as receipt-backed `merge` proposals; close alternatives are
+emitted as `unresolved` records. The resolver never applies a merge, split, or
+alias mutation automatically.
+
+Reason: the graph needs reproducible entity candidates before any optional
+model-assisted path is considered. A review ledger makes ambiguity visible and
+keeps fixture proof independent of provider/model availability.
+
+Safety: resolution requires caller-supplied exact evidence receipts and bounded
+thresholds. Non-methodology nodes are ignored, empty evidence fails closed,
+and no provider, embedding model, database write, or live corpus scan occurs.
