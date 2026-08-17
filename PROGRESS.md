@@ -609,3 +609,22 @@ Assumptions:
   gates are complete.
 - Next action: add deterministic bounded graph query/traversal over a named
   snapshot, with association edges opt-in and factual paths receipt-backed.
+
+## 2026-08-17 Sparse evidence graph: Phase 4 bounded query slice
+
+- Added a read-only query service over named snapshots with a hard two-hop
+  ceiling, deterministic breadth-first ordering, typed-edge filtering,
+  association opt-in, node/edge/fan-out caps, and an estimated token budget.
+- Query results are typed and include exact stored evidence receipts for every
+  returned edge and the provenance supporting every returned node. Missing
+  receipts fail closed.
+- TDD proof covers factual default traversal, association opt-in while keeping
+  it non-factual, typed filtering, and token-budget rejection (`3` query
+  tests). Database-engine migration compatibility also passed (`22` tests).
+- Verification: graph contract/extractor/persistence/query plus adjacent
+  governance, assimilation, and tier-2 tests passed (`276 passed`); graph
+  query Ruff and `git diff --check` passed. No live database or provider was
+  used.
+- Next action: add graph-health metrics and stale/changed-revision handling,
+  then expose the proven read-only service through CAM_CAM's troubleshooting
+  CLI and CAM_Codx's single outcome-facing packet.

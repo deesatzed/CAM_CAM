@@ -363,3 +363,20 @@ database behavior remain unchanged. If the migration must be removed before
 any graph snapshot is authorized, drop only the isolated `evidence_graph_*`
 table families in dependency order in an isolated maintenance copy; no legacy
 table or live graph row is rewritten by this slice.
+
+## 2026-08-17: Bound graph traversal before exposing it to CAM_Codx
+
+Decision: the first query service accepts a named snapshot and seed, limits
+traversal to two hops, caps nodes/edges/per-node degree and an estimated token
+budget, orders results deterministically, and returns receipt-backed node and
+edge models. Association edges are excluded unless the caller explicitly opts
+in; opt-in never changes their non-factual eligibility.
+
+Reason: CAM_Codx needs compact provenance-cited context, not an unbounded
+neighborhood or a whole corpus dump. Keeping this service read-only and
+snapshot-scoped establishes the safety boundary before CLI or manager-packet
+integration.
+
+Safety: missing snapshots, seeds, receipts, invalid limits, and budget
+overruns fail closed. The service does not write, migrate, execute source,
+call a provider, load a model, or alter hybrid retrieval.
