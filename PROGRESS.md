@@ -715,3 +715,10 @@ Assumptions:
 - The authorized write proof uses only a temporary Git repository and
   temporary initialized SQLite database. No live database, provider, model,
   source execution, or live import was run.
+- Final full-suite check from the recovered Downloads worktree completed with
+  `4457 passed, 22 skipped, 9 failed`. The adapter and graph-focused gates
+  remain green. Seven failures are unrelated existing artifact/trace tests
+  that try to create `data/` below this read-only-linked recovery checkout;
+  two are the known real-ganglia tests whose external databases cannot be
+  opened. These are recorded environment/baseline failures, not adapter
+  regressions.
