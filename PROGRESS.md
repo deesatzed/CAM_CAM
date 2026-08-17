@@ -652,7 +652,7 @@ Assumptions:
   `tests/test_auth_service.py` to `tests/auth_test_fixture.py` so pytest does
   not collect fixture code as a CAM_CAM production test. Extraction IDs were
   updated accordingly; the fixture behavior and graph edges are unchanged.
-- Full suite completed with `4458 passed, 22 skipped, 2 failed`. The two
+- Full suite completed with `4460 passed, 22 skipped, 2 failed`. The two
   failures are unrelated pre-existing real-ganglia tests
   (`test_real_ganglia_security_query` and `test_real_ganglia_architecture_query`)
   whose configured Rust/Go/TypeScript databases log `unable to open database
@@ -660,6 +660,11 @@ Assumptions:
 - The graph-focused gate remains green (`300 passed` before this fixture-only
   rename), and the renamed extractor test passes. No live graph database was
   opened or changed.
+
+- After the model-free resolver was added, the final current-head rerun
+  completed at `4460 passed, 22 skipped, 2 failed` with the identical two
+  unrelated real-ganglia baseline failures. The graph/DB/CLI/resolution
+  focused gate is `305 passed`.
 
 ## 2026-08-17 Sparse evidence graph: Phase 6 CAM_CAM troubleshooting command
 
