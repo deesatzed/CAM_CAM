@@ -15,14 +15,14 @@ def test_python_fixture_extraction_emits_receipt_backed_explicit_edges() -> None
     assert {
         "source_file:src/auth_service.py",
         "symbol:src/auth_service.py::validate_token",
-        "test:tests/test_auth_service.py::test_validate_token_rejects_empty_value",
+        "test:tests/auth_test_fixture.py::test_validate_token_rejects_empty_value",
         "outcome:outcomes/token-validation.json",
     } <= nodes
 
     by_type = {edge.edge_type: edge for edge in graph.edges}
     assert by_type["declares"].source_id == "source_file:src/auth_service.py"
     assert by_type["covered_by"].target_id == (
-        "test:tests/test_auth_service.py::test_validate_token_rejects_empty_value"
+        "test:tests/auth_test_fixture.py::test_validate_token_rejects_empty_value"
     )
     assert by_type["verified_by"].target_id == "outcome:outcomes/token-validation.json"
     assert all(edge.evidence_class.value == "explicit" for edge in graph.edges)

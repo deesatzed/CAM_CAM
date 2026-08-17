@@ -646,6 +646,21 @@ Assumptions:
   route was used. Next action: add CAM_CAM troubleshooting CLI exposure with
   a fixed, read-only packet suitable for CAM_Codx registration.
 
+## 2026-08-17 CAM_CAM full-suite release gate
+
+- Renamed the synthetic fixture-only test module from
+  `tests/test_auth_service.py` to `tests/auth_test_fixture.py` so pytest does
+  not collect fixture code as a CAM_CAM production test. Extraction IDs were
+  updated accordingly; the fixture behavior and graph edges are unchanged.
+- Full suite completed with `4458 passed, 22 skipped, 2 failed`. The two
+  failures are unrelated pre-existing real-ganglia tests
+  (`test_real_ganglia_security_query` and `test_real_ganglia_architecture_query`)
+  whose configured Rust/Go/TypeScript databases log `unable to open database
+  file`. They are not caused by the evidence-graph changes.
+- The graph-focused gate remains green (`300 passed` before this fixture-only
+  rename), and the renamed extractor test passes. No live graph database was
+  opened or changed.
+
 ## 2026-08-17 Sparse evidence graph: Phase 6 CAM_CAM troubleshooting command
 
 - Added hidden `knowledge-graph-query` to the CAM_CAM Typer surface. It reads
