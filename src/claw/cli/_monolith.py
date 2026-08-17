@@ -4707,6 +4707,79 @@ def brief_query(
         typer.echo(f"- {result['methodology_id']}: {result['problem_description']}")
 
 
+async def _knowledge_graph_query_async(
+    db: Path,
+    snapshot_id: str,
+    seed_node_id: str,
+    max_hops: int,
+    edge_types: list[str] | None,
+    include_associations: bool,
+    expected_source_revision: str | None,
+) -> dict[str, Any]:
+    from claw.core.config import DatabaseConfig
+    from claw.db.engine import DatabaseEngine
+    from claw.knowledge_graph.query import query_evidence_graph
+
+    db = db.expanduser().resolve()
+    if not db.is_file():
+        raise ValueError(f"knowledge graph database must already exist: {db}")
+    engine = DatabaseEngine(DatabaseConfig(db_path=str(db)))
+    await engine.connect()
+    try:
+        result = await query_evidence_graph(
+            engine,
+            snapshot_id=snapshot_id,
+            seed_node_id=seed_node_id,
+            max_hops=max_hops,
+            edge_types=set(edge_types) if edge_types else None,
+            include_associations=include_associations,
+            expected_source_revision=expected_source_revision,
+        )
+        return result.model_dump(mode="json")
+    finally:
+        await engine.close()
+
+
+@app.command(name="knowledge-graph-query", hidden=True)
+def knowledge_graph_query(
+    db: Path = typer.Option(..., "--db", help="Existing CAM SQLite database"),
+    snapshot_id: str = typer.Option(..., "--snapshot-id", help="Immutable graph snapshot ID"),
+    seed_node_id: str = typer.Option(..., "--seed-node-id", help="Canonical graph node ID"),
+    max_hops: int = typer.Option(2, "--max-hops", min=0, max=2),
+    edge_types: list[str] | None = typer.Option(None, "--edge-type", help="Restrict edge types; repeatable"),
+    include_associations: bool = typer.Option(False, "--include-associations"),
+    expected_source_revision: str | None = typer.Option(None, "--expected-source-revision"),
+    output_json: bool = typer.Option(False, "--json", help="Render machine-readable JSON"),
+) -> None:
+    """Read-only graph troubleshooting surface; CAM_Codx is the normal UX."""
+    try:
+        payload = asyncio.run(
+            _knowledge_graph_query_async(
+                db,
+                snapshot_id,
+                seed_node_id,
+                max_hops,
+                edge_types,
+                include_associations,
+                expected_source_revision,
+            )
+        )
+    except (ValueError, ValidationError) as exc:
+        if output_json:
+            typer.echo(json.dumps({"status": "error", "error": str(exc)}, sort_keys=True))
+            raise typer.Exit(2)
+        raise typer.BadParameter(str(exc)) from exc
+
+    if output_json:
+        typer.echo(json.dumps(payload, indent=2, sort_keys=True))
+        return
+    typer.echo(
+        "Evidence graph query: "
+        f"{len(payload['nodes'])} nodes, {len(payload['edges'])} edges, "
+        f"{payload['token_estimate']} estimated tokens"
+    )
+
+
 async def _status_async(config_path: Optional[str]) -> None:
     from claw.core.factory import ClawFactory
 

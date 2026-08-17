@@ -396,3 +396,18 @@ current factual context.
 Safety: health is read-only. Revision rejection does not rewrite or delete
 stale rows; a new source revision requires a separately named immutable
 snapshot and a fresh extraction/persistence proof.
+
+## 2026-08-17: Expose graph query only as CAM_CAM troubleshooting CLI
+
+Decision: register hidden `cam knowledge-graph-query` with an explicit existing
+`--db`, named `--snapshot-id`, and canonical `--seed-node-id`. It forwards only
+bounded read-only query options and emits JSON on request. CAM_Codx remains the
+normal outcome-facing route.
+
+Reason: direct CAM_CAM is useful for runtime development, recovery, and
+regression isolation, but should not compete with CAM_Codx's outcome language
+or expose provider/model/database setup in normal UX.
+
+Safety: the command refuses a missing database path, opens no provider, does
+not initialize a factory or create schema, and performs no writes. Association
+opt-in and expected-revision checks remain explicit in the underlying service.

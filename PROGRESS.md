@@ -645,3 +645,18 @@ Assumptions:
 - No live database, provider, embedding model, source execution, or CAM_Codx
   route was used. Next action: add CAM_CAM troubleshooting CLI exposure with
   a fixed, read-only packet suitable for CAM_Codx registration.
+
+## 2026-08-17 Sparse evidence graph: Phase 6 CAM_CAM troubleshooting command
+
+- Added hidden `knowledge-graph-query` to the CAM_CAM Typer surface. It reads
+  only an existing database and named snapshot, exposes bounded query options,
+  and supports machine-readable JSON for scripts and troubleshooting.
+- Missing database paths fail with a structured error and no file creation;
+  the command does not load `ClawFactory`, providers, models, or configuration
+  mutation paths.
+- TDD proof passed the command registration, JSON query, and missing-path
+  behavior (`3` CLI tests). Combined CLI/manifest/database/graph tests passed
+  (`44 passed` in the focused command batch), with graph Ruff and
+  `git diff --check` clean.
+- Next action: add the single CAM_Codx-managed read-only packet and registry
+  route over this command, preserving CAM_Codx-first normal UX.
