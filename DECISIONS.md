@@ -118,6 +118,24 @@ Reason: overwriting a failed receipt could both double charge a provider call
 and understate the remaining budget. Queued batches are especially sensitive
 because submission may succeed before polling times out.
 
+## 2026-08-17: Bound live graph import before exposing a manager route
+
+Decision: implement the live-import capability first as a CAM_CAM runtime
+adapter with a read-only preview and a separate content-bound write gate. Do
+not expose or execute a live CAM_Codx route until this seam has fixture proof
+and a product-level source/target authorization contract.
+
+Reason: the sparse graph extractor and immutable snapshot persistence are now
+proven locally, but importing arbitrary live repositories into a CAM database
+adds source identity, resource, privacy, and mutation risk. A preview can
+establish those identities without touching the database.
+
+Safety: the request requires a clean exact Git SHA, existing target database,
+file/byte/time caps, and a deterministic manifest. Writes require an expiring
+request-digest authorization and single-use operation ID. The adapter never
+initializes or migrates databases, calls providers, loads models, executes
+source code, or changes the legacy corpus.
+
 Safety: batch submission and polling are separate operations. A `submitted`
 receipt persists the job ID and 30-day retention fact before the first poll;
 transient polling failures preserve that receipt and resume the same job rather

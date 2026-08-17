@@ -695,3 +695,23 @@ Assumptions:
 - Next action: run the combined graph gate, commit/push this resolver slice,
   then decide whether a bounded live-import adapter is justified or whether
   to stop at fixture/local proof.
+
+## 2026-08-17 Bounded live-import adapter
+
+- Promoted the verified CAM_CAM and CAM_Codx feature heads to their respective
+  remote `main` branches by fast-forward only (`6801ab0` and `e4d2de1`).
+- Added `GOAL_LIVE_IMPORT.md` as the successor contract for a bounded local
+  evidence-graph import seam. It explicitly separates read-only preview from
+  an authorization-gated write and prohibits providers, models, migrations,
+  source execution, and canonical-database use during development.
+- Added `knowledge_graph.importer` with exact clean-Git revision checks,
+  deterministic file/byte/time bounds, source manifest and graph digests,
+  existing-schema checks, expiring request-bound authorization, and process
+  single-use operation IDs. It composes the existing extractor and
+  transactional persistence service.
+- TDD RED was the absent importer module. GREEN: the adapter fixture gate is
+  `4 passed`; the combined graph/CLI/persistence gate is `22 passed`. Ruff
+  passes for the changed adapter, extractor, persistence, and test files.
+- The authorized write proof uses only a temporary Git repository and
+  temporary initialized SQLite database. No live database, provider, model,
+  source execution, or live import was run.

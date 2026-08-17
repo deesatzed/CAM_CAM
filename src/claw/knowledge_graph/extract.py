@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import time
 from pathlib import Path
 
 from claw.knowledge_graph.contract import (
@@ -35,7 +36,12 @@ def _module_name(path: Path) -> str:
     return path.stem
 
 
-def extract_evidence_graph(root: Path, *, source_revision: str) -> EvidenceGraphFixture:
+def extract_evidence_graph(
+    root: Path,
+    *,
+    source_revision: str,
+    deadline: float | None = None,
+) -> EvidenceGraphFixture:
     """Extract only explicit local Python/test/outcome relationships.
 
     The extractor deliberately does not infer relationships from prose,
@@ -53,6 +59,8 @@ def extract_evidence_graph(root: Path, *, source_revision: str) -> EvidenceGraph
     exports: dict[str, str] = {}
 
     for path in python_paths:
+        if deadline is not None and time.monotonic() > deadline:
+            raise ValueError("evidence graph extraction exceeded its deadline")
         relative = _relative(root, path)
         source_id = f"source_file:{relative}"
         nodes.append(
@@ -93,6 +101,8 @@ def extract_evidence_graph(root: Path, *, source_revision: str) -> EvidenceGraph
             )
 
     for path, tree in parsed.items():
+        if deadline is not None and time.monotonic() > deadline:
+            raise ValueError("evidence graph extraction exceeded its deadline")
         relative = _relative(root, path)
         if not relative.startswith("tests/"):
             continue
@@ -142,6 +152,8 @@ def extract_evidence_graph(root: Path, *, source_revision: str) -> EvidenceGraph
 
     outcome_dir = root / "outcomes"
     for path in sorted(outcome_dir.glob("*.json")) if outcome_dir.is_dir() else []:
+        if deadline is not None and time.monotonic() > deadline:
+            raise ValueError("evidence graph extraction exceeded its deadline")
         relative = _relative(root, path)
         payload = json.loads(path.read_text(encoding="utf-8"))
         outcome_id = f"outcome:{relative}"

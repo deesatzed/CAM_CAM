@@ -9,9 +9,14 @@ from claw.db.engine import DatabaseEngine
 from claw.knowledge_graph.contract import EvidenceGraphFixture
 
 
-def _graph_digest(graph: EvidenceGraphFixture) -> str:
+def graph_digest(graph: EvidenceGraphFixture) -> str:
     payload = json.dumps(graph.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+# Kept as a private compatibility alias for callers that used the original
+# implementation detail before the bounded importer exposed this digest.
+_graph_digest = graph_digest
 
 
 async def persist_evidence_graph(
@@ -24,7 +29,7 @@ async def persist_evidence_graph(
     recorded. This service intentionally does not read or modify legacy
     ``methodology_links``.
     """
-    digest = _graph_digest(graph)
+    digest = graph_digest(graph)
     async with engine.transaction():
         existing = await engine.fetch_one(
             "SELECT graph_sha256 FROM evidence_graph_snapshots WHERE snapshot_id = ?",
