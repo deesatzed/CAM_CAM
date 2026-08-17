@@ -628,3 +628,20 @@ Assumptions:
 - Next action: add graph-health metrics and stale/changed-revision handling,
   then expose the proven read-only service through CAM_CAM's troubleshooting
   CLI and CAM_Codx's single outcome-facing packet.
+
+## 2026-08-17 Sparse evidence graph: Phase 5 health and revision gate
+
+- Added `measure_evidence_graph_health(...)` for deterministic persisted
+  snapshot metrics: node/edge counts, average degree, hub dominance,
+  edge-class counts, unresolved entity count, and optional query size/token
+  fields.
+- Added `expected_source_revision` to the read-only query. A receipt from a
+  different revision raises a stale-revision error before any result edge is
+  returned; stale rows remain unchanged for audit and require a new snapshot.
+- TDD proof covers fixture health values and stale revision rejection (`2`
+  health tests). The combined graph, database, governance, assimilation, and
+  tier-2 gate passed (`300 passed`), with graph Ruff and `git diff --check`
+  clean.
+- No live database, provider, embedding model, source execution, or CAM_Codx
+  route was used. Next action: add CAM_CAM troubleshooting CLI exposure with
+  a fixed, read-only packet suitable for CAM_Codx registration.

@@ -380,3 +380,19 @@ integration.
 Safety: missing snapshots, seeds, receipts, invalid limits, and budget
 overruns fail closed. The service does not write, migrate, execute source,
 call a provider, load a model, or alter hybrid retrieval.
+
+## 2026-08-17: Health metrics and stale revision rejection
+
+Decision: health is measured from persisted snapshot rows with deterministic
+node/edge counts, average degree, hub dominance, edge-class mix, unresolved
+entity count, and optional query size/token fields. Query callers may provide
+an expected immutable source revision; any receipt with a different revision
+causes the query to fail closed before returning an edge.
+
+Reason: graph growth and revision drift need observable gates before a normal
+user-facing route exists. Stale evidence must not be silently presented as
+current factual context.
+
+Safety: health is read-only. Revision rejection does not rewrite or delete
+stale rows; a new source revision requires a separately named immutable
+snapshot and a fresh extraction/persistence proof.

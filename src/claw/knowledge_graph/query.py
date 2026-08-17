@@ -63,12 +63,15 @@ async def query_evidence_graph(
     max_edges: int = 75,
     max_degree: int = 8,
     token_budget: int = 2048,
+    expected_source_revision: str | None = None,
 ) -> EvidenceGraphQueryResult:
     """Return a deterministic, compact subgraph without changing database state."""
     if not 0 <= max_hops <= 2:
         raise ValueError("max_hops must be between 0 and 2")
     if min(max_nodes, max_edges, max_degree, token_budget) <= 0:
         raise ValueError("query limits must be positive")
+    if expected_source_revision is not None and not expected_source_revision.strip():
+        raise ValueError("expected_source_revision must not be empty")
 
     snapshot = await engine.fetch_one(
         "SELECT snapshot_id FROM evidence_graph_snapshots WHERE snapshot_id = ?",
@@ -147,6 +150,14 @@ async def query_evidence_graph(
             [snapshot_id, *params],
         )
         for row in receipt_rows:
+            if (
+                expected_source_revision is not None
+                and row["source_revision"] != expected_source_revision
+            ):
+                raise ValueError(
+                    "Graph query rejected stale source revision: "
+                    f"expected {expected_source_revision}, found {row['source_revision']}"
+                )
             receipts_by_edge[str(row["edge_id"])].append(
                 GraphEvidenceReceipt(
                     source_uri=str(row["source_uri"]),
