@@ -778,6 +778,79 @@ class DatabaseEngine:
             )
             await self.conn.commit()
 
+        # Migration 24: isolated receipt-backed sparse evidence graph tables.
+        # These tables do not alter methodology_links or existing retrieval.
+        row = await self.fetch_one(
+            "SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name='evidence_graph_snapshots'"
+        )
+        if row and row["cnt"] == 0:
+            await self.conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS evidence_graph_snapshots (
+                    snapshot_id TEXT PRIMARY KEY,
+                    schema_version TEXT NOT NULL,
+                    graph_sha256 TEXT NOT NULL,
+                    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+                );
+                CREATE TABLE IF NOT EXISTS evidence_graph_nodes (
+                    snapshot_id TEXT NOT NULL REFERENCES evidence_graph_snapshots(snapshot_id) ON DELETE CASCADE,
+                    node_id TEXT NOT NULL,
+                    node_type TEXT NOT NULL,
+                    canonical_name TEXT NOT NULL,
+                    aliases_json TEXT NOT NULL DEFAULT '[]',
+                    PRIMARY KEY (snapshot_id, node_id)
+                );
+                CREATE TABLE IF NOT EXISTS evidence_graph_edges (
+                    snapshot_id TEXT NOT NULL REFERENCES evidence_graph_snapshots(snapshot_id) ON DELETE CASCADE,
+                    edge_id TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    target_id TEXT NOT NULL,
+                    edge_type TEXT NOT NULL,
+                    evidence_class TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    factual_path_eligible INTEGER NOT NULL CHECK (factual_path_eligible IN (0, 1)),
+                    PRIMARY KEY (snapshot_id, edge_id)
+                );
+                CREATE INDEX IF NOT EXISTS idx_evidence_graph_edges_source ON evidence_graph_edges(snapshot_id, source_id);
+                CREATE INDEX IF NOT EXISTS idx_evidence_graph_edges_target ON evidence_graph_edges(snapshot_id, target_id);
+                CREATE INDEX IF NOT EXISTS idx_evidence_graph_edges_class ON evidence_graph_edges(snapshot_id, evidence_class);
+                CREATE TABLE IF NOT EXISTS evidence_graph_edge_receipts (
+                    snapshot_id TEXT NOT NULL,
+                    edge_id TEXT NOT NULL,
+                    receipt_index INTEGER NOT NULL,
+                    source_uri TEXT NOT NULL,
+                    source_revision TEXT NOT NULL,
+                    content_sha256 TEXT NOT NULL,
+                    extraction_method TEXT NOT NULL,
+                    PRIMARY KEY (snapshot_id, edge_id, receipt_index),
+                    FOREIGN KEY (snapshot_id, edge_id)
+                        REFERENCES evidence_graph_edges(snapshot_id, edge_id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS evidence_graph_entity_resolution (
+                    snapshot_id TEXT NOT NULL REFERENCES evidence_graph_snapshots(snapshot_id) ON DELETE CASCADE,
+                    entity_key TEXT NOT NULL,
+                    candidate_node_ids_json TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    confidence REAL NOT NULL,
+                    PRIMARY KEY (snapshot_id, entity_key)
+                );
+                CREATE TABLE IF NOT EXISTS evidence_graph_entity_receipts (
+                    snapshot_id TEXT NOT NULL,
+                    entity_key TEXT NOT NULL,
+                    receipt_index INTEGER NOT NULL,
+                    source_uri TEXT NOT NULL,
+                    source_revision TEXT NOT NULL,
+                    content_sha256 TEXT NOT NULL,
+                    extraction_method TEXT NOT NULL,
+                    PRIMARY KEY (snapshot_id, entity_key, receipt_index),
+                    FOREIGN KEY (snapshot_id, entity_key)
+                        REFERENCES evidence_graph_entity_resolution(snapshot_id, entity_key) ON DELETE CASCADE
+                );
+                """
+            )
+            await self.conn.commit()
+            logger.info("Migration 24 applied: evidence graph tables created")
+
     # ------------------------------------------------------------------
     # Write operations — wrapped with _retry_on_locked for contention
     # ------------------------------------------------------------------

@@ -344,3 +344,22 @@ resolution, or inference layer is introduced.
 Safety: unsupported imports, calls, and outcomes create no edge. The extractor
 does not execute target code, invoke a provider, load an embedding model, read
 `claw.db`, mutate files, or treat prose/similarity/co-retrieval as evidence.
+
+## 2026-08-17: Persist graph snapshots in isolated receipt-backed tables
+
+Decision: add `evidence_graph_snapshots`, node/edge, receipt, and
+entity-resolution tables as an additive migration. Persisting requires a
+caller-supplied snapshot ID and stores a canonical graph digest; reusing an ID
+with changed content fails closed, while repeating identical content is
+idempotent.
+
+Reason: extraction needs durable local state before query and health work, but
+the legacy `methodology_links` table cannot represent immutable receipts or
+entity decisions. Separate tables preserve backward compatibility and keep
+association edges explicitly ineligible for factual paths.
+
+Rollback: do not invoke the new persistence service and existing retrieval and
+database behavior remain unchanged. If the migration must be removed before
+any graph snapshot is authorized, drop only the isolated `evidence_graph_*`
+table families in dependency order in an isolated maintenance copy; no legacy
+table or live graph row is rewritten by this slice.

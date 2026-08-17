@@ -588,3 +588,24 @@ Assumptions:
 - Next decision: design an additive persistence/import seam for the extracted
   contract and legacy association labels, with a rollback path, before any
   live-data ingestion or graph query surface.
+
+## 2026-08-17 Sparse evidence graph: Phase 3 additive persistence slice
+
+- Added migration/schema support for isolated `evidence_graph_*` snapshots,
+  nodes, typed edges, receipt rows, and entity-resolution decisions. Existing
+  `methodology_links` and hybrid retrieval are untouched.
+- Added `persist_evidence_graph(...)` with one transaction, canonical graph
+  SHA-256, immutable snapshot IDs, idempotent same-content reimport, and
+  fail-closed changed-content rejection. Association eligibility is stored as
+  supplied and cannot become factual through persistence.
+- TDD proof covers receipt/revision retention, association exclusion,
+  idempotent reimport, changed-snapshot rejection, and unresolved entity
+  retention (`4` persistence tests).
+- Verification: graph contract/extractor/persistence plus adjacent governance,
+  assimilation, and tier-2 tests passed (`273 passed`); graph-module Ruff and
+  `git diff --check` passed. No live database was opened or migrated.
+- Rollback is non-destructive: the service is opt-in and the graph tables are
+  isolated; do not run it against a live database until the query and import
+  gates are complete.
+- Next action: add deterministic bounded graph query/traversal over a named
+  snapshot, with association edges opt-in and factual paths receipt-backed.

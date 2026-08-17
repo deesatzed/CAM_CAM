@@ -989,3 +989,69 @@ CREATE INDEX IF NOT EXISTS idx_failure_knowledge_category ON failure_knowledge(e
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_task_type ON failure_knowledge(task_type);
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_root_cause ON failure_knowledge(root_cause_key);
 CREATE INDEX IF NOT EXISTS idx_failure_knowledge_resolved ON failure_knowledge(resolved);
+
+-- 43. EVIDENCE_GRAPH (isolated receipt-backed sparse graph snapshots)
+CREATE TABLE IF NOT EXISTS evidence_graph_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    schema_version TEXT NOT NULL,
+    graph_sha256 TEXT NOT NULL,
+    created_at TEXT DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE IF NOT EXISTS evidence_graph_nodes (
+    snapshot_id TEXT NOT NULL REFERENCES evidence_graph_snapshots(snapshot_id) ON DELETE CASCADE,
+    node_id TEXT NOT NULL,
+    node_type TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    aliases_json TEXT NOT NULL DEFAULT '[]',
+    PRIMARY KEY (snapshot_id, node_id)
+);
+
+CREATE TABLE IF NOT EXISTS evidence_graph_edges (
+    snapshot_id TEXT NOT NULL REFERENCES evidence_graph_snapshots(snapshot_id) ON DELETE CASCADE,
+    edge_id TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    edge_type TEXT NOT NULL,
+    evidence_class TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    factual_path_eligible INTEGER NOT NULL CHECK (factual_path_eligible IN (0, 1)),
+    PRIMARY KEY (snapshot_id, edge_id)
+);
+CREATE INDEX IF NOT EXISTS idx_evidence_graph_edges_source ON evidence_graph_edges(snapshot_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_graph_edges_target ON evidence_graph_edges(snapshot_id, target_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_graph_edges_class ON evidence_graph_edges(snapshot_id, evidence_class);
+
+CREATE TABLE IF NOT EXISTS evidence_graph_edge_receipts (
+    snapshot_id TEXT NOT NULL,
+    edge_id TEXT NOT NULL,
+    receipt_index INTEGER NOT NULL,
+    source_uri TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    extraction_method TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, edge_id, receipt_index),
+    FOREIGN KEY (snapshot_id, edge_id)
+        REFERENCES evidence_graph_edges(snapshot_id, edge_id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS evidence_graph_entity_resolution (
+    snapshot_id TEXT NOT NULL REFERENCES evidence_graph_snapshots(snapshot_id) ON DELETE CASCADE,
+    entity_key TEXT NOT NULL,
+    candidate_node_ids_json TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    confidence REAL NOT NULL,
+    PRIMARY KEY (snapshot_id, entity_key)
+);
+CREATE TABLE IF NOT EXISTS evidence_graph_entity_receipts (
+    snapshot_id TEXT NOT NULL,
+    entity_key TEXT NOT NULL,
+    receipt_index INTEGER NOT NULL,
+    source_uri TEXT NOT NULL,
+    source_revision TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    extraction_method TEXT NOT NULL,
+    PRIMARY KEY (snapshot_id, entity_key, receipt_index),
+    FOREIGN KEY (snapshot_id, entity_key)
+        REFERENCES evidence_graph_entity_resolution(snapshot_id, entity_key) ON DELETE CASCADE
+);
