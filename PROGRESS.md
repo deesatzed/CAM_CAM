@@ -722,3 +722,16 @@ Assumptions:
   two are the known real-ganglia tests whose external databases cannot be
   opened. These are recorded environment/baseline failures, not adapter
   regressions.
+
+## 2026-08-18 Documentation synchronization
+
+- Updated CAM_CAM's public README, CAM_Codx integration handoff, direct
+  operator cheatsheet, sparse-graph goal, and bounded live-import contract to
+  match the published Tasks 1-13 control-plane and graph/adapter evidence.
+- Preserved direct CAM_CAM as the troubleshooting, runtime-development,
+  recovery, and regression-isolation surface. The MatrAIx/SESA slice remains
+  outside the verified control-plane proof and is governed by the CAM_Codx
+  Task 14 discovery contract.
+- Documentation-only validation: the CAM_CAM graph/import gate remained
+  `22 passed`; `git diff --check` passed. No database, provider, model, target,
+  or live-import state was changed.

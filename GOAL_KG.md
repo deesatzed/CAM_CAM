@@ -1,5 +1,11 @@
 # Goal: Sparse, Evidence-Backed CAM Knowledge Graph
 
+> Status (2026-08-18): the sparse graph contract, health report, bounded query,
+> review-first resolver, CAM_Codx route, and fixture gates are implemented and
+> published. This is fixture/isolated proof; it does not claim high-precision
+> live-corpus ingestion or production accuracy. The bounded live-import seam
+> is separately governed by `GOAL_LIVE_IMPORT.md`.
+
 This is a successor build contract. It derives from the graph audit of
 `/Volumes/WS4TB/KGraph.md`: CAM_CAM currently has hybrid vector/FTS retrieval,
 methodology association links, and a separate repository inventory graph. It

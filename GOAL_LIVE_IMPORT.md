@@ -1,5 +1,10 @@
 # Bounded Live-Import Adapter Contract
 
+> Status (2026-08-18): the adapter and fixture gates are implemented and
+> published at `bcff322`/`e5693a3`. No live import has been executed; the
+> adapter remains a separately authorized runtime seam for a future bounded
+> source/target operation.
+
 ## Outcome
 
 Provide a CAM_CAM runtime adapter that can assess and, only after a separate

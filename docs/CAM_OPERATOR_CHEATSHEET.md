@@ -2,9 +2,11 @@
 
 This is the direct CAM_CAM troubleshooting and runtime-development reference.
 
-Normal developer work should begin in CAM_Codx. The approved target is one
-CAM_Codx skill that manages all CAM_CAM features; that consolidation is not yet
-implemented, so current CAM_Codx specialized skills remain valid.
+Normal developer work should begin in CAM_Codx. The current target is one
+`cam-codx` skill that manages the normal CAM_CAM surface. Tasks 1-13 are
+implemented and release-audited; use this direct cheatsheet only when CAM_Codx
+setup/routing is broken or when doing runtime development, recovery, or
+regression isolation.
 
 Use this when CAM_Codx setup or routing is broken, when developing CAM_CAM, or
 when isolating one raw runtime capability.

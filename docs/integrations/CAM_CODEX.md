@@ -11,9 +11,12 @@ Use CAM_Codx for normal SWE, mining, knowledge, model, self-enhancement,
 evolution, setup, and evidence workflows. Direct CAM_CAM commands are for
 runtime troubleshooting, development, recovery, and regression isolation.
 
-The approved 2026-08-12 target consolidates CAM_Codx's specialized skills into
-one `cam-codx` skill. That target is designed and planned but not yet
-implemented; this document must not imply otherwise.
+The approved 2026-08-12 target is now implemented and release-audited for
+Tasks 1-13 as one `cam-codx` skill. The current evidence, limitations, and
+unrelated baseline failures are recorded in the CAM_Codx release audit. This
+does not claim a live MatrAIx/SESA product slice; that work is separately
+governed by `CAM_Codx/GOAL_TASK_14_MATRAIX_SESA.md` after its target and product
+boundaries are accepted.
 
 ## Development Brief Handoff
 

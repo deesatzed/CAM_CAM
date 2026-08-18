@@ -80,10 +80,16 @@ self-enhancement, evolution, setup, and evidence workflows. Use the CAM_CAM CLI
 directly for runtime troubleshooting, development, recovery, and regression
 isolation.
 
-The one-skill CAM_Codx control plane was approved on 2026-08-12 and is not yet
-implemented. Until it lands, CAM_Codx's four specialized skills remain the
-current supported workflow. See the CAM_Codx capability audit and design before
-claiming the unified UX is available.
+The one-skill CAM_Codx control plane is implemented and release-audited for
+Tasks 1-13. Its current registry, fixed manager packets, read-only graph route,
+managed-run seam, setup behavior, and fixture proof are documented in the
+CAM_Codx release audit. Direct CAM_CAM commands remain the troubleshooting,
+runtime-development, recovery, and regression-isolation surface.
+
+The MatrAIx/SESA vertical slice is not included in that proof. Its exact target
+checkout, immutable source revisions, licensing, privacy boundary, provider
+policy, and landing scope must first be fixed by
+`CAM_Codx/GOAL_TASK_14_MATRAIX_SESA.md`.
 
 Repo Necromancer stays in CAM_CAM because it profiles repos, records evidence,
 and writes packets. CAM_Codx explains how Codex should use those packets and
