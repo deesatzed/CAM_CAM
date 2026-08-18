@@ -18,9 +18,10 @@ Current implementation ownership:
   health measurement.
 - CAM_Codx owns the normal outcome-facing packet and must invoke CAM_CAM; it
   must not duplicate CAM_CAM graph, retrieval, or provider logic.
-- Work from the recovered feature checkouts only:
-  `/Users/o2satz/Downloads/crash814/worktrees/CAM_CAM` and
-  `/Users/o2satz/Downloads/crash814/worktrees/CAM_Codx`.
+- Work from the consolidated canonical checkouts only:
+  `/Volumes/WS4TB/waswiki/CAM_CAM` and
+  `/Volumes/WS4TB/waswiki/CAM_Codx`. The Downloads worktrees are recovery
+  references, not a second runtime or state location.
 
 /goal
 
