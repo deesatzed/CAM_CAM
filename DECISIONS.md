@@ -1,5 +1,21 @@
 # DECISIONS.md
 
+## 2026-08-18: Use one canonical CAM runtime state set
+
+Decision: the canonical CAM_CAM code checkout is
+`/Volumes/WS4TB/waswiki/CAM_CAM`, paired with its existing `claw.db`,
+`claw.toml`, and mode-0600 `.env`. CAM_Codx's canonical code checkout is
+`/Volumes/WS4TB/waswiki/CAM_Codx`. Downloads recovery worktrees are archival
+references, not additional runtime instances.
+
+Reason: the recovery worktree supplied verified code but no second database or
+secret environment. Fast-forwarding the original clean checkouts preserves
+runtime identity and avoids an unsafe state-file swap.
+
+Safety: no database, configuration, secret, provider, model, or live-import
+state was copied or modified. Any future state migration requires an explicit
+backup, rollback, and identity-verification plan.
+
 ## 2026-06-20: Repo Necromancer must support a standalone output repo
 
 Decision: Repo Necromancer packets are not enough when the user asks for a new

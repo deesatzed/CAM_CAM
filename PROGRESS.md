@@ -735,3 +735,13 @@ Assumptions:
 - Documentation-only validation: the CAM_CAM graph/import gate remained
   `22 passed`; `git diff --check` passed. No database, provider, model, target,
   or live-import state was changed.
+
+## 2026-08-18 Canonical-root consolidation
+
+- Fast-forwarded the canonical `/Volumes/WS4TB/waswiki/CAM_CAM` `main` checkout
+  to the published recovery head and pushed `main` plus the feature ref.
+- Kept the existing `/Volumes/WS4TB/waswiki/CAM_CAM/claw.db`, `claw.toml`, and
+  mode-0600 `.env` as the only runtime state set. The Downloads recovery
+  worktree has no database or `.env` and is not a second runtime.
+- No database, configuration, secret, provider, model, or live-import state
+  was changed.
