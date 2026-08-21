@@ -108,6 +108,21 @@ def test_query_primary_corpus_returns_provenance_without_database_mutation(tmp_p
     assert not list(tmp_path.glob("claw.db-*"))
 
 
+def test_multi_clause_primary_query_returns_partial_evidence_instead_of_empty(tmp_path: Path) -> None:
+    """A long task brief must not disappear because one token is absent."""
+    brief_query = _query_module()
+    database = tmp_path / "claw.db"
+    _create_corpus(database)
+
+    payload = brief_query.query_primary_corpus(
+        database,
+        "retry imports checkpoint recovery",
+        limit=3,
+    )
+
+    assert [item["methodology_id"] for item in payload["results"]] == ["method-retry-1"]
+
+
 def test_query_rejects_invalid_input_without_creating_a_database(tmp_path: Path) -> None:
     brief_query = _query_module()
     missing_database = tmp_path / "missing.db"

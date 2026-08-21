@@ -28,7 +28,11 @@ def _safe_fts_query(query: str) -> str:
     tokens = _TOKEN_PATTERN.findall(query)
     if not tokens:
         raise ReadOnlyQueryError("query must contain searchable text")
-    return " AND ".join(f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens)
+    # A Development Brief is a multi-obligation request. Requiring every
+    # token to occur in one methodology makes a useful partial match appear
+    # as an empty corpus. OR preserves the existing immutable, primary-only
+    # boundary while allowing the caller to classify coverage and omissions.
+    return " OR ".join(f'"{token.replace(chr(34), chr(34) * 2)}"' for token in tokens)
 
 
 def _read_only_uri(database: Path) -> str:
