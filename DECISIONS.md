@@ -1,5 +1,24 @@
 # DECISIONS.md
 
+## 2026-08-22: Preserve exact decision predicates as bounded method semantics
+
+Decision: extend the allowlisted mining `method_contract` with
+`decision_predicates`, a list of at most 20 non-empty strings truncated to 500
+characters each. Mining prompts require source-grounded branch conditions and
+outcomes and call out truthiness, presence, equality, fallback/default, null,
+and empty-value distinctions where those distinctions affect behavior.
+
+Reason: the C26 counterfactual found that a generalized "variable is set"
+description lost the source's truthiness behavior for an empty environment
+value. The existing contract transported steps and invariants but had no
+dedicated place for an exact branch predicate.
+
+Consequence: CAM_CAM now carries this field through parsing, capability storage,
+read-only query projection, and prompt-pack rendering. This is representation
+fidelity only; it does not establish that a model extracts the predicate
+correctly, that retrieval selects the record, or that a builder produces better
+software.
+
 ## 2026-08-22: Preserve bounded method semantics through mining and recall
 
 Decision: repository-mining prompts request a typed `method_contract`, and the

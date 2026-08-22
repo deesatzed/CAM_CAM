@@ -1556,6 +1556,9 @@ def parse_findings(llm_response: str, repo_name: str) -> list[MiningFinding]:
                 value.get("recovery_behavior", ""), ""
             ).strip()[:1000],
             "verification": _bounded_text_list(value.get("verification")),
+            "decision_predicates": _bounded_text_list(
+                value.get("decision_predicates"), limit=20
+            ),
             "discriminative_terms": _bounded_text_list(
                 value.get("discriminative_terms"), limit=20
             ),

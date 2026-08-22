@@ -229,6 +229,7 @@ def _render_method_contract(capability_data: dict[str, Any] | None) -> list[str]
     text("Failure Behavior", "failure_behavior")
     text("Recovery Behavior", "recovery_behavior")
     items("Verification", "verification")
+    items("Decision Predicates", "decision_predicates")
     items("Discriminative Terms", "discriminative_terms")
 
     provenance = capability_data.get("method_contract_provenance")

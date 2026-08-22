@@ -1,5 +1,24 @@
 # PROGRESS.md
 
+## 2026-08-22 source-predicate fidelity transport
+
+- Added RED tests for mining-prompt coverage, bounded parsing, capability
+  storage, read-only projection, and prompt-pack rendering of exact decision
+  predicates.
+- Added `decision_predicates` to the CAM_CAM method-contract allowlist with a
+  20-item/500-character bound and explicit source-semantic extraction guidance.
+- Focused verification passes `10 passed` in `0.25s` using the checkout-bound
+  invocation `UV_CACHE_DIR=/private/tmp/cam-uv-cache uv run --extra dev python
+  -m pytest`.
+- The broader mining, recovery, prompt-pack, and read-only-query regression set
+  passes `333 passed` in `1.83s`; `git diff --check` passes.
+- The initial plain `uv run pytest` used a pytest executable outside the newly
+  created environment and produced unrelated false regressions; the corrected
+  module invocation imported this worktree and isolated the intended RED state.
+
+Current status: CAM_CAM transport is green. CAM_Codx typed presentation and the
+disposable C26 counterfactual remain.
+
 ## 2026-08-22 typed mining method contract
 
 - Added RED regressions for structured method extraction, allowlist filtering,

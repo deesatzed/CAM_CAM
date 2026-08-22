@@ -71,6 +71,7 @@ def _bounded_method_contract(capability_data: dict[str, Any]) -> dict[str, Any] 
         "ordered_steps",
         "invariants",
         "verification",
+        "decision_predicates",
         "discriminative_terms",
     ):
         value = raw.get(field)

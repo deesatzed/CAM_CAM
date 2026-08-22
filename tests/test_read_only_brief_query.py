@@ -69,6 +69,10 @@ def _create_corpus(path: Path) -> None:
                             "failure_behavior": "Stop after the retry bound.",
                             "recovery_behavior": "Resume from durable state.",
                             "verification": ["inject a failure and resume"],
+                            "decision_predicates": [
+                                "bool(environment.get('RETRY')) is true => retry; "
+                                "missing or empty => stop"
+                            ],
                             "discriminative_terms": ["durable retry", "resume"],
                             "hidden_tests": ["must not leave CAM"],
                         },
@@ -130,6 +134,9 @@ def test_query_primary_corpus_returns_provenance_without_database_mutation(tmp_p
         "read durable state",
         "attempt import",
         "persist result",
+    ]
+    assert result["method_contract"]["decision_predicates"] == [
+        "bool(environment.get('RETRY')) is true => retry; missing or empty => stop"
     ]
     assert result["method_contract_provenance"]["source_revision"] == "a" * 40
     assert "hidden_tests" not in result["method_contract"]

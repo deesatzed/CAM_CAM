@@ -42,6 +42,10 @@ def _finding_payload() -> dict[str, object]:
             "failure_behavior": "Reject stale or conflicting identities.",
             "recovery_behavior": "Return the prior result for an exact replay.",
             "verification": ["replay the same operation", "submit a conflicting operation"],
+            "decision_predicates": [
+                "bool(environment.get('OPERATION_ID')) is true => validate identity; "
+                "missing or empty => reject"
+            ],
             "discriminative_terms": ["exact replay", "conflicting identity"],
             "ignored_hidden_tests": ["must never be preserved"],
         },
@@ -62,9 +66,12 @@ def test_all_mining_prompts_request_the_typed_method_contract() -> None:
             "failure_behavior",
             "recovery_behavior",
             "verification",
+            "decision_predicates",
             "discriminative_terms",
         ):
             assert f'"{field}"' in text
+        for semantic_term in ("truthiness", "presence", "equality", "default", "null", "empty"):
+            assert semantic_term in text.lower()
 
 
 def test_parser_and_seed_preserve_only_bounded_method_contract_fields() -> None:
@@ -73,6 +80,10 @@ def test_parser_and_seed_preserve_only_bounded_method_contract_fields() -> None:
         "read state",
         "validate identity",
         "write next state",
+    ]
+    assert finding.method_contract["decision_predicates"] == [
+        "bool(environment.get('OPERATION_ID')) is true => validate identity; "
+        "missing or empty => reject"
     ]
     assert "ignored_hidden_tests" not in finding.method_contract
 
@@ -97,10 +108,12 @@ def test_parser_rejects_non_string_method_contract_list_items() -> None:
     contract = payload["method_contract"]
     assert isinstance(contract, dict)
     contract["preconditions"] = ["stable operation identity", {"secret": "no"}, 17]
+    contract["decision_predicates"] = ["exact predicate", {"private": "no"}, 17]
 
     finding = parse_findings(json.dumps([payload]), "org/repo")[0]
 
     assert finding.method_contract["preconditions"] == ["stable operation identity"]
+    assert finding.method_contract["decision_predicates"] == ["exact predicate"]
 
 
 def test_prompt_pack_renders_method_semantics_but_not_unknown_contract_keys() -> None:
@@ -122,6 +135,10 @@ def test_prompt_pack_renders_method_semantics_but_not_unknown_contract_keys() ->
     assert "1. read state" in packet
     assert "Failure Behavior: Reject stale or conflicting identities." in packet
     assert "Verification: replay the same operation; submit a conflicting operation" in packet
+    assert (
+        "Decision Predicates: bool(environment.get('OPERATION_ID')) is true => "
+        "validate identity; missing or empty => reject"
+    ) in packet
     assert "Source Repository: org/repo" in packet
     assert "Source Revision: " + "b" * 40 in packet
     assert "Source Symbols: src/state.py:advance" in packet

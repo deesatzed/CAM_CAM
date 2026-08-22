@@ -50,6 +50,7 @@ Return a JSON object with exactly one `findings` array. Each finding must have t
       "failure_behavior": "How the source fails or rejects invalid state",
       "recovery_behavior": "How retry, replay, rollback, or later work recovers",
       "verification": ["Deterministic checks that distinguish a correct implementation"],
+      "decision_predicates": ["Exact source-grounded branch conditions and outcomes, preserving truthiness, presence, equality, default/fallback, null, and empty-value distinctions when relevant"],
       "discriminative_terms": ["Source terms and synonyms that identify this exact method"]
     },
     "relevance_score": 0.7,
