@@ -1,5 +1,25 @@
 # DECISIONS.md
 
+## 2026-08-22: Preserve bounded method semantics through mining and recall
+
+Decision: repository-mining prompts request a typed `method_contract`, and the
+runtime stores and exposes only its allowlisted semantic fields plus bounded
+source provenance. A clean Git checkout may contribute its immutable HEAD;
+dirty or non-Git sources leave the revision empty rather than asserting a
+mutable or false identity.
+
+Reason: the CAM-versus-Context7 postbuild RCA showed two diagnostic cases where
+the selected CAM methodology had the correct theme but omitted operational
+mechanics that exact source allowed the same builder to apply successfully.
+Free-text summaries were not a reliable carrier for preconditions, step order,
+invariants, failure/recovery behavior, or verification.
+
+Safety: unknown keys are dropped, field sizes and counts are bounded, legacy
+databases without `capability_data` still support read-only queries, and this
+change performs no mining, provider call, database migration, model change, or
+positive-evidence update. A method contract remains evidence input; only
+receipt-backed verification can establish a successful outcome.
+
 ## 2026-08-18: Use one canonical CAM runtime state set
 
 Decision: the canonical CAM_CAM code checkout is

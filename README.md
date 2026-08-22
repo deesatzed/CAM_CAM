@@ -1550,6 +1550,21 @@ min_exploration_floor = 0.02  # 2% floor for all agents
 ### License-Aware Mining
 Before mining a repository, CAM detects its license from LICENSE/COPYING files and classifies it as `permissive`, `copyleft`, `unknown`, or `none`. The license type is stored in both `pulse_discoveries` and methodology `capability_data`, so downstream consumers can filter by license compatibility.
 
+### Typed Method Contracts
+
+Repository mining can retain a bounded `method_contract` alongside a
+methodology. The allowlisted fields describe the problem, preconditions,
+ordered steps, invariants, failure and recovery behavior, verification, and
+discriminative terms. Separate provenance binds the source repository, a clean
+immutable revision when available, detected license, source files, and symbols.
+
+`cam brief-query` and prompt-pack rendering expose only these bounded fields.
+Unknown contract keys are discarded. A dirty checkout does not receive a
+misleading HEAD revision, and older databases without `capability_data` remain
+readable. The contract is mined evidence, not proof that a generated
+implementation is correct; verification receipts still determine outcome
+trust.
+
 ### Pre-Assimilation Secret Scanning (TruffleHog + Regex Fallback)
 Before any repository enters the mining pipeline, CAM scans it for hardcoded secrets using a two-gate architecture:
 

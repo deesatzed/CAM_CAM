@@ -42,6 +42,16 @@ Return a JSON object with exactly one `findings` array. Each finding must have t
     "acceptance_checks": ["Optional: commands that should pass after implementation"],
     "rollback_steps": ["Optional: commands to revert safely if checks fail"],
     "preconditions": ["Optional: required tools/files before execution"],
+    "method_contract": {
+      "problem": "The exact reusable engineering problem solved by the source",
+      "preconditions": ["Conditions that must hold before applying the method"],
+      "ordered_steps": ["Ordered operations whose sequence affects correctness"],
+      "invariants": ["Properties that must remain true"],
+      "failure_behavior": "How the source fails or rejects invalid state",
+      "recovery_behavior": "How retry, replay, rollback, or later work recovers",
+      "verification": ["Deterministic checks that distinguish a correct implementation"],
+      "discriminative_terms": ["Source terms and synonyms that identify this exact method"]
+    },
     "relevance_score": 0.7,
     "language": "detected_language"
   }

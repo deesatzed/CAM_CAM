@@ -35,7 +35,8 @@ def _create_corpus(path: Path) -> None:
                 methodology_notes TEXT,
                 tags TEXT NOT NULL,
                 language TEXT,
-                lifecycle_state TEXT NOT NULL
+                lifecycle_state TEXT NOT NULL,
+                capability_data TEXT
             );
             CREATE VIRTUAL TABLE methodology_fts USING fts5(
                 methodology_id UNINDEXED,
@@ -48,8 +49,9 @@ def _create_corpus(path: Path) -> None:
         connection.execute(
             """
             INSERT INTO methodologies
-              (id, problem_description, methodology_notes, tags, language, lifecycle_state)
-            VALUES (?, ?, ?, ?, ?, ?)
+              (id, problem_description, methodology_notes, tags, language, lifecycle_state,
+               capability_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "method-retry-1",
@@ -58,6 +60,27 @@ def _create_corpus(path: Path) -> None:
                 json.dumps(["retry", "import", "source:fixture-repo"]),
                 "python",
                 "viable",
+                json.dumps(
+                    {
+                        "method_contract": {
+                            "problem": "Transient imports need bounded retry.",
+                            "ordered_steps": ["read durable state", "attempt import", "persist result"],
+                            "invariants": ["completed work is not repeated"],
+                            "failure_behavior": "Stop after the retry bound.",
+                            "recovery_behavior": "Resume from durable state.",
+                            "verification": ["inject a failure and resume"],
+                            "discriminative_terms": ["durable retry", "resume"],
+                            "hidden_tests": ["must not leave CAM"],
+                        },
+                        "method_contract_provenance": {
+                            "source_repo": "fixture-repo",
+                            "source_revision": "a" * 40,
+                            "license_type": "MIT",
+                            "source_files": ["src/retry.py"],
+                            "private_note": "must not leave CAM",
+                        },
+                    }
+                ),
             ),
         )
         connection.execute(
@@ -103,6 +126,14 @@ def test_query_primary_corpus_returns_provenance_without_database_mutation(tmp_p
     assert result["tags"] == ["retry", "import", "source:fixture-repo"]
     assert result["language"] == "python"
     assert result["lifecycle_state"] == "viable"
+    assert result["method_contract"]["ordered_steps"] == [
+        "read durable state",
+        "attempt import",
+        "persist result",
+    ]
+    assert result["method_contract_provenance"]["source_revision"] == "a" * 40
+    assert "hidden_tests" not in result["method_contract"]
+    assert "private_note" not in result["method_contract_provenance"]
     assert isinstance(result["text_score"], float)
     assert _database_state(database) == before
     assert not list(tmp_path.glob("claw.db-*"))

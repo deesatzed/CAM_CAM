@@ -176,6 +176,13 @@ def _render_card(meth: Methodology) -> str:
         for h in hooks:
             lines.append(f"  * {h}")
 
+    # Typed method semantics preserved by mining. Only the allowlisted fields
+    # are rendered so unrelated capability metadata cannot enter the packet.
+    method_contract = _render_method_contract(meth.capability_data)
+    if method_contract:
+        lines.append("Method Contract:")
+        lines.extend(method_contract)
+
     # Source provenance
     if meth.tags:
         lines.append(f"Provenance: {', '.join(meth.tags)}")
@@ -185,6 +192,75 @@ def _render_card(meth: Methodology) -> str:
     lines.append(f"Priority: {priority:.2f}")
 
     return "\n".join(lines)
+
+
+def _render_method_contract(capability_data: dict[str, Any] | None) -> list[str]:
+    """Render the bounded, allowlisted method contract stored by mining."""
+
+    if not isinstance(capability_data, dict):
+        return []
+    contract = capability_data.get("method_contract")
+    if not isinstance(contract, dict):
+        return []
+    lines: list[str] = []
+
+    def text(label: str, field: str) -> None:
+        value = contract.get(field)
+        if isinstance(value, str) and value.strip():
+            lines.append(f"  {label}: {value.strip()}")
+
+    def items(label: str, field: str, *, numbered: bool = False) -> None:
+        values = contract.get(field)
+        if not isinstance(values, list):
+            return
+        clean = [value.strip() for value in values if isinstance(value, str) and value.strip()]
+        if not clean:
+            return
+        if numbered:
+            lines.append(f"  {label}:")
+            lines.extend(f"    {index}. {value}" for index, value in enumerate(clean, 1))
+        else:
+            lines.append(f"  {label}: {'; '.join(clean)}")
+
+    text("Problem", "problem")
+    items("Preconditions", "preconditions")
+    items("Ordered Steps", "ordered_steps", numbered=True)
+    items("Invariants", "invariants")
+    text("Failure Behavior", "failure_behavior")
+    text("Recovery Behavior", "recovery_behavior")
+    items("Verification", "verification")
+    items("Discriminative Terms", "discriminative_terms")
+
+    provenance = capability_data.get("method_contract_provenance")
+    if isinstance(provenance, dict):
+        source_repo = provenance.get("source_repo")
+        source_revision = provenance.get("source_revision")
+        license_type = provenance.get("license_type")
+        source_files = provenance.get("source_files")
+        source_symbols = provenance.get("source_symbols")
+        if isinstance(source_repo, str) and source_repo.strip():
+            lines.append(f"  Source Repository: {source_repo.strip()}")
+        if isinstance(source_revision, str) and source_revision.strip():
+            lines.append(f"  Source Revision: {source_revision.strip()}")
+        if isinstance(license_type, str) and license_type.strip():
+            lines.append(f"  License: {license_type.strip()}")
+        if isinstance(source_files, list):
+            clean_files = [
+                value.strip()
+                for value in source_files
+                if isinstance(value, str) and value.strip()
+            ]
+            if clean_files:
+                lines.append(f"  Source Files: {'; '.join(clean_files)}")
+        if isinstance(source_symbols, list):
+            clean_symbols = [
+                value.strip()
+                for value in source_symbols
+                if isinstance(value, str) and value.strip()
+            ]
+            if clean_symbols:
+                lines.append(f"  Source Symbols: {'; '.join(clean_symbols)}")
+    return lines
 
 
 def _contract_explanation(contract: str) -> str:

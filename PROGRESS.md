@@ -1,5 +1,29 @@
 # PROGRESS.md
 
+## 2026-08-22 typed mining method contract
+
+- Added RED regressions for structured method extraction, allowlist filtering,
+  prompt-pack survival, clean-revision provenance, dirty-source fail-closed
+  behavior, read-only query presentation, and legacy-schema compatibility.
+- Updated all repository-mining prompt variants to request the same bounded
+  method contract. `MiningFinding` parses only known fields and stores bounded
+  provenance in `capability_data`.
+- Prompt packs and `brief-query` expose only the allowed contract and
+  provenance fields. Unknown fields cannot leak to a builder packet.
+- Selected local-code verification with `PYTHONPATH=src` passes `268` tests;
+  one event-loop-close warning is retained as pre-existing test-harness
+  noise. A run without `PYTHONPATH=src` imported an older editable CAM_CAM
+  checkout and produced unrelated failures; local-source pinning is required
+  for trustworthy verification.
+- No live mining, provider call, canonical database/config/profile mutation,
+  schema migration, or model change occurred. Full-suite and final diff gates
+  remain before commit.
+- Fresh full suite: `4470 passed, 22 skipped, 2 failed in 71.87s`. Both failures
+  are unchanged real-ganglia integration tests; their external Rust, Go, and
+  TypeScript database paths exist but return `unable to open database file`.
+  No failure touches mining, method contracts, prompt packs, or brief-query.
+- `git diff --check` passes. The feature branch is ready for scoped commit.
+
 ## 2026-06-20
 
 - Continued the active MoriahCareFrame Repo Necromancer goal from

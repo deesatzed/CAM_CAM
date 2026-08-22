@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -551,6 +552,7 @@ class MiningFinding:
     acceptance_checks: list[str] = field(default_factory=list)
     rollback_steps: list[str] = field(default_factory=list)
     preconditions: list[str] = field(default_factory=list)
+    method_contract: dict[str, Any] = field(default_factory=dict)
     action_template_id: Optional[str] = None
 
 
@@ -1530,6 +1532,36 @@ def parse_findings(llm_response: str, repo_name: str) -> list[MiningFinding]:
             return value
         return str(value)
 
+    def _bounded_text_list(value: Any, *, limit: int = 10) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return [
+            item.strip()[:500]
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ][:limit]
+
+    def _method_contract(value: Any) -> dict[str, Any]:
+        if not isinstance(value, dict):
+            return {}
+        normalized = {
+            "problem": _text(value.get("problem", ""), "").strip()[:1500],
+            "preconditions": _bounded_text_list(value.get("preconditions")),
+            "ordered_steps": _bounded_text_list(value.get("ordered_steps")),
+            "invariants": _bounded_text_list(value.get("invariants")),
+            "failure_behavior": _text(
+                value.get("failure_behavior", ""), ""
+            ).strip()[:1000],
+            "recovery_behavior": _text(
+                value.get("recovery_behavior", ""), ""
+            ).strip()[:1000],
+            "verification": _bounded_text_list(value.get("verification")),
+            "discriminative_terms": _bounded_text_list(
+                value.get("discriminative_terms"), limit=20
+            ),
+        }
+        return normalized if any(normalized.values()) else {}
+
     findings: list[MiningFinding] = []
     for item in data:
         if not isinstance(item, dict):
@@ -1624,6 +1656,7 @@ def parse_findings(llm_response: str, repo_name: str) -> list[MiningFinding]:
             acceptance_checks=acceptance_checks[:10],
             rollback_steps=rollback_steps[:10],
             preconditions=preconditions[:10],
+            method_contract=_method_contract(item.get("method_contract")),
         )
         findings.append(finding)
 
@@ -1715,6 +1748,35 @@ class RepoMiner:
         self._fast_mine: bool = False  # When True, skip assimilation during mining
         self._scenario_enricher: Any = None  # Lazy-init ScenarioEnricher
         self._quarantined_mining_models: set[str] = set()
+
+    @staticmethod
+    def _clean_source_revision(repo_path: Path) -> str:
+        """Return an immutable Git HEAD only when it describes the mined bytes."""
+
+        path = Path(repo_path).resolve()
+        try:
+            status = subprocess.run(
+                ["git", "-C", str(path), "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            )
+            if status.returncode != 0 or status.stdout.strip():
+                return ""
+            revision = subprocess.run(
+                ["git", "-C", str(path), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+                env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        value = revision.stdout.strip().lower()
+        return value if revision.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}", value) else ""
 
     @staticmethod
     def _extract_symbols_from_file(repo_path: Path, relative_path: str, max_symbols: int = 8) -> list[dict[str, Any]]:
@@ -1905,6 +1967,22 @@ class RepoMiner:
                 "Requires adaptation to the target repo; do not apply blindly."
             )
 
+        metadata = getattr(self, "_current_mine_metadata", {})
+        method_contract = dict(finding.method_contract) if finding.method_contract else None
+        method_contract_provenance = None
+        if method_contract:
+            method_contract_provenance = {
+                "source_repo": finding.source_repo,
+                "source_revision": metadata.get("source_revision", ""),
+                "license_type": metadata.get("license_type", ""),
+                "source_files": list(finding.source_files),
+                "source_symbols": [
+                    f"{symbol.get('file_path', '')}:{symbol.get('symbol_name', '')}"
+                    for symbol in finding.source_symbols
+                    if symbol.get("file_path") and symbol.get("symbol_name")
+                ],
+            }
+
         return {
             "schema_version": 2,
             "enrichment_status": "seeded",
@@ -1926,7 +2004,9 @@ class RepoMiner:
             "risks": [finding.augmentation_notes.strip()] if finding.augmentation_notes.strip() else [],
             "composition_candidates": [],
             "evidence": [f"source_file:{path}" for path in finding.source_files],
-            "license_type": getattr(self, "_current_mine_metadata", {}).get("license_type", ""),
+            "license_type": metadata.get("license_type", ""),
+            "method_contract": method_contract,
+            "method_contract_provenance": method_contract_provenance,
         }
 
     @staticmethod
@@ -3184,9 +3264,12 @@ class RepoMiner:
         Returns:
             RepoMiningResult with findings and metadata.
         """
-        self._current_mine_metadata = metadata or {}
         start = time.monotonic()
         repo_path = Path(repo_path)
+        self._current_mine_metadata = dict(metadata or {})
+        self._current_mine_metadata.setdefault(
+            "source_revision", self._clean_source_revision(repo_path)
+        )
 
         # --- Brain selection and polyglot detection ---
         if brain is not None and brain != "auto":

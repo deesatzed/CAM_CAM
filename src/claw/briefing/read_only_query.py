@@ -47,6 +47,66 @@ def _parse_tags(value: Any) -> list[str]:
     return [item for item in parsed if isinstance(item, str)]
 
 
+def _parse_capability_data(value: Any) -> dict[str, Any]:
+    if not isinstance(value, str):
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _bounded_method_contract(capability_data: dict[str, Any]) -> dict[str, Any] | None:
+    raw = capability_data.get("method_contract")
+    if not isinstance(raw, dict):
+        return None
+    result: dict[str, Any] = {}
+    for field in ("problem", "failure_behavior", "recovery_behavior"):
+        value = raw.get(field)
+        if isinstance(value, str) and value.strip():
+            result[field] = value.strip()[:1500]
+    for field in (
+        "preconditions",
+        "ordered_steps",
+        "invariants",
+        "verification",
+        "discriminative_terms",
+    ):
+        value = raw.get(field)
+        if isinstance(value, list):
+            clean = [
+                item.strip()[:500]
+                for item in value
+                if isinstance(item, str) and item.strip()
+            ][:20]
+            if clean:
+                result[field] = clean
+    return result or None
+
+
+def _bounded_method_provenance(capability_data: dict[str, Any]) -> dict[str, Any] | None:
+    raw = capability_data.get("method_contract_provenance")
+    if not isinstance(raw, dict):
+        return None
+    result: dict[str, Any] = {}
+    for field in ("source_repo", "source_revision", "license_type"):
+        value = raw.get(field)
+        if isinstance(value, str) and value.strip():
+            result[field] = value.strip()[:500]
+    for field in ("source_files", "source_symbols"):
+        value = raw.get(field)
+        if isinstance(value, list):
+            clean = [
+                item.strip()[:500]
+                for item in value
+                if isinstance(item, str) and item.strip()
+            ][:20]
+            if clean:
+                result[field] = clean
+    return result or None
+
+
 def query_primary_corpus(database: Path, query: str, *, limit: int = 10) -> dict[str, Any]:
     """Return FTS provenance from one existing CAM primary database.
 
@@ -69,8 +129,15 @@ def query_primary_corpus(database: Path, query: str, *, limit: int = 10) -> dict
 
     try:
         connection.execute("PRAGMA query_only=ON")
+        columns = {
+            str(row["name"])
+            for row in connection.execute("PRAGMA table_info(methodologies)").fetchall()
+        }
+        capability_select = (
+            "m.capability_data" if "capability_data" in columns else "NULL AS capability_data"
+        )
         rows = connection.execute(
-            """
+            f"""
             SELECT
                 m.id AS methodology_id,
                 m.problem_description,
@@ -78,6 +145,7 @@ def query_primary_corpus(database: Path, query: str, *, limit: int = 10) -> dict
                 m.tags,
                 m.language,
                 m.lifecycle_state,
+                {capability_select},
                 f.rank AS text_score
             FROM methodology_fts AS f
             JOIN methodologies AS m ON m.id = f.methodology_id
@@ -105,6 +173,12 @@ def query_primary_corpus(database: Path, query: str, *, limit: int = 10) -> dict
                 "language": str(row["language"] or ""),
                 "lifecycle_state": str(row["lifecycle_state"] or ""),
                 "text_score": float(row["text_score"]),
+                "method_contract": _bounded_method_contract(
+                    _parse_capability_data(row["capability_data"])
+                ),
+                "method_contract_provenance": _bounded_method_provenance(
+                    _parse_capability_data(row["capability_data"])
+                ),
             }
             for row in rows
         ],
